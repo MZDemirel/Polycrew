@@ -1,0 +1,4 @@
+# A2 kodlama yarışı (PM ölçüsü: şövalye 128 / 96, köylü 48; taban 17,1 / 9,2 / 1,1)
+sonnet     1,2 / 1,0 / 0,0 | 297,6 sn, 58,8k Claude token | commit 17b62cf temiz | light.py +33 (_shifted/_NEIGHBOURS yeniden kullanım, üsluba en uygun), test 57 satır | eşitlik: kendi tonuna yakın, sonra koyu | 48 önizlemesine bakmadı
+gem-flash  1,2 / 1,0 / 0,0 | 687,3 sn, 1,44M token (girdi 1,40M + önbellek 6,9M) | commit 93a7006 | light.py +44 (kendi pad yöntemi), test 179 satır | eşitlik: komşu sırası | arka planda test başlatıp tekrar tekrar bekledi
+codex-sol  1,2 / 1,0 / 0,0 | 924,6 sn, 1,93M girdi (1,84M önbellek), 17,7k çıktı | COMMIT YOK (kum havuzu .git'e yazamadı; betik düzeltildi) | light.py +26 en kısa numpy, test test_sprite_face.py +32 | eşitlik: düşük ton | KAPSAM AŞIMI: PLAN.md, SONRAKI_OTURUM.md, 0041, karar notu 0047 (AGENTS.md kurallarını uyguladı) | 48'e görsel baktığını söyledi

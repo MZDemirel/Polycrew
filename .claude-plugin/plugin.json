@@ -1,0 +1,13 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "polycrew",
+  "version": "0.3.0",
+  "description": "A multi-model crew for Claude Code: session discipline plus a PM-led team of Claude roles and external Codex/Gemini workers, measured and visible. Oturum düzeni (CLAUDE.md, PLAN.md, karar notları, SONRAKI_OTURUM.md), ajan takımı ve dış işçiler, canlı izleme.",
+  "author": {
+    "name": "Muhammed Zahid Demirel",
+    "email": "mzahiddemirel@gmail.com"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/MZDemirel/polycrew",
+  "homepage": "https://github.com/MZDemirel/polycrew"
+}

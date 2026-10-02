@@ -1,0 +1,15 @@
+{
+  "name": "polycrew",
+  "description": "polycrew: Claude Code için çok modelli kadro.",
+  "owner": {
+    "name": "Muhammed Zahid Demirel",
+    "email": "mzahiddemirel@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "polycrew",
+      "source": "./",
+      "description": "Oturum düzeni, ajan takımı, dış işçiler (Codex, Gemini) ve canlı izleme."
+    }
+  ]
+}
