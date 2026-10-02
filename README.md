@@ -4,7 +4,7 @@
 
 [Türkçe](README.tr.md)
 
-![The live team page: who is running, a timeline per worker, quotas and scores](docs/img/izle.png)
+![The live team page: who is running, a timeline per worker, quotas and scores](docs/img/izle-en.png)
 
 ## What it is for
 
@@ -95,7 +95,7 @@ Then run `/reload-plugins` in an open session, or start a new one.
 /izle
 ```
 
-The page runs at `http://localhost:8770`. In VS Code, open it with `Ctrl+Shift+P → Simple Browser: Show`. It refreshes every few seconds and shows:
+The page runs at `http://localhost:8770`. In VS Code, open it with `Ctrl+Shift+P → Simple Browser: Show`. It is in English and Turkish: it follows your browser language, and the EN/TR buttons or `?lang=en` switch it. It refreshes every few seconds and shows:
 
 - **Running now:** role or model, task, elapsed time.
 - **Timeline:** Claude in orange, Codex in green, Gemini in blue. Click a bar to see the worker's last report and its task.
@@ -106,7 +106,8 @@ Under the hood:
 
 - Hooks (`PreToolUse` on the Agent tool, `SubagentStart`, `SubagentStop`) and `dis-ajan.sh` append to one log.
 - The PM adds scores with `python3 hooks/olay.py puan <job id> <1-5> "<reason>"`.
-- `skills/izle/izle.py rapor --cikti report.html` renders the same view as a static page. `/oturum-kapat` publishes it.
+- `skills/izle/izle.py rapor --dil en --cikti report.html` renders the same view as a static page. `/oturum-kapat` publishes it.
+- The screenshots come from an example log: `docs/img/ornek_gunluk.py en|tr <file>`.
 
 ## External workers (optional)
 

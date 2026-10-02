@@ -12,7 +12,7 @@ Olaylar tek bir günlükte toplanır (`hooks/olay.py`, karar `0003`): Claude alt
 1. Sunucu açık mı: `curl -s -o /dev/null -w '%{http_code}' http://localhost:8770/api/durum`. 200 değilse arka planda başlat (Bash `run_in_background`):
    `python3 "${CLAUDE_PLUGIN_ROOT}/skills/izle/izle.py" --port 8770`
 2. Kullanıcıya adresi ver: VS Code'da `Ctrl+Shift+P → Simple Browser: Show → http://localhost:8770` (ya da tarayıcı).
-3. Sayfa 3 saniyede bir yenilenir: şimdi çalışanlar, zaman çizelgesi (Claude turuncu, Codex yeşil, Gemini mavi), kota çubukları (dakikada bir `dis-ajan.sh kota`), işler ve puanlar. Bir işe tıklayınca son raporu ve görevi yan panelde.
+3. Sayfa İngilizce ve Türkçedir (tarayıcı diline göre; EN/TR düğmesi ya da `?lang=tr`). 3 saniyede bir yenilenir: şimdi çalışanlar, zaman çizelgesi (Claude turuncu, Codex yeşil, Gemini mavi), kota çubukları (dakikada bir `dis-ajan.sh kota`), işler ve puanlar. Bir işe tıklayınca son raporu ve görevi yan panelde.
 
 ## Puan
 
@@ -29,7 +29,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/hooks/olay.py" puan <iş id> <1-5> "<kısa gerek�
 `/oturum-kapat`'ta, oturumda takım ya da dış işçi kullanıldıysa:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/skills/izle/izle.py" rapor --saat <oturumun saati> --cikti <scratchpad>/takim-raporu.html
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/izle/izle.py" rapor --saat <oturumun saati> --dil <projenin dili: tr|en> --cikti <scratchpad>/takim-raporu.html
 ```
 
 Sonra dosyayı Artifact olarak yayımla (başlık "Takım izleme" sayfada hazır, ikon `chart`) ve bağlantıyı `SONRAKI_OTURUM.md`'ye yaz. Rapor, raporları ve görevleri gömülü taşır; yayımlamadan önce içinde gizli bilgi (anahtar, parola) olmadığına bak.

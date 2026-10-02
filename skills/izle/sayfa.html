@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="tr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Polycrew Takım İzleme</title>
+<title>Polycrew Team Watch</title>
 <style>
-/* Düzen: üstte sayaçlar, sonra şimdi çalışanlar, zaman çizelgesi, kota, iş tablosu; tıklanınca yan panel. */
+/* Layout: counters on top, then running now, timeline, quotas, job table; a side panel on click. Two languages (METIN). */
 :root {
   --bg: #f6f5f1; --surface: #ffffff; --ink: #1d1d1f; --muted: #66666e; --line: #dedcd5;
   --claude: #c8643f; --codex: #0f8f6f; --gemini: #3a6fd8; --hata: #c0392b; --ok: #2e7d4f;
@@ -92,53 +92,107 @@ aside pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5px/1.55 va
 <body>
 <div class="wrap">
   <header>
-    <h1>Takım izleme</h1>
+    <h1 data-t="baslik"></h1>
     <span class="meta" id="guncel"></span>
-    <div class="seg" id="pencere" role="group" aria-label="Zaman penceresi">
-      <button type="button" data-saat="3">3 sa</button>
-      <button type="button" data-saat="12" aria-pressed="true">12 sa</button>
-      <button type="button" data-saat="48">2 gün</button>
-      <button type="button" data-saat="0">Hepsi</button>
+    <div class="seg" id="pencere" role="group">
+      <button type="button" data-saat="3" data-t="s3"></button>
+      <button type="button" data-saat="12" data-t="s12" aria-pressed="true"></button>
+      <button type="button" data-saat="48" data-t="s48"></button>
+      <button type="button" data-saat="0" data-t="hepsi"></button>
+    </div>
+    <div class="seg" id="dil" role="group" aria-label="Language / Dil">
+      <button type="button" data-dil="en">EN</button><button type="button" data-dil="tr">TR</button>
     </div>
   </header>
   <div class="sayac" id="sayac"></div>
-  <section><h2>Şimdi çalışanlar</h2><div class="cards" id="simdi"></div></section>
-  <section><h2>Zaman çizelgesi</h2><div class="cizelge"><div class="eksen" id="eksen"></div><div id="satirlar"></div></div></section>
-  <section><h2>Kota</h2><div class="kota" id="kota"></div><p class="meta" id="kota-not"></p></section>
-  <section><h2>İşler ve puanlar</h2><div class="tbl"><table>
-    <thead><tr><th>Başladı</th><th>Kim</th><th>İş</th><th>Süre</th><th>Token</th><th>Durum</th><th>Puan</th></tr></thead>
+  <section><h2 data-t="simdi"></h2><div class="cards" id="simdi"></div></section>
+  <section><h2 data-t="cizelge"></h2><div class="cizelge"><div class="eksen" id="eksen"></div><div id="satirlar"></div></div></section>
+  <section><h2 data-t="kota"></h2><div class="kota" id="kota"></div><p class="meta" id="kota-not"></p></section>
+  <section><h2 data-t="isler"></h2><div class="tbl"><table>
+    <thead><tr><th data-t="tBasladi"></th><th data-t="tKim"></th><th data-t="tIs"></th><th data-t="tSure"></th><th data-t="tToken"></th><th data-t="tDurum"></th><th data-t="tPuan"></th></tr></thead>
     <tbody id="tablo"></tbody></table></div></section>
 </div>
-<aside id="panel" aria-label="İş ayrıntısı">
+<aside id="panel">
   <header><div><b id="p-baslik"></b><div class="meta" id="p-alt"></div></div>
-    <div><span class="seg"><button type="button" id="p-rapor" aria-pressed="true">Rapor</button><button type="button" id="p-gorev">Görev</button></span>
-    <button type="button" class="kapat" id="p-kapat">Kapat</button></div></header>
+    <div><span class="seg"><button type="button" id="p-rapor" aria-pressed="true" data-t="rapor"></button><button type="button" id="p-gorev" data-t="gorev"></button></span>
+    <button type="button" class="kapat" id="p-kapat" data-t="kapat"></button></div></header>
   <div class="govde"><pre id="p-metin"></pre></div>
 </aside>
 <script>
 const GOMULU = /*VERI*/null;
+const METIN = {
+  en: {
+    baslik: "Team watch", s3: "3 h", s12: "12 h", s48: "2 days", hepsi: "All",
+    simdi: "Running now", cizelge: "Timeline", kota: "Quotas", isler: "Jobs and scores",
+    tBasladi: "Started", tKim: "Who", tIs: "Task", tSure: "Duration", tToken: "Tokens", tDurum: "Status", tPuan: "Score",
+    rapor: "Report", gorev: "Task", kapat: "Close", pencere: "Time window", panel: "Job details",
+    guncellendi: "updated", raporBasligi: "report", calisiyor: "running", bitti: "done", hata: "failed", bilinmiyor: "unknown",
+    toplamIs: "jobs", toplamSure: "total time", bosSimdi: "No agent or external worker is running right now.",
+    bosPencere: "No jobs in this window.", bosKota: "No quota reading yet (dis-ajan.sh kota).", yenilenir: "resets",
+    olcum: "measured", claudeNot: "Claude's own usage is not readable from the CLI: run /usage in Claude Code.",
+    yukleniyor: "loading…", okunamadi: "could not be read", yok: "(none)", henuzRapor: "(no report yet)",
+    raporYok: "(no report found)", sunucuYok: "cannot reach the server",
+    sn: "s", dk: "min", sa: "h", yerel: "en-GB", okur: "read-only", yazar: "writer",
+  },
+  tr: {
+    baslik: "Takım izleme", s3: "3 sa", s12: "12 sa", s48: "2 gün", hepsi: "Hepsi",
+    simdi: "Şimdi çalışanlar", cizelge: "Zaman çizelgesi", kota: "Kota", isler: "İşler ve puanlar",
+    tBasladi: "Başladı", tKim: "Kim", tIs: "İş", tSure: "Süre", tToken: "Token", tDurum: "Durum", tPuan: "Puan",
+    rapor: "Rapor", gorev: "Görev", kapat: "Kapat", pencere: "Zaman penceresi", panel: "İş ayrıntısı",
+    guncellendi: "güncellendi", raporBasligi: "rapor", calisiyor: "çalışıyor", bitti: "bitti", hata: "hata", bilinmiyor: "bilinmiyor",
+    toplamIs: "toplam iş", toplamSure: "toplam süre", bosSimdi: "Şu anda çalışan agent ya da dış işçi yok.",
+    bosPencere: "Bu pencerede iş yok.", bosKota: "Kota ölçümü yok (dis-ajan.sh kota).", yenilenir: "yenilenir",
+    olcum: "ölçüm", claudeNot: "Claude'un kotası CLI'dan okunmuyor: Claude Code'da /usage.",
+    yukleniyor: "yükleniyor…", okunamadi: "okunamadı", yok: "(yok)", henuzRapor: "(henüz rapor yok)",
+    raporYok: "(rapor bulunamadı)", sunucuYok: "sunucuya ulaşılamıyor",
+    sn: "sn", dk: "dk", sa: "sa", yerel: "tr-TR", okur: "okur", yazar: "yazar",
+  },
+};
+function ilkDil() {
+  const q = new URLSearchParams(location.search).get("lang");
+  if (q && METIN[q]) return q;
+  if (GOMULU && GOMULU.dil && METIN[GOMULU.dil]) return GOMULU.dil;
+  try { const s = localStorage.getItem("polycrew-dil"); if (s && METIN[s]) return s; } catch {}
+  return (navigator.language || "en").toLowerCase().startsWith("tr") ? "tr" : "en";
+}
+let dil = ilkDil();
+const t = (k) => METIN[dil][k] ?? METIN.en[k] ?? k;
 let saat = 12, veri = null, secili = null, sekme = "rapor", sonKota = 0;
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const saatStr = (ts) => new Date(ts * 1000).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
-const gunStr = (ts) => new Date(ts * 1000).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-function sure(s) { if (s == null) return "—"; s = Math.round(s); if (s < 60) return s + " sn"; const d = Math.floor(s / 60); return d < 60 ? d + " dk " + (s % 60) + " sn" : Math.floor(d / 60) + " sa " + (d % 60) + " dk"; }
-const durumAd = { calisiyor: "çalışıyor", bitti: "bitti", hata: "hata", bilinmiyor: "bilinmiyor" };
+const saatStr = (ts) => new Date(ts * 1000).toLocaleTimeString(t("yerel"), { hour: "2-digit", minute: "2-digit" });
+const gunStr = (ts) => new Date(ts * 1000).toLocaleString(t("yerel"), { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+function sure(s) {
+  if (s == null) return "—";
+  s = Math.round(s);
+  if (s < 60) return `${s} ${t("sn")}`;
+  const d = Math.floor(s / 60);
+  return d < 60 ? `${d} ${t("dk")} ${s % 60} ${t("sn")}` : `${Math.floor(d / 60)} ${t("sa")} ${d % 60} ${t("dk")}`;
+}
 const saglayiciAd = { claude: "Claude", codex: "Codex", gemini: "Gemini" };
 function kim(i) {
   if (i.kaynak === "claude") return (i.rol || "agent") + (i.model ? " · " + i.model : "");
-  return (i.model || i.kaynak) + (i.efor && i.efor !== "-" ? " " + i.efor : "") + (i.rol ? " · " + i.rol : "");
+  return (i.model || i.kaynak) + (i.efor && i.efor !== "-" ? " " + i.efor : "") + (i.rol ? " · " + t(i.rol) : "");
 }
-function token(t) { return t == null ? "—" : t >= 1e6 ? (t / 1e6).toFixed(2) + "M" : t >= 1e3 ? Math.round(t / 1e3) + "k" : String(t); }
+function token(n) { return n == null ? "—" : n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n); }
+
+function sabitler() {
+  document.documentElement.lang = dil;
+  document.title = "Polycrew " + t("baslik");
+  for (const el of document.querySelectorAll("[data-t]")) el.textContent = t(el.dataset.t);
+  $("pencere").setAttribute("aria-label", t("pencere"));
+  $("panel").setAttribute("aria-label", t("panel"));
+  for (const b of $("dil").children) b.setAttribute("aria-pressed", b.dataset.dil === dil);
+}
 
 function ciz() {
   if (!veri) return;
   const isler = veri.isler;
   const simdi = veri.simdi;
-  $("guncel").textContent = GOMULU ? "rapor · " + gunStr(simdi) : "güncellendi " + saatStr(simdi);
+  $("guncel").textContent = GOMULU ? `${t("raporBasligi")} · ${gunStr(simdi)}` : `${t("guncellendi")} ${saatStr(simdi)}`;
   const say = (d) => isler.filter((i) => i.durum === d).length;
-  $("sayac").innerHTML = [["çalışıyor", say("calisiyor")], ["bitti", say("bitti")], ["hata", say("hata")],
-    ["toplam iş", isler.length], ["toplam süre", sure(isler.reduce((a, i) => a + (i.sure || 0), 0))]]
+  $("sayac").innerHTML = [[t("calisiyor"), say("calisiyor")], [t("bitti"), say("bitti")], [t("hata"), say("hata")],
+    [t("toplamIs"), isler.length], [t("toplamSure"), sure(isler.reduce((a, i) => a + (i.sure || 0), 0))]]
     .map(([a, b]) => `<div><b>${b}</b><span>${a}</span></div>`).join("");
 
   const calisan = isler.filter((i) => i.durum === "calisiyor");
@@ -146,68 +200,75 @@ function ciz() {
     <div class="card p-${i.saglayici}" tabindex="0" data-id="${esc(i.id)}">
       <div class="ust"><span><span class="dot"></span>${saglayiciAd[i.saglayici]}</span><span>${sure(i.sure)}</span></div>
       <div class="ad">${esc(kim(i))}</div><div class="ac">${esc(i.aciklama || "")}</div></div>`).join("")
-    : `<div class="bos">Şu anda çalışan agent ya da dış işçi yok.</div>`;
+    : `<div class="bos">${t("bosSimdi")}</div>`;
 
-  const bas = Math.min(...isler.map((i) => i.baslangic || i.bitis || simdi), simdi - 600);
-  const bit = GOMULU ? Math.max(...isler.map((i) => i.bitis || i.baslangic || 0), bas + 60) : simdi;
+  const bas = Math.min(...isler.map((i) => i.baslangic ?? i.bitis ?? simdi), simdi - 600);
+  const bit = GOMULU ? Math.max(...isler.map((i) => i.bitis ?? i.baslangic ?? 0), bas + 60) : simdi;
   const genis = Math.max(bit - bas, 60);
-  const yuzde = (t) => ((t - bas) / genis) * 100;
+  const yuzde = (x) => ((x - bas) / genis) * 100;
   const adim = [300, 600, 900, 1800, 3600, 7200, 14400, 28800].find((a) => genis / a <= 8) || 86400;
   let eksen = "";
-  for (let t = Math.ceil(bas / adim) * adim; t <= bit; t += adim) eksen += `<span style="left:${yuzde(t)}%">${saatStr(t)}</span>`;
+  for (let x = Math.ceil(bas / adim) * adim; x <= bit; x += adim) eksen += `<span style="left:${yuzde(x)}%">${saatStr(x)}</span>`;
   $("eksen").innerHTML = eksen;
   $("satirlar").innerHTML = isler.length ? isler.map((i) => {
-    const b = i.baslangic || i.bitis, e = i.bitis || (i.durum === "calisiyor" ? simdi : b);
+    const b = i.baslangic ?? i.bitis, e = i.bitis ?? (i.durum === "calisiyor" ? simdi : b);
     return `<div class="row p-${i.saglayici}" tabindex="0" data-id="${esc(i.id)}" title="${esc(kim(i) + " — " + (i.aciklama || ""))}">
       <div class="et"><span class="dot"></span>${esc(kim(i))} <span class="meta">${esc(i.aciklama || "")}</span></div>
       <div class="track"><div class="bar ${i.durum}" style="left:${yuzde(b)}%;width:${Math.max(yuzde(e) - yuzde(b), 0.3)}%"></div></div></div>`;
-  }).join("") : `<div class="bos">Bu pencerede iş yok.</div>`;
+  }).join("") : `<div class="bos">${t("bosPencere")}</div>`;
 
   const kovalar = (veri.kota && veri.kota.kovalar) || [];
   $("kota").innerHTML = kovalar.length ? kovalar.map((k) => {
     const p = k.saglayici === "codex" ? "codex" : /claude|gpt/i.test(k.grup) ? "claude" : "gemini";
     const u = Math.max(0, Math.min(100, Number(k.kullanilan) || 0));
-    return `<div class="kova p-${p}"><div class="b"><span><span class="dot"></span>${esc(k.grup)} · ${esc(k.pencere)}</span><b>%${Math.round(u)}</b></div>
-      <div class="olcu"><i class="${u >= 60 ? "yuksek" : ""}" style="width:${u}%"></i></div><div class="meta">yenilenir ${esc(k.yenilenir || "")}</div></div>`;
-  }).join("") : `<div class="bos">Kota ölçümü yok (dis-ajan.sh kota).</div>`;
-  $("kota-not").textContent = (veri.kota ? "ölçüm " + gunStr(veri.kota.ts) + " · " : "") + "Claude'un kotası CLI'dan okunmuyor: Claude Code'da /usage.";
+    return `<div class="kova p-${p}"><div class="b"><span><span class="dot"></span>${esc(k.grup)} · ${esc(k.pencere)}</span><b>${Math.round(u)}%</b></div>
+      <div class="olcu"><i class="${u >= 60 ? "yuksek" : ""}" style="width:${u}%"></i></div><div class="meta">${t("yenilenir")} ${esc(k.yenilenir || "")}</div></div>`;
+  }).join("") : `<div class="bos">${t("bosKota")}</div>`;
+  $("kota-not").textContent = (veri.kota ? `${t("olcum")} ${gunStr(veri.kota.ts)} · ` : "") + t("claudeNot");
 
   $("tablo").innerHTML = isler.slice().reverse().map((i) => `
-    <tr data-id="${esc(i.id)}"><td class="n">${i.baslangic ? gunStr(i.baslangic) : "—"}</td>
+    <tr data-id="${esc(i.id)}"><td class="n">${i.baslangic != null ? gunStr(i.baslangic) : "—"}</td>
       <td><span class="p-${i.saglayici}"><span class="dot"></span></span>${esc(kim(i))}</td><td>${esc(i.aciklama || "")}</td>
       <td class="n">${sure(i.sure)}</td><td class="n">${token(i.token)}</td>
-      <td class="dur-${i.durum}">${durumAd[i.durum] || i.durum}</td>
+      <td class="dur-${i.durum}">${t(i.durum)}</td>
       <td>${i.puan ? `<b>${esc(i.puan.not)}/5</b> <span class="meta">${esc(i.puan.gerekce || "")}</span>` : "—"}</td></tr>`).join("");
+  if (secili) panelBaslik();
 }
 
+function panelBaslik() {
+  const i = secili;
+  $("p-baslik").textContent = kim(i);
+  $("p-alt").textContent = `${saglayiciAd[i.saglayici]} · ${t(i.durum)} · ${sure(i.sure)}${i.klasor ? " · " + i.klasor : ""}`;
+}
 async function ac(id) {
   const i = veri.isler.find((x) => x.id === id);
   if (!i) return;
   secili = i;
-  $("p-baslik").textContent = kim(i);
-  $("p-alt").textContent = `${saglayiciAd[i.saglayici]} · ${durumAd[i.durum]} · ${sure(i.sure)}${i.klasor ? " · " + i.klasor : ""}`;
+  panelBaslik();
   $("panel").classList.add("acik");
   if (GOMULU) { i._metin = { rapor: i._rapor, gorev: i._gorev }; }
   else {
-    $("p-metin").textContent = "yükleniyor…";
-    try { i._metin = await (await fetch("api/is?id=" + encodeURIComponent(id))).json(); } catch { i._metin = { rapor: "okunamadı", gorev: "" }; }
+    $("p-metin").textContent = t("yukleniyor");
+    try { i._metin = await (await fetch("api/is?id=" + encodeURIComponent(id))).json(); } catch { i._metin = { rapor: t("okunamadi"), gorev: "" }; }
   }
   goster();
 }
 function goster() {
   $("p-rapor").setAttribute("aria-pressed", sekme === "rapor");
   $("p-gorev").setAttribute("aria-pressed", sekme === "gorev");
-  $("p-metin").textContent = (secili && secili._metin && secili._metin[sekme]) || "(yok)";
+  const m = secili && secili._metin && secili._metin[sekme];
+  const bos = sekme === "rapor" ? (secili && secili.durum === "calisiyor" ? t("henuzRapor") : t("raporYok")) : t("yok");
+  $("p-metin").textContent = m || bos;
 }
 document.addEventListener("click", (e) => {
   const el = e.target.closest("[data-id]");
   if (el && !e.target.closest("aside")) ac(el.dataset.id);
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") $("panel").classList.remove("acik");
+  if (e.key === "Escape") { $("panel").classList.remove("acik"); secili = null; }
   if (e.key === "Enter" && e.target.dataset && e.target.dataset.id) ac(e.target.dataset.id);
 });
-$("p-kapat").onclick = () => $("panel").classList.remove("acik");
+$("p-kapat").onclick = () => { $("panel").classList.remove("acik"); secili = null; };
 $("p-rapor").onclick = () => { sekme = "rapor"; goster(); };
 $("p-gorev").onclick = () => { sekme = "gorev"; goster(); };
 $("pencere").addEventListener("click", (e) => {
@@ -217,6 +278,12 @@ $("pencere").addEventListener("click", (e) => {
   try { localStorage.setItem("polycrew-saat", saat); } catch {}
   GOMULU ? ciz() : yenile();
 });
+$("dil").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  dil = b.dataset.dil;
+  try { localStorage.setItem("polycrew-dil", dil); } catch {}
+  sabitler(); ciz(); if (secili) goster();
+});
 
 async function yenile() {
   const kota = Date.now() - sonKota > 60000 ? 1 : 0;
@@ -224,8 +291,9 @@ async function yenile() {
   try {
     veri = await (await fetch(`api/durum?saat=${saat}&kota=${kota}`)).json();
     ciz();
-  } catch { $("guncel").textContent = "sunucuya ulaşılamıyor"; }
+  } catch { $("guncel").textContent = t("sunucuYok"); }
 }
+sabitler();
 if (GOMULU) {
   veri = GOMULU;
   $("pencere").hidden = true;

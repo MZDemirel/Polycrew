@@ -4,7 +4,7 @@
 
 [English](README.md)
 
-![Canlı takım sayfası: kim çalışıyor, işçi başına zaman çizelgesi, kota ve puanlar](docs/img/izle.png)
+![Canlı takım sayfası: kim çalışıyor, işçi başına zaman çizelgesi, kota ve puanlar](docs/img/izle-tr.png)
 
 ## Ne işe yarar
 
@@ -95,7 +95,7 @@ Ardından açık oturumda `/reload-plugins` çalıştır ya da yeni bir oturum a
 /izle
 ```
 
-Sayfa `http://localhost:8770` adresinde açılır. VS Code'da `Ctrl+Shift+P → Simple Browser: Show` ile açılır. Birkaç saniyede bir yenilenir ve şunları gösterir:
+Sayfa `http://localhost:8770` adresinde açılır. VS Code'da `Ctrl+Shift+P → Simple Browser: Show` ile açılır. İngilizce ve Türkçedir: tarayıcının diline göre açılır, EN/TR düğmeleri ya da `?lang=tr` ile değişir. Birkaç saniyede bir yenilenir ve şunları gösterir:
 
 - **Şimdi çalışanlar:** rol ya da model, iş, geçen süre.
 - **Zaman çizelgesi:** Claude turuncu, Codex yeşil, Gemini mavi. Bir şeride tıklayınca işçinin son raporu ve görevi açılır.
@@ -106,7 +106,8 @@ Arka planda:
 
 - Kancalar (Agent aracında `PreToolUse`, `SubagentStart`, `SubagentStop`) ve `dis-ajan.sh` tek bir günlüğe yazar.
 - PM puanı `python3 hooks/olay.py puan <iş id> <1-5> "<gerekçe>"` ile ekler.
-- `skills/izle/izle.py rapor --cikti rapor.html` aynı görünümü durağan bir sayfa olarak üretir; `/oturum-kapat` onu yayımlar.
+- `skills/izle/izle.py rapor --dil tr --cikti rapor.html` aynı görünümü durağan bir sayfa olarak üretir; `/oturum-kapat` onu yayımlar.
+- Resimler örnek bir günlükten: `docs/img/ornek_gunluk.py en|tr <dosya>`.
 
 ## Dış işçiler (isteğe bağlı)
 

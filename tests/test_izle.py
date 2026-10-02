@@ -81,6 +81,18 @@ class Birlestir(unittest.TestCase):
         self.assertEqual((isler["k1"]["durum"], isler["k1"]["token"], isler["k1"]["saglayici"]), ("hata", 15, "codex"))
         self.assertEqual((isler["k2"]["durum"], isler["k2"]["saglayici"]), ("calisiyor", "claude"))
 
+    def test_a_stop_without_a_subagent_start_closes_its_launch(self):
+        o = [
+            {"tur": "agent_baslatildi", "ts": 10, "id": "tu1", "rol": "polycrew:sanatci"},
+            {"tur": "agent_baslatildi", "ts": 20, "id": "tu2", "rol": "polycrew:gelistirici"},
+            {"tur": "agent_bitti", "ts": 50, "id": "ag9", "rol": "polycrew:sanatci"},
+            {"tur": "agent_bitti", "ts": 60, "id": "tu2"},
+        ]
+        isler = {i["id"]: i for i in izle.birlestir(o, simdi=100)["isler"]}
+        self.assertEqual(set(isler), {"tu1", "tu2"})
+        self.assertEqual((isler["tu1"]["durum"], isler["tu1"]["sure"]), ("bitti", 40))
+        self.assertEqual((isler["tu2"]["durum"], isler["tu2"]["sure"]), ("bitti", 40))
+
     def test_a_stop_without_a_start_is_still_shown(self):
         [i] = izle.birlestir([{"tur": "agent_bitti", "ts": 5, "id": "x"}], simdi=10)["isler"]
         self.assertEqual((i["durum"], i["sure"]), ("bitti", None))

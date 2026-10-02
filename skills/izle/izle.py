@@ -2,7 +2,11 @@
 """polycrew izle: takımın agent'larını ve dış işçilerini canlı gösteren yerel sayfa (karar 0003).
 
     izle.py [--port 8770]                       canlı sayfa: http://localhost:8770
-    izle.py rapor [--saat 24] --cikti x.html    durağan rapor (veri gömülü; Artifact olarak yayımlanır)
+    izle.py rapor [--saat 24] [--dil en|tr] --cikti x.html
+                                                durağan rapor (veri gömülü; Artifact olarak yayımlanır)
+
+Sayfa İngilizce ve Türkçedir: tarayıcı diline göre açılır, üstteki EN/TR ile ya da ``?lang=`` ile
+değişir.
 
 Olaylar ``hooks/olay.py``'nin yazdığı günlükten okunur. Yalnız standart kütüphane.
 """
@@ -108,7 +112,19 @@ def birlestir(olaylar: list[dict], simdi: float | None = None) -> dict:
                 agent_kimligi[str(e["id"])] = i["id"]
         elif tur == "agent_bitti":
             anahtar = agent_kimligi.get(str(e.get("id")))
-            i = isler.get(anahtar) if anahtar else None
+            i = isler.get(anahtar) if anahtar else isler.get(str(e.get("id")))
+            if i is None:
+                # Başlama olayı gelmediyse: aynı roldeki, hâlâ çalışan en son başlatma.
+                acik = [
+                    j
+                    for j in isler.values()
+                    if j["kaynak"] == "claude"
+                    and j["durum"] == "calisiyor"
+                    and j["baslangic"] is not None
+                    and "agent_id" not in j
+                    and (not e.get("rol") or j.get("rol") == e.get("rol"))
+                ]
+                i = max(acik, key=lambda j: j["baslangic"]) if acik else None
             if i is None:
                 i = yeni(str(e.get("id") or f"agent-{ts}"), e, rol=e.get("rol"))
             i.update(bitis=ts, durum="bitti", transkript=e.get("transkript"))
@@ -183,12 +199,12 @@ def suz(veri: dict, saat: float | None) -> dict:
 
 def rapor_metni(i: dict) -> str:
     """Bir işin son mesajı: dış işçide ``rapor.md``, Claude agent'ında transkriptin son
-    asistan metni."""
+    asistan metni; yoksa boş (sayfa kendi dilinde "rapor yok" yazar)."""
     if i.get("kayit"):
         r = Path(i["kayit"]) / "rapor.md"
         if r.exists():
-            return r.read_text(encoding="utf-8", errors="ignore")[:RAPOR_SINIR] or "(boş rapor)"
-        return "(rapor yok)"
+            return r.read_text(encoding="utf-8", errors="ignore")[:RAPOR_SINIR]
+        return ""
     t = i.get("transkript")
     if t and Path(t).exists():
         son = ""
@@ -208,8 +224,8 @@ def rapor_metni(i: dict) -> str:
                     )
                 if metin.strip():
                     son = metin
-        return son[:RAPOR_SINIR] or "(transkriptte metin yok)"
-    return "(henüz rapor yok)" if i.get("durum") == "calisiyor" else "(rapor bulunamadı)"
+        return son[:RAPOR_SINIR]
+    return ""
 
 
 def gorev_metni(i: dict) -> str:
@@ -277,8 +293,11 @@ class Sunucu(BaseHTTPRequestHandler):
             self._gonder(b"yok", "text/plain", 404)
 
 
-def rapor_html(saat: float | None) -> str:
+def rapor_html(saat: float | None, dil: str | None = None) -> str:
+    """Durağan rapor; ``dil`` (``en`` ya da ``tr``) verilmezse okuyanın tarayıcı dili."""
     veri = suz(birlestir(oku()), saat)
+    if dil:
+        veri["dil"] = dil
     for i in veri["isler"]:
         i["_rapor"] = rapor_metni(i)
         i["_gorev"] = gorev_metni(i)
@@ -293,9 +312,10 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--port", type=int, default=8770)
     ap.add_argument("--saat", type=float, default=24.0)
     ap.add_argument("--cikti", type=Path)
+    ap.add_argument("--dil", choices=["en", "tr"], help="raporun dili (varsayılan: okuyanın tarayıcısı)")
     a = ap.parse_args(argv)
     if a.komut == "rapor":
-        html = rapor_html(a.saat)
+        html = rapor_html(a.saat, a.dil)
         if a.cikti:
             a.cikti.write_text(html, encoding="utf-8")
             print(a.cikti)
