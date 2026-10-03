@@ -1,5 +1,7 @@
 # Kadro: zorluğa göre işçi (ölçümle kuruldu, eklentinin 0002 karar notu, 2026-10-02)
 
+Bu tablo önseldir; güncel sıralama `kadro.py oneri`.
+
 Zorluk **K** kolay, **O** orta, **Z** zor. Claude kotası PM'e, sanatçıya, tasarıma ve Z koduna saklanır.
 Dış işçiler `dis-ajan` skill'i ile (Codex: `codex`, Gemini ve agy üzerinden Claude: `agy`).
 
