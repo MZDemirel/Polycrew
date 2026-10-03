@@ -27,4 +27,6 @@
 - [x] Kadroyla gerçek bir aşama (Pixlender 6.6'nın kalanı); kadronun düzeltmesi (koşu 2, `960cace`)
 - [x] Ad `polycrew`, takımın görünürlüğü: olay günlüğü, canlı sayfa, oturum raporu (`0003`)
 - [ ] Başka bir projede `/proje-kur` (ör. Go_RestApi ya da RotaWeb)
-- [ ] İlk gerçek takım işinde kancaların yükünü denetle (`0003`'ün açık kalanı)
+- [x] İlk gerçek takım işinde kancaların yükünü denetle (`0003`'ün açık kalanı; Pixlender oturum 15: başlatma, başlama ve bitiş olayları rol ve kimlikle geliyor; dış işçinin kopyası olay yazmıyordu, düzeltildi, `0004`)
+- [x] Dinamik kadro: puan defteri, `kadro.py oneri`, iki deneyden tohum veri (`0004`)
+- [ ] Kadro önerisinde kota ve süreyi de tartan bir sıralama (veri biriktikçe)

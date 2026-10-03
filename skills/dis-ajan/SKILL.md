@@ -45,7 +45,7 @@ Kural dosyası:
   - Genel `*` kural yazma. Yeni kuralı kullanıcıya sorarak ekle.
   - Betik izinli komutları ve çalışma klasörünü görevin başına ekler.
 - **agy komutları çalışma klasörü söylenmezse boş bir klasörde çalıştırabiliyor;** betik bunu ekliyor.
-- Betik uzun koşu sırasında düzenlenirse çalışan kopyalar bozulur (bash satır satır okur): paralel uzun koşularda betiğin bir kopyasını kullan.
+- Betik uzun koşu sırasında düzenlenirse çalışan kopyalar bozulur (bash satır satır okur): paralel uzun koşularda betiğin bir kopyasını kullan. Kopya olay günlüğünü kurulu eklentiden bulur; bulamazsa `POLYCREW_OLAY=<eklenti>/hooks/olay.py` ver (yoksa işçi izleme sayfasında görünmez).
 - Bir işçinin oturum çalışma klasörünü kaydırması (harness) göreli yolları bozar. Görevde ve komutlarda **mutlak yol** kullan.
 
 ## Sınırlar

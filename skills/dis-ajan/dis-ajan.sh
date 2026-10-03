@@ -14,8 +14,14 @@
 # DIS_AJAN_ZAMAN_ASIMI: saniye (varsayılan 3600).
 set -uo pipefail
 
-# Olay günlüğü (polycrew izle, karar 0003). Betiğin kopyası eklentinin dışındaysa sessizce atlanır.
-OLAY="$(dirname "$(realpath "$0")")/../../hooks/olay.py"
+# Olay günlüğü (polycrew izle, karar 0003). Betiğin kopyası eklentinin dışında çalışıyorsa
+# (paralel koşu) olay.py POLYCREW_OLAY'dan, sonra kurulu eklentiden bulunur; bulunmazsa atlanır.
+OLAY="${POLYCREW_OLAY:-$(dirname "$(realpath "$0")")/../../hooks/olay.py}"
+if [ ! -f "$OLAY" ]; then
+  for aday in "${CLAUDE_PLUGIN_ROOT:-/yok}/hooks/olay.py" "$HOME"/.claude/plugins/cache/polycrew/polycrew/*/hooks/olay.py; do
+    [ -f "$aday" ] && OLAY=$aday
+  done
+fi
 olay() { [ -f "$OLAY" ] && python3 "$OLAY" yaz "$@" 2>/dev/null; return 0; }
 export OLAY
 
