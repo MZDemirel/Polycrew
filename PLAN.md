@@ -30,3 +30,6 @@
 - [x] İlk gerçek takım işinde kancaların yükünü denetle (`0003`'ün açık kalanı; Pixlender oturum 15: başlatma, başlama ve bitiş olayları rol ve kimlikle geliyor; dış işçinin kopyası olay yazmıyordu, düzeltildi, `0004`)
 - [x] Dinamik kadro: puan defteri, `kadro.py oneri`, iki deneyden tohum veri (`0004`)
 - [ ] Kadro önerisinde kota ve süreyi de tartan bir sıralama (veri biriktikçe)
+- [ ] `kadro.py`: aynı iş kimliğinin sonraki puanı öncekinin yerine geçsin (inceleme sonrası güncelleme; bugün iki satır olur)
+- [ ] `izle` raporu: Claude agent'ının raporu `SubagentHandback` iletisinden gelsin (bugün transkriptin son ara cümlesi: "Now the comparison script.")
+- [ ] `/takim`: dalgalar arasında `main` ilerlediyse görevin ilk satırı "önce `git merge --ff-only main`" (Claude Code'un worktree yalıtımı oturum başındaki main'den açıyor, `0004`)
