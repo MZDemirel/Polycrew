@@ -19,10 +19,12 @@ Olaylar tek bir günlükte toplanır (`hooks/olay.py`, karar `0003`): Claude alt
 Bir işçinin işi bitip PM ölçtüğünde (kadro deneyi, `kadro.md`):
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/hooks/olay.py" puan <iş id> <1-5> "<kısa gerekçe>"
+python3 "${CLAUDE_PLUGIN_ROOT}/hooks/olay.py" puan <iş id> <1-5> [gerekçe] \
+  [--isci <sağlayıcı/model/efor>] [--rol <rol>] [--alan <alan>] [--zorluk <K|O|Z>] \
+  [--kota <yüzde>] [--sure <sn>] [--duzeltme <sayı>] [--proje <ad>]
 ```
 
-İş id'si: dış işçide kayıt klasörünün adı (`dis-ajan.sh`'nin son satırı), Claude agent'ında sayfadaki satırın kimliği (Agent aracının `tool_use_id`'si ya da agent kimliği).
+`--isci` verildiğinde kayıt hem olay günlüğüne hem de kalıcı puan defterine (`${XDG_DATA_HOME:-~/.local/share}/polycrew/puanlar.jsonl`) eklenir. Bayraksız eski kullanım da çalışır. İş id'si: dış işçide kayıt klasörünün adı (`dis-ajan.sh`'nin son satırı), Claude agent'ında sayfadaki satırın kimliği (Agent aracının `tool_use_id`'si ya da agent kimliği).
 
 ## Oturum raporu
 

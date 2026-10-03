@@ -14,13 +14,13 @@ kullanıcı ── PM (ana oturum: böler, birleştirir, kullanıcıya sorar)
 ```
 
 ## 0. Kadro (zorluğa göre)
-- Her maddeye zorluk ver: **K** kolay, **O** orta, **Z** zor. Kadroyu bu skill'in klasöründeki `kadro.md`'den kur. Madde → zorluk → kadro, planda kullanıcıya gösterilir.
+- Her maddeye zorluk ver: **K** kolay, **O** orta, **Z** zor. Kadroyu kurmadan önce `kadro.py oneri --rol <rol> --alan <alan> --zorluk <Z>`; `kadro.md` önsel (başlangıç) tablo olarak kalır; veri az ise kadro.md geçerli. Madde → zorluk → kadro, planda kullanıcıya gösterilir.
 - **Claude kotası PM'e, sanatçıya, tasarıma ve Z koduna saklanır;** gerisi önce dış işçiye (`dis-ajan` skill'i: Codex, agy) gider.
 - **Varsayılan küçük takım:** PM → bir geliştirici (+ bir yardımcı). Lider yalnız gerçekten paralel, büyük akışlarda. Claude agent en çok 2; test koşan geliştirici en çok 2–3 (makine).
 - **Karar numaralarını PM dağıtır;** işçi değiştirmez.
 - **Kota:** kadroyu kurmadan önce `dis-ajan.sh kota` (Codex ve agy'nin 5 saatlik ve haftalık kotası). Codex penceresi %60'ı geçtiyse orta işler Gemini'ye; Claude kotası için kullanıcı `/usage`'a bakar.
 
-Görünürlük: işe başlarken `/izle` ile canlı sayfayı aç ve adresini kullanıcıya ver; her işçinin işi bitince PM notunu `olay.py puan` ile yazar (`izle` skill'i).
+Görünürlük: işe başlarken `/izle` ile canlı sayfayı aç ve adresini kullanıcıya ver; her iş bitince PM `olay.py puan <id> <not> --isci ... --rol ... --alan ... --zorluk ... "<gerekçe>"` yazar (`izle` skill'i).
 
 ## 1. Böl (plan modunda)
 - Aşamanın maddelerini **dosya kümesine göre** akışlara ayır: iki akış aynı dosyayı değiştirmesin. Ayıramıyorsan sıraya koy ya da tek akış yap.
