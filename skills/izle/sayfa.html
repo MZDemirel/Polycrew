@@ -70,6 +70,7 @@ button:focus-visible, .row:focus-visible, .card:focus-visible { outline: 2px sol
 .kota { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); gap: 10px; }
 .kova { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
 .kova .b { display: flex; justify-content: space-between; font-size: 12px; }
+.kova .pen { margin-top: 8px; color: var(--muted, inherit); }
 .olcu { height: 8px; background: var(--track); border-radius: 4px; overflow: hidden; margin-top: 6px; }
 .olcu i { display: block; height: 100%; background: var(--c); }
 .olcu i.yuksek { background: var(--hata); }
@@ -128,7 +129,7 @@ const METIN = {
     rapor: "Report", gorev: "Task", kapat: "Close", pencere: "Time window", panel: "Job details",
     guncellendi: "updated", raporBasligi: "report", calisiyor: "running", bitti: "done", hata: "failed", bilinmiyor: "unknown",
     toplamIs: "jobs", toplamSure: "total time", bosSimdi: "No agent or external worker is running right now.",
-    bosPencere: "No jobs in this window.", bosKota: "No quota reading yet (dis-ajan.sh kota).", yenilenir: "resets",
+    bosPencere: "No jobs in this window.", bosKota: "No quota reading yet (dis-ajan.sh kota).", yenilenir: "resets", p5: "5 hours", pHafta: "week",
     olcum: "measured", claudeNot: "Claude's own usage is not readable from the CLI: run /usage in Claude Code.",
     yukleniyor: "loading…", okunamadi: "could not be read", yok: "(none)", henuzRapor: "(no report yet)",
     raporYok: "(no report found)", sunucuYok: "cannot reach the server",
@@ -141,7 +142,7 @@ const METIN = {
     rapor: "Rapor", gorev: "Görev", kapat: "Kapat", pencere: "Zaman penceresi", panel: "İş ayrıntısı",
     guncellendi: "güncellendi", raporBasligi: "rapor", calisiyor: "çalışıyor", bitti: "bitti", hata: "hata", bilinmiyor: "bilinmiyor",
     toplamIs: "toplam iş", toplamSure: "toplam süre", bosSimdi: "Şu anda çalışan agent ya da dış işçi yok.",
-    bosPencere: "Bu pencerede iş yok.", bosKota: "Kota ölçümü yok (dis-ajan.sh kota).", yenilenir: "yenilenir",
+    bosPencere: "Bu pencerede iş yok.", bosKota: "Kota ölçümü yok (dis-ajan.sh kota).", yenilenir: "yenilenir", p5: "5 saat", pHafta: "hafta",
     olcum: "ölçüm", claudeNot: "Claude'un kotası CLI'dan okunmuyor: Claude Code'da /usage.",
     yukleniyor: "yükleniyor…", okunamadi: "okunamadı", yok: "(yok)", henuzRapor: "(henüz rapor yok)",
     raporYok: "(rapor bulunamadı)", sunucuYok: "sunucuya ulaşılamıyor",
@@ -218,11 +219,24 @@ function ciz() {
   }).join("") : `<div class="bos">${t("bosPencere")}</div>`;
 
   const kovalar = (veri.kota && veri.kota.kovalar) || [];
-  $("kota").innerHTML = kovalar.length ? kovalar.map((k) => {
+  // One card per provider group; its 5-hour and weekly windows are rows of the same card.
+  const gruplar = new Map();
+  for (const k of kovalar) {
+    const ad = `${k.saglayici}|${k.grup}`;
+    if (!gruplar.has(ad)) gruplar.set(ad, { k, satirlar: [] });
+    gruplar.get(ad).satirlar.push(k);
+  }
+  const pencere = (ad) => /^(5h|5 saat)$/i.test(ad) ? "p5" : /^(weekly|week|hafta)$/i.test(ad) ? "pHafta" : null;
+  const sira = { p5: 0, pHafta: 1 };
+  $("kota").innerHTML = kovalar.length ? [...gruplar.values()].map(({ k, satirlar }) => {
     const p = k.saglayici === "codex" ? "codex" : /claude|gpt/i.test(k.grup) ? "claude" : "gemini";
-    const u = Math.max(0, Math.min(100, Number(k.kullanilan) || 0));
-    return `<div class="kova p-${p}"><div class="b"><span><span class="dot"></span>${esc(k.grup)} · ${esc(k.pencere)}</span><b>${Math.round(u)}%</b></div>
-      <div class="olcu"><i class="${u >= 60 ? "yuksek" : ""}" style="width:${u}%"></i></div><div class="meta">${t("yenilenir")} ${esc(k.yenilenir || "")}</div></div>`;
+    satirlar.sort((a, b) => (sira[pencere(a.pencere)] ?? 9) - (sira[pencere(b.pencere)] ?? 9));
+    return `<div class="kova p-${p}"><div class="b"><span><span class="dot"></span>${esc(k.grup)}</span></div>` + satirlar.map((r) => {
+      const u = Math.max(0, Math.min(100, Number(r.kullanilan) || 0));
+      const ad = pencere(r.pencere);
+      return `<div class="b pen"><span>${esc(ad ? t(ad) : r.pencere)}</span><b>${Math.round(u)}%</b></div>
+      <div class="olcu"><i class="${u >= 60 ? "yuksek" : ""}" style="width:${u}%"></i></div><div class="meta">${t("yenilenir")} ${esc(String(r.yenilenir || "").replace("T", " "))}</div>`;
+    }).join("") + `</div>`;
   }).join("") : `<div class="bos">${t("bosKota")}</div>`;
   $("kota-not").textContent = (veri.kota ? `${t("olcum")} ${gunStr(veri.kota.ts)} · ` : "") + t("claudeNot");
 
