@@ -67,11 +67,16 @@ try:
 except (ValueError, KeyError, TypeError):
     print("agy     okunamadı")
     gruplar = []
+# agy'nin ham adları sayfada Codex'inkilerle aynı dilde görünsün.
+GRUP = {"Gemini Models": "agy: Gemini", "Claude and GPT models": "agy: Claude/GPT"}
+PENCERE = {"weekly": "hafta", "5h": "5 saat"}
 for g in gruplar:
+    grup = GRUP.get(g["name"], g["name"])
     for b in g["buckets"]:
         kalan = round(100 * b["remaining_fraction"])
-        print(f"agy     {g['name'][:22]:22s} {b['window']:6s} kalan %{kalan}  yenilenir {b['reset_time'][5:16]}")
-        kovalar.append({"saglayici": "agy", "grup": g["name"], "pencere": b["window"],
+        pencere = PENCERE.get(b["window"], b["window"])
+        print(f"agy     {grup[:22]:22s} {pencere:7s} kalan %{kalan}  yenilenir {b['reset_time'][5:16]}")
+        kovalar.append({"saglayici": "agy", "grup": grup, "pencere": pencere,
                         "kullanilan": 100 - kalan, "yenilenir": b["reset_time"][5:16]})
 json.dump(kovalar, open(os.environ["KOTA_DOSYA"], "w"))
 PY
