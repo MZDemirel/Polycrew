@@ -19,6 +19,7 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -33,6 +34,55 @@ ESLESME = 180.0  # saniye: bir SubagentStart, bu kadar önceki aynı roldeki ba�
 ESKI = 6 * 3600.0  # saniye: bitişi gelmeyen iş bu kadar sonra "bilinmiyor"
 KOTA_ONBELLEK = 60.0
 RAPOR_SINIR = 20000  # karakter
+
+
+def zaman(deger) -> float | None:
+    """ISO ölçümü ya da eski olayların Unix zamanını çöz."""
+    try:
+        if isinstance(deger, (int, float)):
+            return float(deger)
+        return datetime.fromisoformat(deger.replace("Z", "+00:00")).timestamp()
+    except (ValueError, TypeError, AttributeError, OverflowError):
+        return None
+
+
+def kota_kovasi(kova: dict, ts: float, simdi: float) -> dict:
+    k = dict(kova)
+    olcum_ts = zaman(k.get("olcum"))
+    if olcum_ts is None:
+        olcum_ts = ts
+        k["olcum"] = datetime.fromtimestamp(ts).astimezone().isoformat()
+    k["olcum_ts"] = olcum_ts
+    k["yenilenir_ts"] = None
+    yenilenir = k.get("yenilenir")
+    if yenilenir:
+        try:
+            # Codex ve agy kısaltmaları yerel takvimde; yıl ölçümden gelir.
+            yil = datetime.fromtimestamp(olcum_ts).year
+            tarih = str(yenilenir).replace("T", " ")
+            k["yenilenir_ts"] = datetime.strptime(f"{yil}-{tarih}", "%Y-%m-%d %H:%M").timestamp()
+        except (ValueError, TypeError, OverflowError, OSError):
+            pass
+    reset = k["yenilenir_ts"]
+    k["eski"] = reset is not None and olcum_ts < reset <= simdi
+    return k
+
+
+def _ust_bilgisi(e: dict) -> tuple[str | None, str | None]:
+    """Ham kancadaki açık üst kimliği, çağıran agent veya transkript yolu."""
+    h = e.get("ham") or {}
+    for alan in ("parent_agent_id", "parent_session_id"):
+        if h.get(alan):
+            return str(h[alan]), f"ham.{alan}"
+    if e["tur"] == "agent_baslatildi" and h.get("agent_id"):
+        return str(h["agent_id"]), "ham.agent_id"
+    yol = str(h.get("transcript_path") or "")
+    if "/subagents/agent-" in yol:
+        return Path(yol).stem.removeprefix("agent-"), "ham.transcript_path"
+    # session_id ana PM oturumuyla ortak olabilir; yalnız bilinen agent kimliğiyle eşleşir.
+    if h.get("session_id") or e.get("oturum"):
+        return str(h.get("session_id") or e["oturum"]), "ham.session_id"
+    return None, None
 
 
 def oku(yol: Path | None = None) -> list[dict]:
@@ -50,6 +100,10 @@ def oku(yol: Path | None = None) -> list[dict]:
     return out
 
 
+ESKI_GRUP = {"Gemini Models": "agy: Gemini", "Claude and GPT models": "agy: Claude/GPT"}
+ESKI_PENCERE = {"weekly": "hafta", "5h": "5 saat"}
+
+
 def _saglayici(kaynak: str | None, model: str | None) -> str:
     if kaynak == "codex":
         return "codex"
@@ -59,11 +113,12 @@ def _saglayici(kaynak: str | None, model: str | None) -> str:
 
 
 def birlestir(olaylar: list[dict], simdi: float | None = None) -> dict:
-    """Olaylardan işler (agent ve dış işçi başına bir kayıt), son kota ve puanlar."""
-    simdi = simdi or time.time()
+    """Olaylardan işler, anahtar başına son kota, agent ağacı ve puanlar."""
+    simdi = time.time() if simdi is None else simdi
     isler: dict[str, dict] = {}
     agent_kimligi: dict[str, str] = {}  # SubagentStart'ın agent_id'si -> iş anahtarı
-    kota = None
+    kovalar: dict[tuple, dict] = {}
+    kota_ts = None
     sahipsiz_puan = []
 
     def yeni(anahtar: str, e: dict, **alan) -> dict:
@@ -75,16 +130,31 @@ def birlestir(olaylar: list[dict], simdi: float | None = None) -> dict:
             "bitis": None,
             "durum": "calisiyor",
             "puan": None,
+            "ust_id": None,
+            "ust_kaynak": None,
             **alan,
         }
         isler[anahtar] = i
         return i
 
+    def bagla(i: dict, e: dict) -> None:
+        ust, kaynak = _ust_bilgisi(e)
+        oncelik = {"ham.parent_agent_id": 0, "ham.parent_session_id": 1,
+                   "ham.agent_id": 2, "ham.transcript_path": 3, "ham.session_id": 4}
+        if ust and oncelik[kaynak] <= oncelik.get(i.get("ust_kaynak"), 5):
+            i.update(ust_aday=ust, ust_kaynak=kaynak)
+        h = e.get("ham") or {}
+        for alan in ("agent_session_id", "subagent_session_id"):
+            if h.get(alan):
+                agent_kimligi[str(h[alan])] = i["id"]
+        if not i.get("model"):
+            i["model"] = e.get("model") or h.get("model")
+
     for e in sorted(olaylar, key=lambda e: e.get("ts", 0)):
         tur, ts = e["tur"], e.get("ts", 0)
         if tur == "agent_baslatildi":
             anahtar = str(e.get("id") or f"agent-{ts}")
-            yeni(
+            i = yeni(
                 anahtar,
                 e,
                 rol=e.get("rol"),
@@ -94,7 +164,9 @@ def birlestir(olaylar: list[dict], simdi: float | None = None) -> dict:
                 arka_plan=e.get("arka_plan"),
                 baslangic=ts,
             )
+            bagla(i, e)
         elif tur == "agent_basladi":
+            ust, ust_kaynak = _ust_bilgisi(e)
             aday = [
                 i
                 for i in isler.values()
@@ -103,14 +175,20 @@ def birlestir(olaylar: list[dict], simdi: float | None = None) -> dict:
                 and i["baslangic"] is not None
                 and 0 <= ts - i["baslangic"] <= ESLESME
                 and (not e.get("rol") or i.get("rol") in (e.get("rol"), None))
+                and (not e.get("oturum") or not i.get("oturum") or i["oturum"] == e["oturum"])
+                and (ust_kaynak == "ham.session_id" or not ust or not i.get("ust_aday") or i["ust_aday"] == ust)
             ]
-            i = max(aday, key=lambda i: i["baslangic"]) if aday else None
+            i = isler.get(agent_kimligi.get(str(e.get("id")), ""))
+            if i is None:
+                i = max(aday, key=lambda i: i["baslangic"]) if aday else None
             if i is None:
                 i = yeni(str(e.get("id") or f"agent-{ts}"), e, rol=e.get("rol"), baslangic=ts)
             i["agent_id"] = e.get("id")
             if e.get("id"):
                 agent_kimligi[str(e["id"])] = i["id"]
+            bagla(i, e)
         elif tur == "agent_bitti":
+            ust, ust_kaynak = _ust_bilgisi(e)
             anahtar = agent_kimligi.get(str(e.get("id")))
             i = isler.get(anahtar) if anahtar else isler.get(str(e.get("id")))
             if i is None:
@@ -123,11 +201,17 @@ def birlestir(olaylar: list[dict], simdi: float | None = None) -> dict:
                     and j["baslangic"] is not None
                     and "agent_id" not in j
                     and (not e.get("rol") or j.get("rol") == e.get("rol"))
+                    and (not e.get("oturum") or not j.get("oturum") or j["oturum"] == e["oturum"])
+                    and (ust_kaynak == "ham.session_id" or not ust
+                         or not j.get("ust_aday") or j["ust_aday"] == ust)
                 ]
                 i = max(acik, key=lambda j: j["baslangic"]) if acik else None
             if i is None:
                 i = yeni(str(e.get("id") or f"agent-{ts}"), e, rol=e.get("rol"))
             i.update(bitis=ts, durum="bitti", transkript=e.get("transkript"))
+            if e.get("id"):
+                agent_kimligi[str(e["id"])] = i["id"]
+            bagla(i, e)
         elif tur == "isci_basladi":
             yeni(
                 str(e.get("id")),
@@ -150,7 +234,14 @@ def birlestir(olaylar: list[dict], simdi: float | None = None) -> dict:
                 token=_token(e.get("kullanim")),
             )
         elif tur == "kota":
-            kota = {"ts": ts, "kovalar": e.get("kovalar") or []}
+            kota_ts = ts
+            for k in e.get("kovalar") or []:
+                if isinstance(k, dict):
+                    # dis-ajan.sh'nin eski sürümü agy'nin ham adlarını yazıyordu; aynı kova.
+                    k = {**k, "grup": ESKI_GRUP.get(k.get("grup"), k.get("grup")),
+                         "pencere": ESKI_PENCERE.get(k.get("pencere"), k.get("pencere"))}
+                    anahtar = (k.get("saglayici"), k.get("grup"), k.get("pencere"))
+                    kovalar[anahtar] = kota_kovasi(k, ts, simdi)
         elif tur == "puan":
             hedef = str(e.get("id"))
             i = isler.get(hedef) or isler.get(agent_kimligi.get(hedef, ""))
@@ -161,6 +252,13 @@ def birlestir(olaylar: list[dict], simdi: float | None = None) -> dict:
                 sahipsiz_puan.append({"id": hedef, **p})
 
     for i in isler.values():
+        ust = i.pop("ust_aday", None)
+        if i["kaynak"] == "claude" and ust:
+            hedef = agent_kimligi.get(ust, ust)
+            if hedef in isler and hedef != i["id"]:
+                i["ust_id"] = hedef
+        if i["ust_id"] is None:
+            i["ust_kaynak"] = None
         i["saglayici"] = _saglayici(i["kaynak"], i.get("model"))
         bas = i["baslangic"]
         if i["durum"] == "calisiyor" and bas is not None and simdi - bas > ESKI:
@@ -172,7 +270,38 @@ def birlestir(olaylar: list[dict], simdi: float | None = None) -> dict:
         return i["baslangic"] if i["baslangic"] is not None else (i["bitis"] or 0)
 
     sirali = sorted(isler.values(), key=sira)
-    return {"simdi": simdi, "isler": sirali, "kota": kota, "puanlar": sahipsiz_puan}
+    kota = {"ts": kota_ts, "kovalar": list(kovalar.values())} if kota_ts is not None else None
+    return {"simdi": simdi, "isler": sirali, "kota": kota, "puanlar": sahipsiz_puan,
+            "harita": agent_haritasi(sirali, simdi)}
+
+
+def agent_haritasi(isler: list[dict], simdi: float) -> dict:
+    """Seçili işlerden sanal PM kökü; eksik üst ve döngüler PM'e bağlanır."""
+    dugumler = {i["id"]: {**i, "cocuklar": []} for i in isler}
+    ustler = {i["id"]: i.get("ust_id") if i["kaynak"] == "claude" else None for i in isler}
+    bas = min((i["baslangic"] for i in isler if i["baslangic"] is not None), default=None)
+    bit = max((i["bitis"] if i["bitis"] is not None else
+               simdi if i["durum"] == "calisiyor" else i["baslangic"] or simdi
+               for i in isler), default=simdi)
+    pm = {"id": "polycrew-pm", "rol": "PM", "kaynak": "claude", "saglayici": "claude",
+          "model": None, "durum": "calisiyor" if any(i["durum"] == "calisiyor" for i in isler)
+          else "hata" if any(i["durum"] == "hata" for i in isler)
+          else "bilinmiyor" if any(i["durum"] == "bilinmiyor" for i in isler) else "bitti",
+          "sure": round(bit - bas, 1) if bas is not None else None, "puan": None,
+          "sanal": True, "cocuklar": []}
+    for i in isler:
+        ust = i.get("ust_id") if i["kaynak"] == "claude" else None
+        ziyaret = {i["id"]}
+        yol = ust
+        while yol in dugumler and yol not in ziyaret:
+            ziyaret.add(yol)
+            yol = ustler[yol]
+        if yol in ziyaret:
+            ust = None
+        hedef = dugumler.get(ust, pm)
+        dugumler[i["id"]]["ust_id"] = hedef["id"]
+        hedef["cocuklar"].append(dugumler[i["id"]])
+    return pm
 
 
 def _token(kullanim) -> int | None:
@@ -194,7 +323,7 @@ def suz(veri: dict, saat: float | None) -> dict:
     isler = [
         i for i in veri["isler"] if (veri["simdi"] if i["bitis"] is None else i["bitis"]) >= sinir
     ]
-    return {**veri, "isler": isler}
+    return {**veri, "isler": isler, "harita": agent_haritasi(isler, veri["simdi"])}
 
 
 def rapor_metni(i: dict) -> str:

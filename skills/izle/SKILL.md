@@ -12,7 +12,30 @@ Olaylar tek bir günlükte toplanır (`hooks/olay.py`, karar `0003`): Claude alt
 1. Sunucu açık mı: `curl -s -o /dev/null -w '%{http_code}' http://localhost:8770/api/durum`. 200 değilse arka planda başlat (Bash `run_in_background`):
    `python3 "${CLAUDE_PLUGIN_ROOT}/skills/izle/izle.py" --port 8770`
 2. Kullanıcıya adresi ver: VS Code'da `Ctrl+Shift+P → Simple Browser: Show → http://localhost:8770` (ya da tarayıcı).
-3. Sayfa İngilizce ve Türkçedir (tarayıcı diline göre; EN/TR düğmesi ya da `?lang=tr`). 3 saniyede bir yenilenir: şimdi çalışanlar, zaman çizelgesi (Claude turuncu, Codex yeşil, Gemini mavi), kota çubukları (dakikada bir `dis-ajan.sh kota`), işler ve puanlar. Bir işe tıklayınca son raporu ve görevi yan panelde.
+3. Sayfa İngilizce ve Türkçedir (tarayıcı diline göre; EN/TR düğmesi ya da `?lang=tr`). 3 saniyede bir yenilenir: şimdi çalışanlar, zaman çizelgesi (Claude turuncu, Codex yeşil, Gemini mavi), agent haritası, kota çubukları (dış kota dakikada bir `dis-ajan.sh kota`), işler ve puanlar. Bir işe ya da harita düğümüne tıklayınca son raporu ve görevi yan panelde.
+
+## Claude kotası
+
+PM, masaüstü uygulamasının kota aracından plan adını, 5 saatlik ve haftalık kullanım yüzdelerini, ISO yenilenme zamanlarını okur; varsa kendi bağlam doluluğunu ve token sayısını da ekler. Betik bu değerleri CLI'dan otomatik okuyamaz; verilen ölçümü günlüğe aktarır:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/izle/claude-kota.py" \
+  --bes-saat 35 --bes-saat-yenilenir 2026-10-07T16:00:00+03:00 \
+  --hafta 65 --hafta-yenilenir 2026-10-12T10:00:00+03:00 \
+  --plan Max --baglam 42 --baglam-token 84000
+```
+
+`--plan`, `--baglam` ve `--baglam-token` isteğe bağlıdır; token veriliyorsa bağlam yüzdesi de gerekir. Yüzdeler 0–100, token negatif olmayan tam sayıdır. Argümansız çağrı son Claude kovalarını, ölçüm zamanlarını ve yaşlarını satır satır gösterir; günlük yazmaz. Hafta ≥ %70 ya da 5 saat ≥ %80 ise “Claude işlerini dış işçiye kaydır” uyarısı verir.
+
+Claude kartı ilk sıradadır; bağlam ayrı ince satırdır. Claude ölçümü yoksa “Claude: ölçüm yok (PM yazar)” görünür. Her sağlayıcı/grup/pencere için son olay korunur; dış kota ölçümü Claude verisini silmez. Her satır kendi ölçüm zamanını gösterir. Ölçümden sonra yenilenme saati geçtiyse “eski ölçüm” etiketi ve soluk çubuk çıkar. Tarih kısaltmaları (`AA-GG SS:DD`, `AA-GGTSS:DD`) ölçümün yılıyla yerel takvimde çözülür.
+
+## Agent haritası
+
+Seçili zaman penceresindeki işler PM → lider → işçi ağacında görünür. Dış işçiler (Codex, agy) doğrudan PM altındadır. Düğümler rol, model (biliniyorsa), sağlayıcı rengi, durum, süre ve varsa puanı gösterir; tıklama ve Enter/boşluk mevcut yan paneli açar. Aynı ağaç oturum raporuna da gömülür.
+
+Üst ilişki kancanın `ham.parent_agent_id`, `ham.parent_session_id`, başlatma yükünün `ham.agent_id` ya da üst agent'a ait `ham.transcript_path` alanından çıkarılır. `ham.session_id` ancak bilinen agent/agent oturum kimliğiyle eşleşirse üst sayılır; ortak PM oturum kimliği tek başına ilişki kanıtı değildir. İlişki bulunmazsa, üst seçili pencerenin dışındaysa ya da döngü varsa PM'e bağlanır (karar `0005`). Gerçek günlüğün mevcut örneklerinde açık üst alanı yok; bu işler PM altında kalır.
+
+PM düğümü seçili işlerin sanal özetidir: durum ve süre işlerden hesaplanır; gerçek PM modeli, puanı ve bağımsız çalışma süresi günlüğe yazılmadığı için bilinmez. Birden fazla oturum aynı pencerede seçilirse aynı sanal kökte görünür.
 
 ## Puan
 
@@ -39,5 +62,5 @@ Sonra dosyayı Artifact olarak yayımla (başlık "Takım izleme" sayfada hazır
 ## Notlar
 
 - Günlük: `${XDG_CACHE_HOME:-~/.cache}/polycrew/olaylar.jsonl` (`POLYCREW_OLAYLAR` ile değişir). Silmek güvenli; sayfa boş başlar.
-- Claude'un kotası CLI'dan okunmaz; sayfa `/usage`'a yönlendirir.
+- Claude kotasını PM masaüstü aracından okuyup `claude-kota.py` ile yazar; betik argümansız son kaydı okur.
 - Kancanın alan adları Claude Code sürümüyle değişebilir; olaylar kısaltılmış ham yükü de saklar (`ham`).

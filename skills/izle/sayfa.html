@@ -74,6 +74,17 @@ button:focus-visible, .row:focus-visible, .card:focus-visible { outline: 2px sol
 .olcu { height: 8px; background: var(--track); border-radius: 4px; overflow: hidden; margin-top: 6px; }
 .olcu i { display: block; height: 100%; background: var(--c); }
 .olcu i.yuksek { background: var(--hata); }
+.olcu i.eski { opacity: .25; }
+.eski-etiket { color: var(--muted); font-weight: 400; font-size: 11px; }
+.baglam { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 3px; }
+.baglam .olcu { height: 3px; }
+.kova .b { gap: 8px; flex-wrap: wrap; overflow-wrap: anywhere; }
+.harita { display: grid; gap: 6px; min-width: 0; }
+.dugum { margin-left: calc(var(--derinlik) * clamp(8px, 2vw, 20px)); }
+.dugum .ust { flex-wrap: wrap; }
+.dugum .ad { font-size: 13px; }
+.dugum .ac { font-size: 12px; }
+.dugum.ozet { background: var(--track); }
 .tbl { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
 th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -108,6 +119,7 @@ aside pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5px/1.55 va
   <div class="sayac" id="sayac"></div>
   <section><h2 data-t="simdi"></h2><div class="cards" id="simdi"></div></section>
   <section><h2 data-t="cizelge"></h2><div class="cizelge"><div class="eksen" id="eksen"></div><div id="satirlar"></div></div></section>
+  <section><h2 data-t="harita"></h2><div class="harita" id="harita"></div><p class="meta" data-t="pmNot"></p></section>
   <section><h2 data-t="kota"></h2><div class="kota" id="kota"></div><p class="meta" id="kota-not"></p></section>
   <section><h2 data-t="isler"></h2><div class="tbl"><table>
     <thead><tr><th data-t="tBasladi"></th><th data-t="tKim"></th><th data-t="tIs"></th><th data-t="tSure"></th><th data-t="tToken"></th><th data-t="tDurum"></th><th data-t="tPuan"></th></tr></thead>
@@ -130,7 +142,9 @@ const METIN = {
     guncellendi: "updated", raporBasligi: "report", calisiyor: "running", bitti: "done", hata: "failed", bilinmiyor: "unknown",
     toplamIs: "jobs", toplamSure: "total time", bosSimdi: "No agent or external worker is running right now.",
     bosPencere: "No jobs in this window.", bosKota: "No quota reading yet (dis-ajan.sh kota).", yenilenir: "resets", p5: "5 hours", pHafta: "week",
-    olcum: "measured", claudeNot: "Claude's own usage is not readable from the CLI: run /usage in Claude Code.",
+    olcum: "measured", claudeNot: "Claude: no reading (PM records it)", eski: "stale reading", baglam: "context",
+    harita: "Agent map", pm: "PM · main session", baslatan: "started by",
+    pmNot: "PM shows a summary of the selected jobs; its model is not logged.",
     yukleniyor: "loading…", okunamadi: "could not be read", yok: "(none)", henuzRapor: "(no report yet)",
     raporYok: "(no report found)", sunucuYok: "cannot reach the server",
     sn: "s", dk: "min", sa: "h", yerel: "en-GB", okur: "read-only", yazar: "writer",
@@ -143,7 +157,9 @@ const METIN = {
     guncellendi: "güncellendi", raporBasligi: "rapor", calisiyor: "çalışıyor", bitti: "bitti", hata: "hata", bilinmiyor: "bilinmiyor",
     toplamIs: "toplam iş", toplamSure: "toplam süre", bosSimdi: "Şu anda çalışan agent ya da dış işçi yok.",
     bosPencere: "Bu pencerede iş yok.", bosKota: "Kota ölçümü yok (dis-ajan.sh kota).", yenilenir: "yenilenir", p5: "5 saat", pHafta: "hafta",
-    olcum: "ölçüm", claudeNot: "Claude'un kotası CLI'dan okunmuyor: Claude Code'da /usage.",
+    olcum: "ölçüm", claudeNot: "Claude: ölçüm yok (PM yazar)", eski: "eski ölçüm", baglam: "bağlam",
+    harita: "Agent haritası", pm: "PM · ana oturum", baslatan: "başlatan",
+    pmNot: "PM seçili işlerin özetini gösterir; kendi modeli günlüğe yazılmıyor.",
     yukleniyor: "yükleniyor…", okunamadi: "okunamadı", yok: "(yok)", henuzRapor: "(henüz rapor yok)",
     raporYok: "(rapor bulunamadı)", sunucuYok: "sunucuya ulaşılamıyor",
     sn: "sn", dk: "dk", sa: "sa", yerel: "tr-TR", okur: "okur", yazar: "yazar",
@@ -218,6 +234,20 @@ function ciz() {
       <div class="track"><div class="bar ${i.durum}" style="left:${yuzde(b)}%;width:${Math.max(yuzde(e) - yuzde(b), 0.3)}%"></div></div></div>`;
   }).join("") : `<div class="bos">${t("bosPencere")}</div>`;
 
+  const dugumler = [];
+  function agac(n, derinlik = 0, ust = null) {
+    if (!n) return;
+    dugumler.push(`<div class="card dugum p-${n.saglayici}${n.sanal ? " ozet" : ""}" tabindex="0" role="button"
+      style="--derinlik:${Math.min(derinlik, 3)}" data-id="${esc(n.id)}">
+      <div class="ust"><span><span class="dot"></span>${esc(saglayiciAd[n.saglayici])}</span>
+      <span class="dur-${n.durum}">${t(n.durum)} · ${sure(n.sure)}${n.puan ? ` · ${esc(n.puan.not)}/5` : ""}</span></div>
+      <div class="ad">${n.sanal ? t("pm") : esc(n.rol ? t(n.rol) : n.aciklama || "agent")} · ${esc(n.model || "—")}</div>
+      <div class="ac">${ust ? `${t("baslatan")}: ${ust.sanal ? "PM" : esc(ust.rol || ust.id)} · ` : ""}${esc(n.aciklama || "")}</div></div>`);
+    for (const cocuk of n.cocuklar || []) agac(cocuk, derinlik + 1, n);
+  }
+  agac(veri.harita);
+  $("harita").innerHTML = dugumler.join("") || `<div class="bos">${t("bosPencere")}</div>`;
+
   const kovalar = (veri.kota && veri.kota.kovalar) || [];
   // One card per provider group; its 5-hour and weekly windows are rows of the same card.
   const gruplar = new Map();
@@ -228,17 +258,20 @@ function ciz() {
   }
   const pencere = (ad) => /^(5h|5 saat)$/i.test(ad) ? "p5" : /^(weekly|week|hafta)$/i.test(ad) ? "pHafta" : null;
   const sira = { p5: 0, pHafta: 1 };
-  $("kota").innerHTML = kovalar.length ? [...gruplar.values()].map(({ k, satirlar }) => {
-    const p = k.saglayici === "codex" ? "codex" : /claude|gpt/i.test(k.grup) ? "claude" : "gemini";
+  const kartlar = [...gruplar.values()].sort((a, b) => Number(b.k.saglayici === "claude") - Number(a.k.saglayici === "claude"));
+  $("kota").innerHTML = kovalar.length ? kartlar.map(({ k, satirlar }) => {
+    const p = k.saglayici === "codex" ? "codex" : k.saglayici === "claude" || /claude|gpt/i.test(k.grup) ? "claude" : "gemini";
     satirlar.sort((a, b) => (sira[pencere(a.pencere)] ?? 9) - (sira[pencere(b.pencere)] ?? 9));
-    return `<div class="kova p-${p}"><div class="b"><span><span class="dot"></span>${esc(k.grup)}</span></div>` + satirlar.map((r) => {
+    return `<div class="kova p-${p}"><div class="b"><span><span class="dot"></span>${esc(k.grup)}</span>${k.plan ? `<span class="meta">${esc(k.plan)}</span>` : ""}</div>` + satirlar.map((r) => {
       const u = Math.max(0, Math.min(100, Number(r.kullanilan) || 0));
       const ad = pencere(r.pencere);
-      return `<div class="b pen"><span>${esc(ad ? t(ad) : r.pencere)}</span><b>${Math.round(u)}%</b></div>
-      <div class="olcu"><i class="${u >= 60 ? "yuksek" : ""}" style="width:${u}%"></i></div><div class="meta">${t("yenilenir")} ${esc(String(r.yenilenir || "").replace("T", " "))}</div>`;
+      const baglam = r.pencere === "bağlam";
+      return `<div class="${baglam ? "baglam" : ""}"><div class="b pen"><span>${esc(baglam ? t("baglam") : ad ? t(ad) : r.pencere)}${r.eski ? ` · <span class="eski-etiket">${t("eski")}</span>` : ""}</span><b>${Math.round(u)}%${r.token != null ? ` · ${token(r.token)}` : ""}</b></div>
+      <div class="olcu"><i class="${u >= 60 ? "yuksek" : ""} ${r.eski ? "eski" : ""}" style="width:${u}%"></i></div>
+      <div class="meta">${r.yenilenir ? `${t("yenilenir")} ${esc(String(r.yenilenir).replace("T", " "))} · ` : ""}${t("olcum")} ${gunStr(r.olcum_ts)}</div></div>`;
     }).join("") + `</div>`;
   }).join("") : `<div class="bos">${t("bosKota")}</div>`;
-  $("kota-not").textContent = (veri.kota ? `${t("olcum")} ${gunStr(veri.kota.ts)} · ` : "") + t("claudeNot");
+  $("kota-not").textContent = kovalar.some((k) => k.saglayici === "claude") ? "" : t("claudeNot");
 
   $("tablo").innerHTML = isler.slice().reverse().map((i) => `
     <tr data-id="${esc(i.id)}"><td class="n">${i.baslangic != null ? gunStr(i.baslangic) : "—"}</td>
@@ -255,12 +288,13 @@ function panelBaslik() {
   $("p-alt").textContent = `${saglayiciAd[i.saglayici]} · ${t(i.durum)} · ${sure(i.sure)}${i.klasor ? " · " + i.klasor : ""}`;
 }
 async function ac(id) {
-  const i = veri.isler.find((x) => x.id === id);
+  const i = veri.isler.find((x) => x.id === id) || (veri.harita?.id === id ? veri.harita : null);
   if (!i) return;
   secili = i;
   panelBaslik();
   $("panel").classList.add("acik");
-  if (GOMULU) { i._metin = { rapor: i._rapor, gorev: i._gorev }; }
+  if (i.sanal) { i._metin = { rapor: t("pmNot") + "\n\n" + veri.isler.map((x) => `${kim(x)} · ${t(x.durum)} · ${sure(x.sure)}`).join("\n"), gorev: t("pmNot") }; }
+  else if (GOMULU) { i._metin = { rapor: i._rapor, gorev: i._gorev }; }
   else {
     $("p-metin").textContent = t("yukleniyor");
     try { i._metin = await (await fetch("api/is?id=" + encodeURIComponent(id))).json(); } catch { i._metin = { rapor: t("okunamadi"), gorev: "" }; }
@@ -280,7 +314,7 @@ document.addEventListener("click", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") { $("panel").classList.remove("acik"); secili = null; }
-  if (e.key === "Enter" && e.target.dataset && e.target.dataset.id) ac(e.target.dataset.id);
+  if (["Enter", " "].includes(e.key) && e.target.dataset && e.target.dataset.id) { e.preventDefault(); ac(e.target.dataset.id); }
 });
 $("p-kapat").onclick = () => { $("panel").classList.remove("acik"); secili = null; };
 $("p-rapor").onclick = () => { sekme = "rapor"; goster(); };

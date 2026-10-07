@@ -86,6 +86,7 @@ def kancadan(yuk: dict) -> dict | None:
             "arka_plan": girdi.get("run_in_background", True),
             "yalitim": girdi.get("isolation"),
             "istem": _kisa(girdi.get("prompt")),
+            "ham": _kisa({k: v for k, v in yuk.items() if k != "hook_event_name"}),
         }
     if ad in ("SubagentStart", "SubagentStop"):
         return {

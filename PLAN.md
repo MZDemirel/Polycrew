@@ -33,6 +33,6 @@
 - [ ] `kadro.py`: aynı iş kimliğinin sonraki puanı öncekinin yerine geçsin (inceleme sonrası güncelleme; bugün iki satır olur)
 - [ ] `izle` raporu: Claude agent'ının raporu `SubagentHandback` iletisinden gelsin (bugün transkriptin son ara cümlesi: "Now the comparison script.")
 - [ ] `/takim`: dalgalar arasında `main` ilerlediyse görevin ilk satırı "önce `git merge --ff-only main`" (Claude Code'un worktree yalıtımı oturum başındaki main'den açıyor, `0004`)
-- [ ] `izle`: agent haritası (PM → lider → işçi ağacı; kim kimi başlattı, hangi sağlayıcı, durum). Kullanıcının isteği, 2026-10-05
-- [ ] `izle` kota: Codex ölçümü yenilenme saatinden eskiyse "eski ölçüm" diye göster (bugün iki gün önceki %47 güncel gibi duruyor)
+- [x] `izle`: agent haritası (PM → lider → işçi ağacı; kim kimi başlattı, hangi sağlayıcı, durum). Kullanıcının isteği, 2026-10-05; `0005`: canlı sayfa ve rapor, ilişki bulunamazsa PM
+- [x] `izle` kota: ölçüm yenilenme saatinden eskiyse "eski ölçüm" diye göster; Claude ölçüm betiği ve sağlayıcı/grup/pencere başına son ölçüm (`0005`)
 - [ ] `/takim` ve `kadro.md`: dağıtım üç sağlayıcıya işin ağırlığına ve ölçülmüş beceriye göre; sabit "en çok N Claude agent" yerine planda iş, ağırlık, işçi, neden tablosu (kullanıcı, 2026-10-05)
