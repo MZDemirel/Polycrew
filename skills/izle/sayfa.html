@@ -87,10 +87,27 @@ button:focus-visible, .row:focus-visible, .card:focus-visible { outline: 2px sol
 .dal > .cocuklar > .dal::before { content: ""; position: absolute; left: -14px; top: 22px; width: 14px; border-top: 1px solid var(--line); }
 .dal > .cocuklar::before { content: ""; position: absolute; left: -28px; top: 22px; width: 14px; border-top: 1px solid var(--line); }
 .dal > .cocuklar::after { content: ""; position: absolute; left: -14px; top: 22px; bottom: var(--son, 22px); border-left: 1px solid var(--line); }
-.dugum { width: 300px; flex: none; padding: 8px 12px; cursor: pointer; }
+.dugum { width: 360px; flex: none; padding: 8px 12px; cursor: pointer; }
 .dugum .ad { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dugum .ac { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dugum.ozet { background: var(--track); }
+/* Status: a running node is full strength with a pulsing mark; a finished one is dimmed. */
+.dugum .ust2 { display: flex; align-items: center; gap: 8px; }
+.dugum .ad { flex: 1; min-width: 0; }
+.isaret { flex: none; width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; font: 700 10px var(--sans, sans-serif); color: var(--surface); }
+.isaret.calisiyor { background: var(--ok); animation: nabiz 1.4s ease-in-out infinite; }
+.isaret.bitti { background: var(--muted); }
+.isaret.hata { background: var(--hata); }
+.isaret.bilinmiyor { background: transparent; color: var(--muted); border: 1px dashed var(--muted); }
+.rozet { flex: none; font: 11px var(--mono); padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.rozet.calisiyor { border-color: var(--ok); color: var(--ok); font-weight: 700; }
+.rozet.hata { border-color: var(--hata); color: var(--hata); }
+.dugum.d-bitti, .dugum.d-bilinmiyor { opacity: .62; }
+.dugum.d-calisiyor { box-shadow: 0 0 0 1px var(--ok); }
+.harita-ozet { font: 12px var(--mono); color: var(--muted); margin: 0 0 8px; }
+.harita-ozet b.calisiyor { color: var(--ok); } .harita-ozet b.hata { color: var(--hata); }
+@keyframes nabiz { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent); } 50% { box-shadow: 0 0 0 5px transparent; } }
+@media (prefers-reduced-motion: reduce) { .isaret.calisiyor { animation: none; } }
 @media (max-width: 700px) {
   .dal { display: block; }
   .dal > .cocuklar { margin: 6px 0 0 14px; }
@@ -246,19 +263,27 @@ function ciz() {
       <div class="track"><div class="bar ${i.durum}" style="left:${yuzde(b)}%;width:${Math.max(yuzde(e) - yuzde(b), 0.3)}%"></div></div></div>`;
   }).join("") : `<div class="bos">${t("bosPencere")}</div>`;
 
-  // The tree: each node is a card, its children a column to its right.
+  // The tree: each node is a card, its children a column to its right; running ones first.
+  const ISARET = { calisiyor: "", bitti: "✓", hata: "✕", bilinmiyor: "?" };
+  const SIRA = { calisiyor: 0, hata: 1, bilinmiyor: 2, bitti: 3 };
+  const sayim = {};
   function agac(n) {
     if (!n) return "";
+    if (!n.sanal) sayim[n.durum] = (sayim[n.durum] || 0) + 1;
     const baslik = n.sanal ? t("pm") : n.aciklama || (n.rol ? t(n.rol) : "agent");
-    const alt = [n.sanal ? saglayiciAd[n.saglayici] : kim(n), `${t(n.durum)} ${sure(n.sure)}`,
+    const alt = [n.sanal ? saglayiciAd[n.saglayici] : kim(n), sure(n.sure),
       n.token ? `${Math.round(n.token / 1000)}k token` : "", n.puan ? `${n.puan.not}/5` : ""].filter(Boolean);
-    const cocuklar = (n.cocuklar || []).map(agac).join("");
-    return `<div class="dal"><div class="card dugum p-${n.saglayici}${n.sanal ? " ozet" : ""}" tabindex="0" role="button"
-      data-id="${esc(n.id)}" title="${esc(baslik)}">
-      <div class="ad"><span class="dot dur-${n.durum}"></span>${esc(baslik)}</div>
+    const cocuklar = [...(n.cocuklar || [])].sort((x, y) => SIRA[x.durum] - SIRA[y.durum]).map(agac).join("");
+    return `<div class="dal"><div class="card dugum d-${n.durum} p-${n.saglayici}${n.sanal ? " ozet" : ""}" tabindex="0" role="button"
+      data-id="${esc(n.id)}" title="${esc(baslik)}" aria-label="${esc(baslik + ": " + t(n.durum))}">
+      <div class="ust2"><span class="isaret ${n.durum}">${ISARET[n.durum] ?? ""}</span>
+      <div class="ad">${esc(baslik)}</div><span class="rozet ${n.durum}">${t(n.durum)}</span></div>
       <div class="ac">${esc(alt.join(" · "))}</div></div>${cocuklar ? `<div class="cocuklar">${cocuklar}</div>` : ""}</div>`;
   }
-  $("harita").innerHTML = agac(veri.harita) || `<div class="bos">${t("bosPencere")}</div>`;
+  const agacHtml = agac(veri.harita);
+  const ozet = ["calisiyor", "hata", "bilinmiyor", "bitti"].filter((d) => sayim[d])
+    .map((d) => `<b class="${d}">${sayim[d]}</b> ${t(d)}`).join(" · ");
+  $("harita").innerHTML = agacHtml ? `<p class="harita-ozet">${ozet}</p>${agacHtml}` : `<div class="bos">${t("bosPencere")}</div>`;
   // The trunk stops at the last child's link, wherever that child's own subtree ends.
   for (const c of document.querySelectorAll("#harita .cocuklar")) {
     const son = c.lastElementChild;
