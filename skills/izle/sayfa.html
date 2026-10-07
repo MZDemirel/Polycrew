@@ -79,12 +79,24 @@ button:focus-visible, .row:focus-visible, .card:focus-visible { outline: 2px sol
 .baglam { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 3px; }
 .baglam .olcu { height: 3px; }
 .kova .b { gap: 8px; flex-wrap: wrap; overflow-wrap: anywhere; }
-.harita { display: grid; gap: 6px; min-width: 0; }
-.dugum { margin-left: calc(var(--derinlik) * clamp(8px, 2vw, 20px)); }
-.dugum .ust { flex-wrap: wrap; }
-.dugum .ad { font-size: 13px; }
-.dugum .ac { font-size: 12px; }
+.harita { overflow-x: auto; padding-bottom: 4px; }
+/* A tree read left to right: a node, a link, then its children stacked. */
+.dal { display: flex; align-items: flex-start; }
+.dal > .cocuklar { display: grid; gap: 6px; margin-left: 28px; position: relative; }
+.dal > .cocuklar > .dal { position: relative; }
+.dal > .cocuklar > .dal::before { content: ""; position: absolute; left: -14px; top: 22px; width: 14px; border-top: 1px solid var(--line); }
+.dal > .cocuklar::before { content: ""; position: absolute; left: -28px; top: 22px; width: 14px; border-top: 1px solid var(--line); }
+.dal > .cocuklar::after { content: ""; position: absolute; left: -14px; top: 22px; bottom: var(--son, 22px); border-left: 1px solid var(--line); }
+.dugum { width: 300px; flex: none; padding: 8px 12px; cursor: pointer; }
+.dugum .ad { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dugum .ac { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dugum.ozet { background: var(--track); }
+@media (max-width: 700px) {
+  .dal { display: block; }
+  .dal > .cocuklar { margin: 6px 0 0 14px; }
+  .dal > .cocuklar::before, .dal > .cocuklar::after, .dal > .cocuklar > .dal::before { display: none; }
+  .dugum { width: auto; }
+}
 .tbl { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
 th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -234,19 +246,24 @@ function ciz() {
       <div class="track"><div class="bar ${i.durum}" style="left:${yuzde(b)}%;width:${Math.max(yuzde(e) - yuzde(b), 0.3)}%"></div></div></div>`;
   }).join("") : `<div class="bos">${t("bosPencere")}</div>`;
 
-  const dugumler = [];
-  function agac(n, derinlik = 0, ust = null) {
-    if (!n) return;
-    dugumler.push(`<div class="card dugum p-${n.saglayici}${n.sanal ? " ozet" : ""}" tabindex="0" role="button"
-      style="--derinlik:${Math.min(derinlik, 3)}" data-id="${esc(n.id)}">
-      <div class="ust"><span><span class="dot"></span>${esc(saglayiciAd[n.saglayici])}</span>
-      <span class="dur-${n.durum}">${t(n.durum)} · ${sure(n.sure)}${n.puan ? ` · ${esc(n.puan.not)}/5` : ""}</span></div>
-      <div class="ad">${n.sanal ? t("pm") : esc(n.rol ? t(n.rol) : n.aciklama || "agent")} · ${esc(n.model || "—")}</div>
-      <div class="ac">${ust ? `${t("baslatan")}: ${ust.sanal ? "PM" : esc(ust.rol || ust.id)} · ` : ""}${esc(n.aciklama || "")}</div></div>`);
-    for (const cocuk of n.cocuklar || []) agac(cocuk, derinlik + 1, n);
+  // The tree: each node is a card, its children a column to its right.
+  function agac(n) {
+    if (!n) return "";
+    const baslik = n.sanal ? t("pm") : n.aciklama || (n.rol ? t(n.rol) : "agent");
+    const alt = [n.sanal ? saglayiciAd[n.saglayici] : kim(n), `${t(n.durum)} ${sure(n.sure)}`,
+      n.token ? `${Math.round(n.token / 1000)}k token` : "", n.puan ? `${n.puan.not}/5` : ""].filter(Boolean);
+    const cocuklar = (n.cocuklar || []).map(agac).join("");
+    return `<div class="dal"><div class="card dugum p-${n.saglayici}${n.sanal ? " ozet" : ""}" tabindex="0" role="button"
+      data-id="${esc(n.id)}" title="${esc(baslik)}">
+      <div class="ad"><span class="dot dur-${n.durum}"></span>${esc(baslik)}</div>
+      <div class="ac">${esc(alt.join(" · "))}</div></div>${cocuklar ? `<div class="cocuklar">${cocuklar}</div>` : ""}</div>`;
   }
-  agac(veri.harita);
-  $("harita").innerHTML = dugumler.join("") || `<div class="bos">${t("bosPencere")}</div>`;
+  $("harita").innerHTML = agac(veri.harita) || `<div class="bos">${t("bosPencere")}</div>`;
+  // The trunk stops at the last child's link, wherever that child's own subtree ends.
+  for (const c of document.querySelectorAll("#harita .cocuklar")) {
+    const son = c.lastElementChild;
+    if (son) c.style.setProperty("--son", `${son.offsetHeight - 22}px`);
+  }
 
   const kovalar = (veri.kota && veri.kota.kovalar) || [];
   // One card per provider group; its 5-hour and weekly windows are rows of the same card.

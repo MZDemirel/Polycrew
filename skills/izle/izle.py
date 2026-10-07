@@ -179,8 +179,12 @@ def birlestir(olaylar: list[dict], simdi: float | None = None) -> dict:
                 and (ust_kaynak == "ham.session_id" or not ust or not i.get("ust_aday") or i["ust_aday"] == ust)
             ]
             i = isler.get(agent_kimligi.get(str(e.get("id")), ""))
+            if i is not None:
+                # SendMessage ile sürdürülen agent yeniden başlar: yine çalışıyor.
+                i.update(durum="calisiyor", bitis=None)
             if i is None:
-                i = max(aday, key=lambda i: i["baslangic"]) if aday else None
+                # Paralel başlatılanlar başlatılma sırasıyla başlar: en eski eşleşmemiş başlatma.
+                i = min(aday, key=lambda i: i["baslangic"]) if aday else None
             if i is None:
                 i = yeni(str(e.get("id") or f"agent-{ts}"), e, rol=e.get("rol"), baslangic=ts)
             i["agent_id"] = e.get("id")
@@ -206,6 +210,8 @@ def birlestir(olaylar: list[dict], simdi: float | None = None) -> dict:
                          or not j.get("ust_aday") or j["ust_aday"] == ust)
                 ]
                 i = max(acik, key=lambda j: j["baslangic"]) if acik else None
+            if i is None and not e.get("rol"):
+                continue  # harness'in rolsüz iç agent'ı (özet, başlık): bir iş değil
             if i is None:
                 i = yeni(str(e.get("id") or f"agent-{ts}"), e, rol=e.get("rol"))
             i.update(bitis=ts, durum="bitti", transkript=e.get("transkript"))

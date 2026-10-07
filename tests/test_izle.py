@@ -114,8 +114,27 @@ class Birlestir(unittest.TestCase):
         self.assertEqual((isler["tu2"]["durum"], isler["tu2"]["sure"]), ("bitti", 40))
 
     def test_a_stop_without_a_start_is_still_shown(self):
-        [i] = izle.birlestir([{"tur": "agent_bitti", "ts": 5, "id": "x"}], simdi=10)["isler"]
+        o = [{"tur": "agent_bitti", "ts": 5, "id": "x", "rol": "gelistirici"}]
+        [i] = izle.birlestir(o, simdi=10)["isler"]
         self.assertEqual((i["durum"], i["sure"]), ("bitti", None))
+
+    def test_a_roleless_stop_without_a_start_is_not_a_job(self):
+        o = [{"tur": "agent_bitti", "ts": 5, "id": "x", "rol": ""}]
+        self.assertEqual(izle.birlestir(o, simdi=10)["isler"], [])
+
+    def test_parallel_launches_start_in_launch_order_and_resume(self):
+        o = [{"tur": "agent_baslatildi", "ts": 0, "id": "tu1", "rol": "g", "aciklama": "ilk"},
+             {"tur": "agent_baslatildi", "ts": 1, "id": "tu2", "rol": "g", "aciklama": "ikinci"},
+             {"tur": "agent_basladi", "ts": 2, "id": "a1", "rol": "g"},
+             {"tur": "agent_basladi", "ts": 2.1, "id": "a2", "rol": "g"},
+             {"tur": "agent_bitti", "ts": 9, "id": "a1", "rol": "g"},
+             {"tur": "puan", "ts": 10, "id": "a1", "not": 4},
+             {"tur": "agent_basladi", "ts": 11, "id": "a1", "rol": "g"}]
+        isler = {i["id"]: i for i in izle.birlestir(o, simdi=20)["isler"]}
+        self.assertEqual(isler["tu1"]["agent_id"], "a1")
+        self.assertEqual(isler["tu1"]["puan"]["not"], 4)
+        self.assertEqual(isler["tu1"]["durum"], "calisiyor")
+        self.assertIsNone(isler["tu2"]["puan"])
 
     def test_window_and_last_quota(self):
         k = {"saglayici": "codex", "grup": "Codex", "pencere": "5 saat"}
