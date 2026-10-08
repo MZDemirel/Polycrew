@@ -19,8 +19,8 @@ polycrew her birine bir cevap veriyor:
 - **Oturum düzeni.** Her projede `CLAUDE.md` (kurallar), `PLAN.md` (checkbox'lı aşamalar), `docs/decisions/` altında numaralı karar notları ve hazır başlangıç promptlu `SONRAKI_OTURUM.md` bulunur. Oturumu açmak ve kapatmak iki komuttur.
 - **PM'in yönettiği takım.** Ana oturum proje yöneticisidir. Aşamayı akışlara böler, maddeleri rollere verir: geliştirici, sanatçı, gözden geçirici, tasarımcı, araştırmacı, lider. Geliştiriciler kendi git worktree'sinde ve dalında çalışır; `main`'e yalnız PM birleştirir.
 - **Dış işçiler.** Codex ve Gemini (`agy` üzerinden), seçilen model ve eforla, okur ya da yazar kipte, etkileşimsiz ve tam kayıtla çalışır. Böylece iş üç ayrı kotaya dağılır.
-- **Ölçülmüş kadro.** Hangi işin (zorluğuna göre) hangi işçiye gideceği tahminden değil, gerçek koşulardan gelir: puan, süre, token ve kota payı. Bkz. [`skills/takim/kadro.md`](skills/takim/kadro.md) ve karar [`0002`](docs/decisions/0002-agent-deneyi.md).
-- **Canlı görünürlük.** Kancalar ve işçi betiği tek bir olay günlüğüne yazar. Yerel bir sayfada şunlar görünür: kim çalışıyor ve ne zamandır, zaman çizelgesi, kota çubukları, her işçinin son raporu ve PM'in puanları. Oturum sonunda aynı görünüm paylaşılabilir bir rapora dönüşür.
+- **Ölçülmüş ve öğrenen kadro.** Hangi işin (rolüne, alanına ve zorluğuna göre) hangi işçiye gideceği tahminden değil, gerçek koşulardan gelir: puan, süre, token ve kota payı. PM'in verdiği her puan bir deftere yazılır, `kadro.py oneri` işçileri oradan sıralar. Bkz. [`skills/takim/kadro.md`](skills/takim/kadro.md), karar [`0002`](docs/decisions/0002-agent-deneyi.md) ve [`0004`](docs/decisions/0004-dinamik-kadro.md).
+- **Canlı görünürlük.** Kancalar ve işçi betiği tek bir olay günlüğüne yazar. Yerel bir sayfada şunlar görünür: agent haritası (kimi kim başlattı, kim hâlâ çalışıyor), zaman çizelgesi, üç sağlayıcının kota kartları, her işçinin son raporu ve PM'in puanları. Oturum sonunda aynı görünüm paylaşılabilir bir rapora dönüşür.
 
 ## Komutlar
 
@@ -98,16 +98,30 @@ Ardından açık oturumda `/reload-plugins` çalıştır ya da yeni bir oturum a
 Sayfa `http://localhost:8770` adresinde açılır. VS Code'da `Ctrl+Shift+P → Simple Browser: Show` ile açılır. İngilizce ve Türkçedir: tarayıcının diline göre açılır, EN/TR düğmeleri ya da `?lang=tr` ile değişir. Birkaç saniyede bir yenilenir ve şunları gösterir:
 
 - **Şimdi çalışanlar:** rol ya da model, iş, geçen süre.
+- **Agent haritası:** soldan sağa bir ağaç; kökte PM, dallarında başlattığı işçiler (Claude rolleri, Codex, Gemini). Çalışan işçi yeşildir ve nabız gibi atar, biten solar, üstte sayım durur. "Kim ne yapıyor, kimi kim başlattı" sorusunu tek bakışta yanıtlar.
 - **Zaman çizelgesi:** Claude turuncu, Codex yeşil, Gemini mavi. Bir şeride tıklayınca işçinin son raporu ve görevi açılır.
-- **Kota:** Codex'in 5 saatlik ve haftalık penceresi, Gemini, agy üzerinden Claude. Claude'un kendi kullanımı CLI'dan okunmuyor; sayfa `/usage`'ı gösterir.
+- **Kota:** sağlayıcı başına bir kart, son ölçümüyle: Codex'in 5 saatlik ve haftalık penceresi, Gemini, agy üzerinden Claude ve Claude Code'un kendisi. Pencerenin yenilenme saatinden eski ölçüm soluk ve "eski ölçüm" etiketiyle görünür.
+  - Claude'un kendi kullanımı CLI'dan okunmuyor. PM onu okur (masaüstü uygulamasının kullanım aracı ya da `/usage`) ve `skills/izle/claude-kota.py --bes-saat <%> --hafta <%> ...` ile yazar; betik argümansız son ölçümü yazdırır, 5 saatlik pencerenin %80'inde ya da haftanın %70'inde uyarır. Kendiliğinden güncellenmez.
 - **İşler ve puanlar:** süre, token, durum ve PM'in gerekçeli 1–5 puanı.
 
 Arka planda:
 
 - Kancalar (Agent aracında `PreToolUse`, `SubagentStart`, `SubagentStop`) ve `dis-ajan.sh` tek bir günlüğe yazar.
-- PM puanı `python3 hooks/olay.py puan <iş id> <1-5> "<gerekçe>"` ile ekler.
+- PM puanı `python3 hooks/olay.py puan <iş id> <1-5> "<gerekçe>" --isci <işçi> --rol <rol> --alan <alan> --zorluk <zorluk>` ile ekler. Puan sayfada görünür ve deftere eklenir.
 - `skills/izle/izle.py rapor --dil tr --cikti rapor.html` aynı görünümü durağan bir sayfa olarak üretir; `/oturum-kapat` onu yayımlar.
 - Resimler örnek bir günlükten: `docs/img/ornek_gunluk.py en|tr <dosya>`.
+
+## Kadro (`kadro.py`)
+
+```bash
+python3 skills/takim/kadro.py oneri                              # rol ve alan başına en iyi işçi
+python3 skills/takim/kadro.py oneri --rol gelistirici --alan py   # daraltılmış
+```
+
+- Defter `~/.local/share/polycrew/puanlar.jsonl`. Oturumlar ve projeler arasında kalır; ölçülen koşulardan alınmış tohum veriyle başlar.
+- Tablo rol ve alan başına en iyi işçiyi düzeltilmiş puanla (az örnek puanı ortaya çeker), örnek sayısıyla, ortalama süreyle ve son notun tarihiyle gösterir. Verisi az satırlar işaretlidir.
+- İş dağıtmadan önce bak ve puanlamayı sürdür: bozulmaya başlayan (ya da izinleri görevde tek tek sayılınca çalışmaya başlayan Gemini gibi düzelen) işçi tabloda yer değiştirir.
+- Kullanımdan bir ders: aynı anda birkaç Claude agent'ı 5 saatlik pencereyi hızla bitirir. Claude agent'larını teker teker çalıştır, ağır kodu önce Codex'e ver.
 
 ## Dış işçiler (isteğe bağlı)
 
@@ -120,6 +134,9 @@ skills/dis-ajan/dis-ajan.sh kota                                              # 
 - **Yazar kip** ana çalışma ağacını reddeder; önce bir worktree aç.
 - **İşçiler push etmez** ve git kancasını atlatmaz.
 - **Kayıt:** her koşu görevi, ham çıktıyı, son mesajı, süreyi, token'ı ve çıkış kodunu `~/.cache/polycrew/dis-ajan/` altına yazar.
+- **Süre sınırı:** bir koşu bir saat sonra durdurulur (`DIS_AJAN_ZAMAN_ASIMI`, saniye). Durdurulan koşu son mesaj bırakmaz; yazar işçiden ara commit iste, ağır işte sınırı yükselt.
+- **Paralel koşu:** bash betiği satır satır okur; uzun paralel koşularda betiğin bir kopyasını kullan. Kopya olay günlüğünü bulamazsa `POLYCREW_OLAY=<eklenti>/hooks/olay.py` ver; yoksa işçi sayfada görünmez.
+- **Kum havuzu:** Codex kum havuzunda ağa çıkamaz, soket açamaz, Blender gibi araçları başlatamaz. Worktree'yi (bağımlılıklar, git dışı varlıklar) sen hazırla, paket önbelleğini `DIS_AJAN_EK_DIZIN` ile ver, o denetimleri PM olarak sen koş.
 - **agy izinleri:** etkileşimsiz kipte `agy`, izin listesinde (`~/.gemini/antigravity-cli/settings.json`) olmayan ilk komutta bütün işi düşürür. Kuralları dar tut; genişletmeyi bilerek yap.
 - **Model seçimi:** bkz. [`kadro.md`](skills/takim/kadro.md). Ölçülen koşularda:
   - en iyi gözden geçirici Codex `gpt-6.1-sol` çıktı: her bulgu kanıtlı, yanlış alarm yok, inceleme başına 5 saatlik pencerenin yaklaşık %3'ü;
@@ -129,7 +146,8 @@ skills/dis-ajan/dis-ajan.sh kota                                              # 
 
 - Her şey senin makinende kalır:
   - olay günlüğü: `~/.cache/polycrew/olaylar.jsonl`;
-  - işçi kayıtları: `~/.cache/polycrew/dis-ajan/`.
+  - işçi kayıtları: `~/.cache/polycrew/dis-ajan/`;
+  - puan defteri: `~/.local/share/polycrew/puanlar.jsonl`.
 - Senin çalıştırdığın CLI'lar dışında hiçbir yere bir şey gönderilmez.
 - Oturum raporu işçi raporlarını ve görevleri içinde taşır; yayımlamadan önce gizli bilgi olmadığına bak.
 
@@ -143,8 +161,8 @@ skills/dis-ajan/dis-ajan.sh kota                                              # 
 ```text
 .claude-plugin/   eklenti ve marketplace tanımları
 agents/           roller (model, efor, araçlar)
-skills/           oturum-ac, oturum-kapat, karar, proje-kur, takim (+ kadro.md), dis-ajan (+ dis-ajan.sh), izle (+ izle.py, sayfa.html)
-hooks/            SessionStart "nerede kaldık", olay.py (olay günlüğü)
+skills/           oturum-ac, oturum-kapat, karar, proje-kur, takim (+ kadro.md, kadro.py), dis-ajan (+ dis-ajan.sh), izle (+ izle.py, claude-kota.py, sayfa.html)
+hooks/            SessionStart "nerede kaldık", olay.py (olay günlüğü ve puan defteri)
 docs/decisions/   neden böyle olduğu
 deney/            ölçülen koşular: görevler, cevap anahtarları, puanlar
 tests/            olay günlüğü ve canlı sayfa için birim testleri
