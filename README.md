@@ -4,7 +4,7 @@
 
 [Türkçe](README.tr.md)
 
-![The live team page: who is running, a timeline per worker, quotas and scores](docs/img/izle-en.png)
+![The live team page: who is running, a timeline per worker, the agent map, quota cards for each provider, and scores](docs/img/izle-en.png)
 
 ## What it is for
 

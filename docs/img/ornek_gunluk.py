@@ -3,13 +3,14 @@
 
     python3 docs/img/ornek_gunluk.py en /tmp/ornek-en.jsonl
     POLYCREW_OLAYLAR=/tmp/ornek-en.jsonl python3 skills/izle/izle.py --port 8771
-    google-chrome --headless=new --window-size=1400,1900 --screenshot=docs/img/izle-en.png \
+    google-chrome --headless=new --window-size=1400,2480 --screenshot=docs/img/izle-en.png \
         "http://localhost:8771/?lang=en"
 """
 
 import json
 import sys
 import time
+from datetime import datetime
 
 # (dakika önce başladı, süre dk ya da None = çalışıyor, sağlayıcı, model ya da rol, efor/kip, iş (en, tr),
 #  çıkış, token, puan, gerekçe (en, tr))
@@ -60,13 +61,28 @@ def main(dil: str, yol: str) -> None:
         if puan is not None:
             olaylar.append({"ts": bas + (dk or 0) * 60 + 30, "tur": "puan", "id": kimlik, "not": puan,
                             "gerekce": neden[k]})
+    # Kota: sağlayıcı başına son ölçüm; yenilenme saatleri şimdiye göre (eski ölçüm sayılmasın).
+    def sonra(saat: float, ayrac: str = " ") -> str:
+        return time.strftime(f"%m-%d{ayrac}%H:%M", time.localtime(simdi + saat * 3600))
+
+    olcum = datetime.fromtimestamp(simdi - 30).astimezone().isoformat()
+    bes, hafta = "5 saat", "hafta"
     olaylar.append({"ts": simdi - 30, "tur": "kota", "kovalar": [
-        {"saglayici": "codex", "grup": "Codex", "pencere": "5h", "kullanilan": 28, "yenilenir": "17:24"},
-        {"saglayici": "codex", "grup": "Codex", "pencere": "week" if dil == "en" else "hafta",
-         "kullanilan": 21, "yenilenir": "10-08 23:50"},
-        {"saglayici": "agy", "grup": "Gemini Models", "pencere": "weekly", "kullanilan": 6, "yenilenir": "10-08 15:24"},
-        {"saglayici": "agy", "grup": "Claude and GPT models", "pencere": "weekly", "kullanilan": 34,
-         "yenilenir": "10-08 22:58"},
+        {"saglayici": "codex", "grup": "Codex", "pencere": bes, "kullanilan": 28, "yenilenir": sonra(2.5),
+         "olcum": olcum},
+        {"saglayici": "codex", "grup": "Codex", "pencere": hafta, "kullanilan": 21, "yenilenir": sonra(130),
+         "olcum": olcum},
+        {"saglayici": "agy", "grup": "agy: Gemini", "pencere": hafta, "kullanilan": 6, "yenilenir": sonra(90, "T")},
+        {"saglayici": "agy", "grup": "agy: Gemini", "pencere": bes, "kullanilan": 2, "yenilenir": sonra(4, "T")},
+        {"saglayici": "agy", "grup": "agy: Claude/GPT", "pencere": hafta, "kullanilan": 34,
+         "yenilenir": sonra(100, "T")},
+        {"saglayici": "agy", "grup": "agy: Claude/GPT", "pencere": bes, "kullanilan": 0, "yenilenir": sonra(4, "T")},
+    ]})
+    claude = {"saglayici": "claude", "grup": "Claude", "olcum": olcum, "plan": "Pro"}
+    olaylar.append({"ts": simdi - 20, "tur": "kota", "kaynak": "claude", "kovalar": [
+        {**claude, "pencere": bes, "kullanilan": 31, "yenilenir": sonra(3.2)},
+        {**claude, "pencere": hafta, "kullanilan": 48, "yenilenir": sonra(32)},
+        {**claude, "pencere": "bağlam", "kullanilan": 22, "token": 220_000},
     ]})
     with open(yol, "w", encoding="utf-8") as f:
         for e in sorted(olaylar, key=lambda e: e["ts"]):

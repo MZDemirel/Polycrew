@@ -4,7 +4,7 @@
 
 [English](README.md)
 
-![Canlı takım sayfası: kim çalışıyor, işçi başına zaman çizelgesi, kota ve puanlar](docs/img/izle-tr.png)
+![Canlı takım sayfası: kim çalışıyor, işçi başına zaman çizelgesi, agent haritası, sağlayıcı başına kota kartları ve puanlar](docs/img/izle-tr.png)
 
 ## Ne işe yarar
 
