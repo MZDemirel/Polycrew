@@ -15,7 +15,8 @@ Projenin düzeni: `CLAUDE.md` (kurallar, komutlar, bitti tanımı), `PLAN.md` (a
 4. **"Oturum açılınca ilk iş"** bölümü varsa onu sırayla uygula; bu skill'in adımlarıyla çakışırsa o bölüm geçerli.
 5. **Geri bildirim:** kullanıcı başlangıç promptunda geri bildirim verdiyse her birini ciddiye al. Ölçülebilir olanı (bir hata, bir görüntü) ölç, sebebini bul, kısa raporla. Vermediyse "Kullanıcıya sorulacaklar"ı sor.
 6. **Plan modu:** kullanıcının hedefini plan moduna girerek planla. Önce soruları `AskUserQuestion` ile toplu sor (en çok 4, her birinde önerilen seçenek ilk ve "(Önerilen)"). Aşama büyükse böl. Mod satırına uy (öğretmen modunda kod verme).
-7. **Ağır işler:** `SONRAKI_OTURUM.md` ya da hafıza bir makine sınırı söylüyorsa (ör. süreç sayısı) ona uy.
+7. **Kadro:** `SONRAKI_OTURUM.md`'de "Sonraki oturumun kadrosu" tablosu varsa planın dağıtım tablosunu ondan kur: her iş için rolünü ve alanını bul, "Kadro" sütunundaki işçiyi ata; kota yetmiyorsa ya da iş o işçinin bilinen bir tuzağına denk geliyorsa "Yedek"i al ve nedenini yaz. "veri az" ve "eski" satırları öneridir, bağlayıcı değildir. Tablo yoksa `kadro.py ozet --gun 7` ile üret.
+8. **Ağır işler:** `SONRAKI_OTURUM.md` ya da hafıza bir makine sınırı söylüyorsa (ör. süreç sayısı) ona uy.
 
 ## Rapor biçimi
 

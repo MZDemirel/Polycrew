@@ -17,8 +17,9 @@ description: Bir çalışma oturumunu düzenli kapat. Kullanıcı "oturumu kapat
    - **Sıradaki:** öncelik sırasıyla, her biri "İş" ve "Bitti" ile.
    - **Kullanıcıya sorulacaklar** ve **Senin yapman gerekenler** (kullanıcının bakacağı resimler, yeniden başlatılacak sunucular).
    - **Başlangıç promptu:** bir sonraki oturumu açacak metin; `<geri bildirim>` yer tutucusuyla.
-6. **Takım raporu:** oturumda alt agent ya da dış işçi çalıştıysa `izle` skill'indeki "Oturum raporu" adımı: `izle.py rapor` ile HTML üret, Artifact olarak yayımla, bağlantıyı `SONRAKI_OTURUM.md`'ye yaz. Oturumda puan yazıldıysa `kadro.py oneri` çıktısının özeti SONRAKI_OTURUM'a bir satır eklenir.
-7. **Hafıza:** proje dışı, kalıcı bir şey öğrenildiyse (kullanıcının tercihi, makine sınırı) hafızaya yaz; depoda zaten yazanı yazma.
-8. **Commit:** projenin commit kuralıyla (CLAUDE.md). Push etme.
+6. **Takım raporu:** oturumda alt agent ya da dış işçi çalıştıysa `izle` skill'indeki "Oturum raporu" adımı: `izle.py rapor` ile HTML üret, Artifact olarak yayımla, bağlantıyı `SONRAKI_OTURUM.md`'ye yaz.
+7. **Sonraki oturumun kadrosu:** puan defteri varsa (oturumda puan yazılmış olsun olmasın) `takim` skill'inin klasöründeki `kadro.py ozet --gun 7` çalıştırılır; çıkan tablo `SONRAKI_OTURUM.md`'ye "Sonraki oturumun kadrosu" başlığıyla, başlık satırıyla birlikte aynen yazılır (eskisinin yerine). Tabloyu elle düzeltme; bir satıra itirazın varsa altına bir cümleyle yaz (ör. kota, o işçinin bilinen bir tuzağı).
+8. **Hafıza:** proje dışı, kalıcı bir şey öğrenildiyse (kullanıcının tercihi, makine sınırı) hafızaya yaz; depoda zaten yazanı yazma.
+9. **Commit:** projenin commit kuralıyla (CLAUDE.md). Push etme.
 
 Son mesajda: commit'ler, kullanıcının yapması gerekenler ve başlangıç promptu.
