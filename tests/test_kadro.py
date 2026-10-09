@@ -232,6 +232,157 @@ class KadroVePuanTesti(unittest.TestCase):
 
         self.assertGreaterEqual(satir_sayisi, 10)
 
+    def test_ozet_bos_defter(self):
+        r = calistir_kadro(["ozet", "--tohumsuz"], defter=self.defter)
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(r.stdout.strip(), "Kayıt yok.")
+
+    def test_ozet_pencere_suzmesi_ve_simdi(self):
+        # simdi = 1_000_000. 7 gun = 604_800 sn. Esik = 395_200.
+        kayitlar = [
+            # Pencere ici (ts: 500_000 >= 395_200)
+            {"isci": "yeni-isci", "rol": "gelistirici", "alan": "py", "not": 5, "ts": 500_000},
+            # Pencere disi / eski (ts: 200_000 < 395_200)
+            {"isci": "eski-isci", "rol": "gelistirici", "alan": "py", "not": 5, "ts": 200_000},
+            # Gelecek kayit (ts: 1_200_000 > 1_000_000)
+            {"isci": "gelecek-isci", "rol": "gelistirici", "alan": "py", "not": 5, "ts": 1_200_000},
+        ]
+        with open(self.defter, "w", encoding="utf-8") as f:
+            for k in kayitlar:
+                f.write(json.dumps(k) + "\n")
+
+        r = calistir_kadro(
+            ["ozet", "--simdi", "1000000", "--gun", "7", "--tohumsuz"],
+            defter=self.defter,
+        )
+        self.assertEqual(r.returncode, 0)
+        # 1970-01-12 UTC
+        self.assertIn("Kadro özeti: son 7 gün, 1 kayıt (üretildi: 1970-01-12)", r.stdout)
+        self.assertIn("yeni-isci", r.stdout)
+        self.assertNotIn("eski-isci", r.stdout)
+        self.assertNotIn("gelecek-isci", r.stdout)
+
+    def test_ozet_esitlik_kurali(self):
+        # 1. Puan esitliginde n'si buyuk olan kazanir
+        kayitlar_n = [
+            {"isci": "z-isci", "rol": "gelistirici", "alan": "py", "not": 3, "ts": 900_000},
+            {"isci": "z-isci", "rol": "gelistirici", "alan": "py", "not": 4, "ts": 900_000},
+            {"isci": "z-isci", "rol": "gelistirici", "alan": "py", "not": 3, "ts": 900_000},
+            {"isci": "z-isci", "rol": "gelistirici", "alan": "py", "not": 4, "ts": 900_000},
+            {"isci": "a-isci", "rol": "gelistirici", "alan": "py", "not": 3, "ts": 900_000},
+            {"isci": "a-isci", "rol": "gelistirici", "alan": "py", "not": 4, "ts": 900_000},
+        ]
+        with open(self.defter, "w", encoding="utf-8") as f:
+            for k in kayitlar_n:
+                f.write(json.dumps(k) + "\n")
+
+        r1 = calistir_kadro(
+            ["ozet", "--simdi", "1000000", "--gun", "7", "--tohumsuz"],
+            defter=self.defter,
+        )
+        self.assertEqual(r1.returncode, 0)
+        # z-isci (n=4) Kadro, a-isci (n=2) Yedek
+        self.assertIn("| gelistirici | py | z-isci | 3,50 | 4 | a-isci | 3,50 | pencere |", r1.stdout)
+
+        # 2. Puan ve n esitliginde alfabetik once gelen kazanir
+        kayitlar_alfa = [
+            {"isci": "b-isci", "rol": "gelistirici", "alan": "py", "not": 5, "ts": 900_000},
+            {"isci": "b-isci", "rol": "gelistirici", "alan": "py", "not": 5, "ts": 900_000},
+            {"isci": "a-isci", "rol": "gelistirici", "alan": "py", "not": 5, "ts": 900_000},
+            {"isci": "a-isci", "rol": "gelistirici", "alan": "py", "not": 5, "ts": 900_000},
+        ]
+        with open(self.defter, "w", encoding="utf-8") as f:
+            for k in kayitlar_alfa:
+                f.write(json.dumps(k) + "\n")
+
+        r2 = calistir_kadro(
+            ["ozet", "--simdi", "1000000", "--gun", "7", "--tohumsuz"],
+            defter=self.defter,
+        )
+        self.assertEqual(r2.returncode, 0)
+        # a-isci Kadro, b-isci Yedek
+        self.assertIn("| gelistirici | py | a-isci | 4,25 | 2 | b-isci | 4,25 | pencere, veri az |", r2.stdout)
+
+    def test_ozet_eski_dayanagi(self):
+        # Pencerede kayit yok (ts: 100_000 < 395_200, simdi: 1_000_000)
+        kayitlar = [
+            {"isci": "vefakar-kodcu", "rol": "gelistirici", "alan": "py", "not": 4, "ts": 100_000},
+        ]
+        with open(self.defter, "w", encoding="utf-8") as f:
+            for k in kayitlar:
+                f.write(json.dumps(k) + "\n")
+
+        r = calistir_kadro(
+            ["ozet", "--simdi", "1000000", "--gun", "7", "--tohumsuz"],
+            defter=self.defter,
+        )
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("Kadro özeti: son 7 gün, 0 kayıt", r.stdout)
+        self.assertIn("| gelistirici | py | vefakar-kodcu | 3,67 | 1 | — | — | eski |", r.stdout)
+
+    def test_ozet_veri_az_ve_pencere_dayanagi(self):
+        # n < 3 -> "pencere, veri az", n >= 3 -> "pencere"
+        kayitlar = [
+            # az-veri: n = 2 (< 3)
+            {"isci": "az-kodcu", "rol": "gelistirici", "alan": "js", "not": 5, "ts": 900_000},
+            {"isci": "az-kodcu", "rol": "gelistirici", "alan": "js", "not": 5, "ts": 900_000},
+            # cok-veri: n = 3 (>= 3)
+            {"isci": "cok-kodcu", "rol": "gelistirici", "alan": "py", "not": 5, "ts": 900_000},
+            {"isci": "cok-kodcu", "rol": "gelistirici", "alan": "py", "not": 5, "ts": 900_000},
+            {"isci": "cok-kodcu", "rol": "gelistirici", "alan": "py", "not": 5, "ts": 900_000},
+        ]
+        with open(self.defter, "w", encoding="utf-8") as f:
+            for k in kayitlar:
+                f.write(json.dumps(k) + "\n")
+
+        r = calistir_kadro(
+            ["ozet", "--simdi", "1000000", "--gun", "7", "--tohumsuz"],
+            defter=self.defter,
+        )
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("| gelistirici | js | az-kodcu | 4,25 | 2 | — | — | pencere, veri az |", r.stdout)
+        self.assertIn("| gelistirici | py | cok-kodcu | 4,40 | 3 | — | — | pencere |", r.stdout)
+
+    def test_ozet_yedek_durumlari(self):
+        # Iki isci varsa yedek ve puani gorunur, tek isci varsa "—"
+        kayitlar = [
+            {"isci": "as-isci", "rol": "sanatci", "alan": "sanat", "not": 5, "ts": 900_000},
+            {"isci": "yedek-isci", "rol": "sanatci", "alan": "sanat", "not": 4, "ts": 900_000},
+            {"isci": "tek-isci", "rol": "gelistirici", "alan": "py", "not": 5, "ts": 900_000},
+        ]
+        with open(self.defter, "w", encoding="utf-8") as f:
+            for k in kayitlar:
+                f.write(json.dumps(k) + "\n")
+
+        r = calistir_kadro(
+            ["ozet", "--simdi", "1000000", "--gun", "7", "--tohumsuz"],
+            defter=self.defter,
+        )
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("| sanatci | sanat | as-isci | 4,00 | 1 | yedek-isci | 3,67 | pencere, veri az |", r.stdout)
+        self.assertIn("| gelistirici | py | tek-isci | 4,00 | 1 | — | — | pencere, veri az |", r.stdout)
+
+    def test_ozet_siralama_rol_sonra_alan(self):
+        kayitlar = [
+            {"isci": "isci-3", "rol": "sanatci", "alan": "sanat", "not": 5, "ts": 900_000},
+            {"isci": "isci-2", "rol": "gelistirici", "alan": "py", "not": 5, "ts": 900_000},
+            {"isci": "isci-1", "rol": "gelistirici", "alan": "js", "not": 5, "ts": 900_000},
+        ]
+        with open(self.defter, "w", encoding="utf-8") as f:
+            for k in kayitlar:
+                f.write(json.dumps(k) + "\n")
+
+        r = calistir_kadro(
+            ["ozet", "--simdi", "1000000", "--gun", "7", "--tohumsuz"],
+            defter=self.defter,
+        )
+        self.assertEqual(r.returncode, 0)
+        satirlar = [s for s in r.stdout.splitlines() if s.startswith("|") and not s.startswith("| Rol") and not s.startswith("|---")]
+        self.assertEqual(len(satirlar), 3)
+        self.assertIn("| gelistirici | js |", satirlar[0])
+        self.assertIn("| gelistirici | py |", satirlar[1])
+        self.assertIn("| sanatci | sanat |", satirlar[2])
+
 
 if __name__ == "__main__":
     unittest.main()

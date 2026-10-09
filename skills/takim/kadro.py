@@ -3,6 +3,7 @@
 
 Kullanım:
   kadro.py oneri [--rol R] [--alan A] [--zorluk Z] [--tohumsuz]
+  kadro.py ozet [--gun N] [--tohumsuz] [--simdi TS]
   kadro.py ekle <id> <not> [gerekçe] [--isci ...] [--rol ...] ...
 """
 
@@ -13,6 +14,7 @@ from datetime import datetime, timezone
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 # hooks modülünü içe aktarabilmek için ekle
@@ -250,6 +252,117 @@ def cmd_oneri(argv: list[str]) -> int:
         return 0
 
 
+def kayit_pencerede_mi(kayit: dict, baslangic: float, simdi: float) -> bool:
+    ts = kayit.get("ts")
+    if ts is None:
+        return False
+    try:
+        val = float(ts)
+        return baslangic <= val <= simdi
+    except (ValueError, TypeError):
+        return False
+
+
+def tablo_olustur_ozet(
+    kayitlar: list[dict],
+    gun: int = 7,
+    simdi: float | None = None,
+) -> str:
+    if not kayitlar:
+        return "Kayıt yok."
+
+    if simdi is None:
+        simdi = time.time()
+
+    pencere_baslangic = simdi - (gun * 86400)
+    pencere_kayitlari = [k for k in kayitlar if kayit_pencerede_mi(k, pencere_baslangic, simdi)]
+    k_sayisi = len(pencere_kayitlari)
+
+    tum_gruplar: dict[tuple[str, str], list[dict]] = {}
+    for k in kayitlar:
+        rol = k.get("rol") or "—"
+        alan = k.get("alan") or "—"
+        tum_gruplar.setdefault((rol, alan), []).append(k)
+
+    pencere_gruplar: dict[tuple[str, str], list[dict]] = {}
+    for k in pencere_kayitlari:
+        rol = k.get("rol") or "—"
+        alan = k.get("alan") or "—"
+        pencere_gruplar.setdefault((rol, alan), []).append(k)
+
+    sirali_ciftler = sorted(tum_gruplar.keys(), key=lambda x: (x[0], x[1]))
+
+    satirlar = [
+        "| Rol | Alan | Kadro | Puan | n | Yedek | Yedek puanı | Dayanak |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+
+    for rol, alan in sirali_ciftler:
+        pencere_kayit_grubu = pencere_gruplar.get((rol, alan), [])
+        p_ist = isci_istatistik(pencere_kayit_grubu) if pencere_kayit_grubu else []
+
+        if p_ist:
+            p_ist.sort(key=lambda x: (-x["duzeltilmis"], -x["n"], x["isci"]))
+            kadro = p_ist[0]
+            kadro_isci = kadro["isci"]
+            puan = format_sayi(kadro["duzeltilmis"], 2)
+            n = kadro["n"]
+            dayanak = "pencere, veri az" if n < 3 else "pencere"
+
+            if len(p_ist) >= 2:
+                yedek = p_ist[1]
+                yedek_isci = yedek["isci"]
+                yedek_puani = format_sayi(yedek["duzeltilmis"], 2)
+            else:
+                yedek_isci = "—"
+                yedek_puani = "—"
+        else:
+            tum_kayit_grubu = tum_gruplar[(rol, alan)]
+            t_ist = isci_istatistik(tum_kayit_grubu)
+            if not t_ist:
+                continue
+            t_ist.sort(key=lambda x: (-x["duzeltilmis"], -x["n"], x["isci"]))
+            kadro = t_ist[0]
+            kadro_isci = kadro["isci"]
+            puan = format_sayi(kadro["duzeltilmis"], 2)
+            n = kadro["n"]
+            dayanak = "eski"
+
+            if len(t_ist) >= 2:
+                yedek = t_ist[1]
+                yedek_isci = yedek["isci"]
+                yedek_puani = format_sayi(yedek["duzeltilmis"], 2)
+            else:
+                yedek_isci = "—"
+                yedek_puani = "—"
+
+        satirlar.append(
+            f"| {rol} | {alan} | {kadro_isci} | {puan} | {n} | {yedek_isci} | {yedek_puani} | {dayanak} |"
+        )
+
+    if len(satirlar) <= 2:
+        return "Kayıt yok."
+
+    dt = datetime.fromtimestamp(simdi, tz=timezone.utc)
+    tarih_str = dt.strftime("%Y-%m-%d")
+    baslik = f"Kadro özeti: son {gun} gün, {k_sayisi} kayıt (üretildi: {tarih_str})"
+    tablo = "\n".join(satirlar)
+    return f"{baslik}\n\n{tablo}"
+
+
+def cmd_ozet(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="kadro.py ozet", description="Kadro özeti tablosu")
+    parser.add_argument("--gun", type=int, default=7, help="Son N günün kayıtları (varsayılan: 7)")
+    parser.add_argument("--tohumsuz", action="store_true", help="Tohum verisini dahil etme")
+    parser.add_argument("--simdi", type=float, default=None, help="Şimdiki zaman (epoch saniye, testler için)")
+    args = parser.parse_args(argv)
+
+    kayitlar = kayitlari_oku(tohumsuz=args.tohumsuz)
+    cikti = tablo_olustur_ozet(kayitlar, gun=args.gun, simdi=args.simdi)
+    print(cikti)
+    return 0
+
+
 def main(argv: list[str]) -> int:
     if not argv:
         print(__doc__, file=sys.stderr)
@@ -258,6 +371,8 @@ def main(argv: list[str]) -> int:
     cmd = argv[0]
     if cmd == "oneri":
         return cmd_oneri(argv[1:])
+    if cmd == "ozet":
+        return cmd_ozet(argv[1:])
     if cmd in ("ekle", "puan"):
         return olay.puan_isle(argv[1:])
 
