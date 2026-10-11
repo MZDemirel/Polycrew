@@ -6,7 +6,7 @@
 
 [Türkçe](README.tr.md)
 
-![The live team page: who is running, a timeline per worker, the agent map, quota cards for each provider, and scores](docs/img/izle-en.png)
+![The office view of the live team page: the PM, two Claude agents and two external workers at their desks, finished workers in the break room](docs/img/ofis-en.png)
 
 ## What it is for
 
@@ -99,6 +99,7 @@ Then run `/reload-plugins` in an open session, or start a new one.
 
 The page runs at `http://localhost:8770`. In VS Code, open it with `Ctrl+Shift+P → Simple Browser: Show`. It is in English and Turkish: it follows your browser language, and the EN/TR buttons or `?lang=en` switch it. It refreshes every few seconds and shows:
 
+- **Office:** a small pixel office. The PM sits on the left, running Claude agents and running external workers sit at desks in their own rooms, and finished jobs stand in the break room (a failed one has a red "!"). Hover a figure to see who it is, click it for its report.
 - **Running now:** role or model, task, elapsed time.
 - **Agent map:** a left-to-right tree with the PM at the root and the workers it started (Claude roles, Codex, Gemini) as branches. Running workers are green and pulse, finished ones fade, and a count sits on top. It answers "who is doing what, and who started whom" at a glance.
 - **Timeline:** Claude in orange, Codex in green, Gemini in blue. Click a bar to see the worker's last report and its task.
@@ -112,6 +113,8 @@ Under the hood:
 - The PM adds scores with `python3 hooks/events.py score <job id> <1-5> "<reason>" --worker <worker> --role <role> --field <field> --difficulty <E|M|H>`. The score shows on the page and is appended to the ledger.
 - `skills/watch/watch.py report --lang en --out report.html` renders the same view as a static page. `/session-end` publishes it.
 - The screenshots come from an example log: `docs/img/ornek_gunluk.py en|tr <file>`.
+
+![The whole live team page: counters, office, running now, timeline, agent map, quota cards for each provider, jobs and scores](docs/img/izle-en.png)
 
 ## The roster (`roster.py`)
 

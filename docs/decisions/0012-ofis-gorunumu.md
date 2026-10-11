@@ -7,7 +7,7 @@
 
 Kullanıcı, ofis ortamını canlandıran eklentilere benzer bir görünüm istedi. Sayfa zaten kimin çalıştığını, rolünü, sağlayıcısını ve durumunu 3 saniyede bir alıyor; eksik olan bunu bir bakışta, sevimli bir resim olarak göstermekti.
 
-![Ofis görünümü, açık tema, Türkçe, sentetik veri](img/0012-ofis-acik-tr.jpg)
+![Ofis görünümü, açık tema, Türkçe, örnek veri](../img/ofis-tr.png)
 
 ## Kararlar
 
@@ -26,7 +26,7 @@ Kullanıcı, ofis ortamını canlandıran eklentilere benzer bir görünüm iste
 
 ## Açık kalan
 
-- Gerçek bir takım oturumunda görülmedi; README üst görseli o zaman alınmalı.
+- Gerçek bir takım oturumunda görülmedi. README'nin üst görseli ve tam sayfa görüntüsü örnek günlükle (`docs/img/ornek_gunluk.py`) alındı: canlı sayfa veriyi eşzamansız yüklediği için başsız Firefox boş sayfa çekti; görüntü, verinin sayfaya gömüldüğü geçici bir kopyadan alındı (canlı sayfayla aynı görünüm).
 - Rapor kipinde (gömülü veri) yalnız testle doğrulandı, tarayıcıda bakılmadı: uygulamanın tarayıcısı yerel dosyayı durağan gösteriyor.
 - Karakterler odalar arası yürümüyor; konum anında değişiyor. Pixlender sprite'ları gelmedi.
 - 375 pikselde ofis küçük ama okunuyor; daha dar ekranda etiketler sıkışabilir.

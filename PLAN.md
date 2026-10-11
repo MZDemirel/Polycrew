@@ -37,7 +37,7 @@
 - [x] İngilizce yüzey: 7 skill ve 6 rol İngilizce adla, betik komutları ve bayrakları, `rules/`, kanca; not dosyası yeni projede `NEXT_SESSION.md`; eski veri ve `SONRAKI_OTURUM.md` tanınır (`0007`, 0.5.0)
 - [ ] `0006` ve `0007`'nin açık kalanı: kurulu 0.5.0 ile gerçek projede `/project-setup`, `/session-start` ve bir takım koşusu; rol gövdesinde `${CLAUDE_PLUGIN_ROOT}` çözülüyor mu
 - [ ] İç kod ve veri şeması İngilizce (Python tanımlayıcıları, JSON alanları, önbellek yolları; göç betiğiyle); katkı gelmeye başlarsa
-- [ ] README ekran görüntüleri: eski rol adları görünüyorsa yenile
+- [x] README ekran görüntüleri yenilendi (yeni adlar, ofis görünümü); örnek veriyle, gerçek oturumdan değil
 - [ ] `/takim` ve `kadro.md`: dağıtım üç sağlayıcıya işin ağırlığına ve ölçülmüş beceriye göre; sabit "en çok N Claude agent" yerine planda iş, ağırlık, işçi, neden tablosu (kullanıcı, 2026-10-05)
 
 ### Aşama 3: Öğrenen kadro ve dışa açılma

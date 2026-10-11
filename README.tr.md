@@ -6,7 +6,7 @@
 
 [English](README.md)
 
-![Canlı takım sayfası: kim çalışıyor, işçi başına zaman çizelgesi, agent haritası, sağlayıcı başına kota kartları ve puanlar](docs/img/izle-tr.png)
+![Canlı takım sayfasının ofis görünümü: PM, iki Claude agent'ı ve iki dış işçi masalarında, işi bitenler dinlenme köşesinde](docs/img/ofis-tr.png)
 
 ## Ne işe yarar
 
@@ -114,6 +114,7 @@ Ardından açık oturumda `/reload-plugins` çalıştır ya da yeni bir oturum a
 
 Sayfa `http://localhost:8770` adresinde açılır. VS Code'da `Ctrl+Shift+P → Simple Browser: Show` ile açılır. İngilizce ve Türkçedir: tarayıcının diline göre açılır, EN/TR düğmeleri ya da `?lang=tr` ile değişir. Birkaç saniyede bir yenilenir ve şunları gösterir:
 
+- **Ofis:** küçük bir piksel ofis. PM solda oturur; çalışan Claude agent'ları ve dış işçiler kendi odalarında masalarında, işi bitenler dinlenme köşesinde durur (hata alanın başında kırmızı "!" olur). Bir figürün üstüne gelince kim olduğu görünür, tıklayınca raporu açılır.
 - **Şimdi çalışanlar:** rol ya da model, iş, geçen süre.
 - **Agent haritası:** soldan sağa bir ağaç; kökte PM, dallarında başlattığı işçiler (Claude rolleri, Codex, Gemini). Çalışan işçi yeşildir ve nabız gibi atar, biten solar, üstte sayım durur. "Kim ne yapıyor, kimi kim başlattı" sorusunu tek bakışta yanıtlar.
 - **Zaman çizelgesi:** Claude turuncu, Codex yeşil, Gemini mavi. Bir şeride tıklayınca işçinin son raporu ve görevi açılır.
@@ -127,6 +128,8 @@ Arka planda:
 - PM puanı `python3 hooks/events.py score <iş id> <1-5> "<gerekçe>" --worker <işçi> --role <rol> --field <alan> --difficulty <E|M|H>` ile ekler. Puan sayfada görünür ve deftere eklenir.
 - `skills/watch/watch.py report --lang tr --out rapor.html` aynı görünümü durağan bir sayfa olarak üretir; `/session-end` onu yayımlar.
 - Resimler örnek bir günlükten: `docs/img/ornek_gunluk.py en|tr <dosya>`.
+
+![Canlı takım sayfasının tamamı: sayaçlar, ofis, şimdi çalışanlar, zaman çizelgesi, agent haritası, sağlayıcı başına kota kartları, işler ve puanlar](docs/img/izle-tr.png)
 
 ## Kadro (`roster.py`)
 

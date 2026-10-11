@@ -2,9 +2,12 @@
 """README resimleri için örnek olay günlüğü (İngilizce ya da Türkçe), şimdiye göre zamanlanmış.
 
     python3 docs/img/ornek_gunluk.py en /tmp/ornek-en.jsonl
-    POLYCREW_OLAYLAR=/tmp/ornek-en.jsonl python3 skills/izle/izle.py --port 8771
-    google-chrome --headless=new --window-size=1400,2480 --screenshot=docs/img/izle-en.png \
+    POLYCREW_EVENTS=/tmp/ornek-en.jsonl python3 skills/watch/watch.py --port 8771
+    firefox --headless --window-size=1400,2900 --screenshot docs/img/izle-en.png \
         "http://localhost:8771/?lang=en"
+
+Canlı sayfa dakikada bir gerçek kotayı okur ve örnek kota kartlarının yerine yazar. Resim alırken sunucuyu
+boş bir HOME ve ``agy`` bulunmayan bir PATH ile başlat (ya da ``watch.py report`` çıktısını kullan).
 """
 
 import json
@@ -15,7 +18,7 @@ from datetime import datetime
 # (dakika önce başladı, süre dk ya da None = çalışıyor, sağlayıcı, model ya da rol, efor/kip, iş (en, tr),
 #  çıkış, token, puan, gerekçe (en, tr))
 ISLER = [
-    (590, 2.2, "claude", "polycrew:sanatci", "", ("Review the free color ramp", "Serbest rampayı incele"),
+    (590, 2.2, "claude", "polycrew:artist", "", ("Review the free color ramp", "Serbest rampayı incele"),
      0, None, 5, ("measured every material, found the pale skin", "her malzemeyi ölçtü, soluk teni buldu")),
     (585, 1.0, "agy", "gemini-3.1-pro-high", "okur", ("Review the ramp branch", "Rampa dalını gözden geçir"),
      1, 50_000, None, None),
@@ -23,9 +26,9 @@ ISLER = [
      0, 43_000, 3, ("two real findings, one false alarm", "iki gerçek bulgu, bir yanlış alarm")),
     (520, 18.0, "codex", "gpt-6.1-sol", "yazar", ("Tone count and light direction", "Ton sayısı ve ışık yönü"),
      0, 3_660_000, 4, ("clean code, stopped at the file limit", "temiz kod, dosya sınırında durdu")),
-    (500, 20.0, "claude", "polycrew:gelistirici", "", ("Finish the inner lines", "İç çizgileri bitir"),
+    (500, 20.0, "claude", "polycrew:developer", "", ("Finish the inner lines", "İç çizgileri bitir"),
      0, None, 4, ("fixed the rule in four languages", "kuralı dört dilde düzeltti")),
-    (470, 6.5, "claude", "polycrew:sanatci", "", ("Review the inner lines", "İç çizgileri incele"),
+    (470, 6.5, "claude", "polycrew:artist", "", ("Review the inner lines", "İç çizgileri incele"),
      0, None, 5, ("disproved the 85% claim by measuring", "%85 iddiasını ölçerek çürüttü")),
     (440, 3.5, "codex", "gpt-6.1-sol", "okur", ("Review the inner lines branch", "İç çizgi dalını gözden geçir"),
      0, 577_000, 5, ("proved a null bug in two adapters", "iki bağdaştırıcıda null hatasını kanıtladı")),
@@ -33,7 +36,11 @@ ISLER = [
      0, 4_210_000, 4, ("all done in one run", "hepsi tek koşuda bitti")),
     (60, 6.8, "codex", "gpt-6-astra", "okur", ("Review the outline styles", "Kontur dalını gözden geçir"),
      0, 977_000, 4, ("no bugs, but six times the cost", "hata yok ama altı kat pahalı")),
-    (9, None, "claude", "polycrew:gelistirici", "", ("Lock frame count to the step rhythm", "Kare sayısını adım ritmine kilitle"),
+    (9, None, "claude", "polycrew:developer", "", ("Lock frame count to the step rhythm", "Kare sayısını adım ritmine kilitle"),
+     None, None, None, None),
+    (6, None, "claude", "polycrew:artist", "", ("Check the walk cycle silhouettes", "Yürüme döngüsünün siluetlerine bak"),
+     None, None, None, None),
+    (4, None, "agy", "gemini-3.8-flash-high", "okur", ("Count colors per frame", "Kare başına renkleri say"),
      None, None, None, None),
     (3, None, "codex", "gpt-6.1-sol", "okur", ("Review the frame count branch", "Kare sayısı dalını gözden geçir"),
      None, None, None, None),
