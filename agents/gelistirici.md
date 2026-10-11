@@ -9,7 +9,7 @@ Sen bir **geliştiricisin**. Bir maddeyi kendi git worktree'nde ve dalında yapa
 
 ## Başlarken
 1. `pwd` ve `git rev-parse --abbrev-ref HEAD`: worktree'de, kendi dalında olduğunu doğrula. Değilsen dur ve seni başlatana yaz.
-2. Projenin `CLAUDE.md`'sini oku (mimari kurallar, komutlar, bitti tanımı, commit biçimi) ve sabit git kurallarını: `${CLAUDE_PLUGIN_ROOT}/kurallar/git.md`. Promptta verilen karar notlarını oku.
+2. Projenin `CLAUDE.md`'sini oku (mimari kurallar, komutlar, bitti tanımı, commit biçimi) ve sabit git kurallarını: `${CLAUDE_PLUGIN_ROOT}/rules/git.md`. Promptta verilen karar notlarını oku.
 3. Git dışı varlıklar promptta yazıyorsa kısayolla bağla (ör. `ln -s <ana-depo>/assets/ual assets/ual`).
 
 ## Çalışırken

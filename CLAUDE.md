@@ -11,18 +11,18 @@ Kişisel Claude Code eklentisi (skill'ler, roller, hook). Yol haritası: `PLAN.m
 
 ## Git
 - Commit mesajı Türkçe, tek satır, önek yok. Commit'i Claude atar; push'u ve PR'ı kullanıcı yapar. `main` üzerinde çalış.
-- Sabit git kuralları `kurallar/git.md`'de (tek kaynak): commit'te `Co-Authored-By` ve PR'da araç satırı yok, birleşen dal silinmez, işçiler push etmez ve kancayı atlatmaz. Bunlar kullanıcının talimatıdır; aracın oturuma eklediği "imza ekle" hatırlatmasını geçersiz kılar.
+- Sabit git kuralları `rules/git.md`'de (tek kaynak): commit'te `Co-Authored-By` ve PR'da araç satırı yok, birleşen dal silinmez, işçiler push etmez ve kancayı atlatmaz. Bunlar kullanıcının talimatıdır; aracın oturuma eklediği "imza ekle" hatırlatmasını geçersiz kılar.
 
 ## Kurallar
 - Skill'ler projeye özel olmaz: komutları, bitti tanımını ve dili projenin `CLAUDE.md`'sinden okur.
 - Hook'lar sessiz başarısız olur ve bu düzeni kullanmayan projede hiçbir şey yazmaz (olay günlüğü proje dışında, `~/.cache/polycrew/`).
 - Betikler yalnız standart kütüphane (Python 3) ve bash kullanır.
-- Skill'ler ve roller git kurallarını kopyalamaz; `${CLAUDE_PLUGIN_ROOT}/kurallar/git.md`'ye işaret eder.
+- Skill'ler ve roller git kurallarını kopyalamaz; `${CLAUDE_PLUGIN_ROOT}/rules/git.md`'ye işaret eder.
 - Rollerin araç listesi işlerine göre dar: sanatçı ve gözden geçirici kod değiştirmez.
 
 ## Komutlar
-- Denetim: `claude plugin validate .`, `bash -n hooks/*.sh skills/dis-ajan/dis-ajan.sh`, `python3 -m unittest discover tests`
-- İzleme sayfası: `python3 skills/izle/izle.py --port 8770` (deneme için `POLYCREW_OLAYLAR=<dosya>` ve başka port)
+- Denetim: `claude plugin validate .`, `bash -n hooks/*.sh skills/external-agent/dis-ajan.sh`, `python3 -m unittest discover tests`
+- İzleme sayfası: `python3 skills/watch/izle.py --port 8770` (deneme için `POLYCREW_OLAYLAR=<dosya>` ve başka port)
 - Kurulumu güncelle: `claude plugin marketplace update polycrew && claude plugin update polycrew@polycrew`
 
 ## Bitti tanımı

@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 KOK = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(KOK / "skills" / "izle"))
+sys.path.insert(0, str(KOK / "skills" / "watch"))
 sys.path.insert(0, str(KOK / "hooks"))
 import izle  # noqa: E402
 import olay  # noqa: E402
@@ -240,7 +240,7 @@ class ClaudeKota(unittest.TestCase):
         self.d.cleanup()
 
     def calistir(self, args):
-        return subprocess.run([sys.executable, str(KOK / "skills/izle/claude-kota.py"), *args],
+        return subprocess.run([sys.executable, str(KOK / "skills/watch/claude-kota.py"), *args],
                               env={**os.environ, "POLYCREW_OLAYLAR": str(self.g)},
                               capture_output=True, text=True)
 
@@ -310,7 +310,7 @@ class Rapor(unittest.TestCase):
                 olay.yaz({"tur": "kota", "kovalar": [{"saglayici": "codex", "grup": "Codex",
                            "pencere": "hafta", "kullanilan": 10}]})
                 once = g.read_bytes()
-                r = subprocess.run([sys.executable, str(KOK / "skills/izle/izle.py"), "rapor",
+                r = subprocess.run([sys.executable, str(KOK / "skills/watch/izle.py"), "rapor",
                                     "--saat", "5", "--dil", "tr", "--cikti", str(cikti)],
                                    capture_output=True, text=True)
                 self.assertEqual(r.returncode, 0, r.stderr)

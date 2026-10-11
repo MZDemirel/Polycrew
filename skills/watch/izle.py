@@ -29,7 +29,7 @@ sys.path.insert(0, str(KOK.parent.parent / "hooks"))
 import olay  # noqa: E402
 
 SAYFA = KOK / "sayfa.html"
-DIS_AJAN = KOK.parent / "dis-ajan" / "dis-ajan.sh"
+DIS_AJAN = KOK.parent / "external-agent" / "dis-ajan.sh"
 ESLESME = 180.0  # saniye: bir SubagentStart, bu kadar önceki aynı roldeki başlatmaya bağlanır
 ESKI = 6 * 3600.0  # saniye: bitişi gelmeyen iş bu kadar sonra "bilinmiyor"
 KOTA_ONBELLEK = 60.0

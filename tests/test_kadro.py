@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 
 KOK = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(KOK / "skills" / "takim"))
+sys.path.insert(0, str(KOK / "skills" / "team"))
 sys.path.insert(0, str(KOK / "hooks"))
 import kadro  # noqa: E402
 import olay  # noqa: E402
@@ -39,7 +39,7 @@ def calistir_kadro(argv: list[str], defter: Path | None = None, gunluk: Path | N
     if gunluk:
         env["POLYCREW_OLAYLAR"] = str(gunluk)
     return subprocess.run(
-        [sys.executable, str(KOK / "skills" / "takim" / "kadro.py"), *argv],
+        [sys.executable, str(KOK / "skills" / "team" / "kadro.py"), *argv],
         capture_output=True,
         text=True,
         env=env,

@@ -5,14 +5,15 @@ import re
 import unittest
 
 KOK = pathlib.Path(__file__).resolve().parent.parent
-ATIF = "${CLAUDE_PLUGIN_ROOT}/kurallar/git.md"
+ATIF = "${CLAUDE_PLUGIN_ROOT}/rules/git.md"
 ATIF_YAPANLAR = (
-    "skills/proje-kur/SKILL.md",
-    "skills/takim/SKILL.md",
-    "skills/oturum-kapat/SKILL.md",
-    "skills/dis-ajan/SKILL.md",
+    "skills/project-setup/SKILL.md",
+    "skills/team/SKILL.md",
+    "skills/session-end/SKILL.md",
+    "skills/external-agent/SKILL.md",
     "agents/gelistirici.md",
 )
+DIS_AJAN = "skills/external-agent/dis-ajan.sh"
 
 
 def oku(yol):
@@ -21,13 +22,13 @@ def oku(yol):
 
 class KurallarTesti(unittest.TestCase):
     def test_kural_dosyasi_dort_kurali_icerir(self):
-        metin = oku("kurallar/git.md")
-        for parca in ("Co-Authored-By", "Generated with", "dallar silinmez", "push etmez", "--no-verify"):
+        metin = oku("rules/git.md")
+        for parca in ("Co-Authored-By", "Generated with", "branches are not deleted", "do not push", "--no-verify"):
             self.assertIn(parca, metin)
 
     def test_proje_blogu_sabit_kurallari_tasir(self):
-        blok = re.search(r"```markdown\n(.*?)```", oku("kurallar/git.md"), re.S).group(1)
-        for parca in ("Co-Authored-By", "Generated with", "silinmez", "push etmez", "geçersiz kılar"):
+        blok = re.search(r"```markdown\n(.*?)```", oku("rules/git.md"), re.S).group(1)
+        for parca in ("Co-Authored-By", "Generated with", "not deleted", "do not push", "override"):
             self.assertIn(parca, blok)
 
     def test_skill_ve_roller_atif_yapar(self):
@@ -44,12 +45,13 @@ class KurallarTesti(unittest.TestCase):
             self.assertNotIn("push --delete", metin, dosya)
 
     def test_proje_kur_imzayi_sormaz(self):
-        soru = next(s for s in oku("skills/proje-kur/SKILL.md").splitlines() if s.startswith("- Commit:"))
-        self.assertNotIn("imza", soru)
+        soru = next(s for s in oku("skills/project-setup/SKILL.md").splitlines() if s.startswith("- Commit:"))
+        self.assertNotIn("signature", soru.lower())
+        self.assertNotIn("co-authored", soru.lower())
 
     def test_dis_isci_kural_satiri(self):
-        satir = next(s for s in oku("skills/dis-ajan/dis-ajan.sh").splitlines() if s.startswith("kural="))
-        for parca in ("git push yapma", "--no-verify", "Co-Authored-By", "Dal silme"):
+        satir = next(s for s in oku(DIS_AJAN).splitlines() if s.startswith("kural="))
+        for parca in ("do not git push", "--no-verify", "Co-Authored-By", "Do not delete branches"):
             self.assertIn(parca, satir)
 
 
