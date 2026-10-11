@@ -2,16 +2,19 @@
 """polycrew olay günlüğü ve puan defteri (karar 0003).
 
 İki dosya:
-- Olay günlüğü: ``${XDG_CACHE_HOME:-~/.cache}/polycrew/olaylar.jsonl`` (``POLYCREW_OLAYLAR`` ile
+- Olay günlüğü: ``${XDG_CACHE_HOME:-~/.cache}/polycrew/olaylar.jsonl`` (``POLYCREW_EVENTS`` ile
   değişir), satır başına bir JSON olay.
-- Puan defteri: ``${XDG_DATA_HOME:-~/.local/share}/polycrew/puanlar.jsonl`` (``POLYCREW_PUANLAR`` ile
+- Puan defteri: ``${XDG_DATA_HOME:-~/.local/share}/polycrew/puanlar.jsonl`` (``POLYCREW_SCORES`` ile
   değişir), kalıcı notlar.
+
+Komut satırı İngilizcedir; yazılan JSON alanları ve dosya adları Türkçe kalır (karar 0007). Eski
+ortam değişkenleri (``POLYCREW_OLAYLAR``, ``POLYCREW_PUANLAR``) yedek olarak okunur.
 
 Kullanım:
 - **Kanca** (argümansız, stdin'de Claude Code'un kanca yükü): PreToolUse, SubagentStart, SubagentStop.
 - **Komut:**
-  - ``olay.py yaz <tur> anahtar=değer ...``
-  - ``olay.py puan <id> <not> [gerekçe] [--isci ...] [--rol ...] [--alan ...] [--zorluk ...] [--kota ...] [--sure ...] [--duzeltme ...] [--proje ...]``
+  - ``events.py write <tur> anahtar=değer ...``
+  - ``events.py score <id> <1-5> [reason] [--worker ...] [--role ...] [--field ...] [--difficulty ...] [--quota ...] [--duration ...] [--fixes ...] [--project ...]``
 """
 
 from __future__ import annotations
@@ -24,9 +27,45 @@ from pathlib import Path
 
 KISA = 400  # karakter: ham yükteki uzun metinler (istem, son mesaj) bu kadar kalır
 
+# 0007: komut satırı bayrağı → günlükteki alan adı.
+BAYRAK = {"worker": "isci", "role": "rol", "field": "alan", "difficulty": "zorluk",
+          "quota": "kota", "duration": "sure", "fixes": "duzeltme", "project": "proje"}
+# 0007: 0.5.0 öncesinin değerleri okurken yeni ada çevrilir; dosyalar değişmez.
+ESKI_ROL = {"lider": "lead", "gelistirici": "developer", "gozden-gecirici": "reviewer",
+            "sanatci": "artist", "tasarimci": "designer", "arastirmaci": "researcher",
+            "gorsel-okuma": "image-reading", "resim": "image-generation"}
+ESKI_ALAN = {"sanat": "art", "arastirma": "research", "inceleme": "review", "tasarim": "design",
+             "betik": "script"}
+ESKI_ZORLUK = {"K": "E", "O": "M", "Z": "H", "hafif": "E", "orta": "M", "agir": "H"}
+
+
+def rol_adi(rol, onek: bool = True):
+    """Eski rol adını yenisine çevirir; ``onek=False`` ise ``polycrew:`` önekini atar."""
+    if not isinstance(rol, str):
+        return rol
+    on, ayrac, ad = rol.rpartition(":")
+    ad = ESKI_ROL.get(ad, ad)
+    if on == "polycrew" and not onek:
+        return ad
+    return f"{on}{ayrac}{ad}"
+
+
+def kayit_adlari(kayit: dict) -> dict:
+    """Bir puan kaydının rol, alan, zorluk ve işçi değerlerini yeni adlara çevirir (kopya döner)."""
+    k = dict(kayit)
+    if k.get("rol"):
+        k["rol"] = rol_adi(k["rol"], onek=False)
+    if isinstance(k.get("alan"), str):
+        k["alan"] = ESKI_ALAN.get(k["alan"], k["alan"])
+    if isinstance(k.get("zorluk"), str):
+        k["zorluk"] = ESKI_ZORLUK.get(k["zorluk"], k["zorluk"])
+    if isinstance(k.get("isci"), str):
+        k["isci"] = "/".join(ESKI_ROL.get(p, p) for p in k["isci"].split("/"))
+    return k
+
 
 def dosya() -> Path:
-    yol = os.environ.get("POLYCREW_OLAYLAR")
+    yol = os.environ.get("POLYCREW_EVENTS") or os.environ.get("POLYCREW_OLAYLAR")
     if yol:
         return Path(yol)
     kok = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
@@ -34,7 +73,7 @@ def dosya() -> Path:
 
 
 def defter_dosyasi() -> Path:
-    yol = os.environ.get("POLYCREW_PUANLAR")
+    yol = os.environ.get("POLYCREW_SCORES") or os.environ.get("POLYCREW_PUANLAR")
     if yol:
         return Path(yol)
     kok = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
@@ -171,7 +210,8 @@ def puan_ayristir(argv: list[str]) -> tuple[dict, bool]:
         "gerekce": gerekce,
     }
 
-    # Bayrakları ekle
+    # Bayrakları ekle (İngilizce bayrak günlükteki alan adına çevrilir)
+    bayraklar = {BAYRAK.get(k, k): v for k, v in bayraklar.items()}
     for k, v in bayraklar.items():
         if k in ("kota", "sure", "duzeltme"):
             olay[k] = _sayi(v)
@@ -188,7 +228,7 @@ def puan_ayristir(argv: list[str]) -> tuple[dict, bool]:
 def puan_isle(argv: list[str]) -> int:
     olay, deftere_yaz = puan_ayristir(argv)
     if not olay:
-        print("Kullanım: olay.py puan <id> <not> [gerekçe] [--isci ...] ...", file=sys.stderr)
+        print("Usage: events.py score <id> <1-5> [reason] [--worker ...] ...", file=sys.stderr)
         return 2
     olay_kaydi = yaz(olay)
     if deftere_yaz:
@@ -205,14 +245,14 @@ def main(argv: list[str]) -> int:
         except Exception:  # noqa: BLE001 - bir kanca oturumu asla durdurmaz
             pass
         return 0
-    if argv[0] == "yaz" and len(argv) >= 2:
+    if argv[0] == "write" and len(argv) >= 2:
         olay = {"tur": argv[1]}
         for parca in argv[2:]:
             anahtar, _, deger = parca.partition("=")
             olay[anahtar] = _deger(deger)
         yaz(olay)
         return 0
-    if argv[0] == "puan" and len(argv) >= 3:
+    if argv[0] == "score" and len(argv) >= 3:
         return puan_isle(argv[1:])
     print(__doc__, file=sys.stderr)
     return 2

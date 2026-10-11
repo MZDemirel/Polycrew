@@ -1,33 +1,35 @@
 #!/usr/bin/env bash
-# Dış işçi: bir görevi Codex ya da agy (Antigravity) ile etkileşimsiz çalıştırır, her şeyi kaydeder.
+# External worker: runs a task non-interactively with Codex or agy (Antigravity) and logs everything.
 #
-#   dis-ajan.sh <codex|agy> <model> <efor|-> <okur|yazar> <klasör> <görev.md> [resim ...]
-#   dis-ajan.sh kota        (Codex ve agy'nin güncel kotası)
+#   external-agent.sh <codex|agy> <model> <effort|-> <read|write> <dir> <task.md> [image ...]
+#   external-agent.sh quota        (current quota of Codex and agy)
 #
-# okur : codex -s read-only, agy --mode plan. Dosya değiştirmez.
-# yazar: codex -s workspace-write, agy --mode accept-edits. Yalnız bir git worktree'sinde;
-#        ana çalışma ağacında reddedilir. Push, --dangerously-* yok.
-# Kayıt: $DIS_AJAN_KAYIT (varsayılan ~/.cache/polycrew/dis-ajan)/<zaman>-<araç>-<model>/
-#   gorev.md, komut.txt, ham.jsonl|ham.json, hata.txt, rapor.md (son mesaj), sure_sn,
-#   kullanim.json (token), cikis_kodu. Son satırda kayıt klasörünün yolunu yazar.
-# DIS_AJAN_EK_DIZIN="a:b": codex'in yazar kipte yazabileceği ek klasörler (ör. ~/.cache/uv).
-# DIS_AJAN_ZAMAN_ASIMI: saniye (varsayılan 3600).
+# read : codex -s read-only, agy --mode plan. Changes no files.
+# write: codex -s workspace-write, agy --mode accept-edits. Only in a git worktree;
+#        refused in the main working tree. No push, no --dangerously-*.
+# Log: $EXTERNAL_AGENT_LOG (default ~/.cache/polycrew/dis-ajan)/<time>-<tool>-<model>/
+#   gorev.md, komut.txt, ham.jsonl|ham.json, hata.txt, rapor.md (last message), sure_sn,
+#   kullanim.json (tokens), cikis_kodu. The last output line is the log folder's path.
+# EXTERNAL_AGENT_EXTRA_DIRS="a:b": extra folders codex may write to in write mode (e.g. ~/.cache/uv).
+# EXTERNAL_AGENT_TIMEOUT: seconds (default 3600).
+# The old variable names (DIS_AJAN_KAYIT, DIS_AJAN_EK_DIZIN, DIS_AJAN_ZAMAN_ASIMI, POLYCREW_OLAY,
+# POLYCREW_OTURUM) are still read as a fallback. Log file names and event fields stay Turkish (0007).
 set -uo pipefail
 
 # Olay günlüğü (polycrew izle, karar 0003). Betiğin kopyası eklentinin dışında çalışıyorsa
-# (paralel koşu) olay.py POLYCREW_OLAY'dan, sonra kurulu eklentiden bulunur; bulunmazsa atlanır.
-OLAY="${POLYCREW_OLAY:-$(dirname "$(realpath "$0")")/../../hooks/olay.py}"
+# (paralel koşu) events.py POLYCREW_EVENTS_SCRIPT'ten, sonra kurulu eklentiden bulunur; bulunmazsa atlanır.
+OLAY="${POLYCREW_EVENTS_SCRIPT:-${POLYCREW_OLAY:-$(dirname "$(realpath "$0")")/../../hooks/events.py}}"
 if [ ! -f "$OLAY" ]; then
-  for aday in "${CLAUDE_PLUGIN_ROOT:-/yok}/hooks/olay.py" "$HOME"/.claude/plugins/cache/polycrew/polycrew/*/hooks/olay.py; do
+  for aday in "${CLAUDE_PLUGIN_ROOT:-/yok}/hooks/events.py" "$HOME"/.claude/plugins/cache/polycrew/polycrew/*/hooks/events.py; do
     [ -f "$aday" ] && OLAY=$aday
   done
 fi
-olay() { [ -f "$OLAY" ] && python3 "$OLAY" yaz "$@" 2>/dev/null; return 0; }
+olay() { [ -f "$OLAY" ] && python3 "$OLAY" write "$@" 2>/dev/null; return 0; }
 export OLAY
 
-# dis-ajan.sh kota: iki sağlayıcının güncel kotası (0002). Codex: son oturum kaydındaki
+# external-agent.sh quota: iki sağlayıcının güncel kotası (0002). Codex: son oturum kaydındaki
 # rate_limits (zamanıyla); agy: /quota.
-if [ "${1:-}" = kota ]; then
+if [ "${1:-}" = quota ]; then
   KOTA_DOSYA=$(mktemp); export KOTA_DOSYA
   python3 - <<'PY'
 import glob, json, os, datetime
@@ -45,16 +47,17 @@ for f in reversed(fs[-20:]):
     if son:
         break
 kovalar = []
+ETIKET = {"5 saat": "5 hours", "hafta": "week"}  # günlüğe Türkçe ad yazılır (şema), ekrana İngilizce
 if son:
     ts, rl = son
     for k, ad in (("primary", "5 saat"), ("secondary", "hafta")):
         b = rl.get(k) or {}
         r = datetime.datetime.fromtimestamp(b.get("resets_at", 0)).strftime("%m-%d %H:%M")
-        print(f"codex   {ad:7s} kullanılan %{b.get('used_percent')}  yenilenir {r}  (ölçüm {ts})")
+        print(f"codex   {ETIKET[ad]:7s} used {b.get('used_percent')}%  resets {r}  (measured {ts})")
         kovalar.append({"saglayici": "codex", "grup": "Codex", "pencere": ad,
                         "kullanilan": b.get("used_percent"), "yenilenir": r, "olcum": ts})
 else:
-    print("codex   kayıt yok")
+    print("codex   no record")
 json.dump(kovalar, open(os.environ["KOTA_DOSYA"], "w"))
 PY
   j=$(cd /tmp && timeout 60 agy -p "/quota" --output-format json < /dev/null 2>/dev/null)
@@ -65,7 +68,7 @@ try:
     d = json.loads(sys.argv[1])
     gruplar = d["command"]["data"]["groups"]
 except (ValueError, KeyError, TypeError):
-    print("agy     okunamadı")
+    print("agy     could not be read")
     gruplar = []
 # agy'nin ham adları sayfada Codex'inkilerle aynı dilde görünsün.
 GRUP = {"Gemini Models": "agy: Gemini", "Claude and GPT models": "agy: Claude/GPT"}
@@ -75,7 +78,8 @@ for g in gruplar:
     for b in g["buckets"]:
         kalan = round(100 * b["remaining_fraction"])
         pencere = PENCERE.get(b["window"], b["window"])
-        print(f"agy     {grup[:22]:22s} {pencere:7s} kalan %{kalan}  yenilenir {b['reset_time'][5:16]}")
+        etiket = {"5 saat": "5 hours", "hafta": "week"}.get(pencere, pencere)
+        print(f"agy     {grup[:22]:22s} {etiket:7s} left {kalan}%  resets {b['reset_time'][5:16]}")
         kovalar.append({"saglayici": "agy", "grup": grup, "pencere": pencere,
                         "kullanilan": 100 - kalan, "yenilenir": b["reset_time"][5:16]})
 json.dump(kovalar, open(os.environ["KOTA_DOSYA"], "w"))
@@ -86,30 +90,31 @@ PY
 fi
 
 if [ $# -lt 6 ]; then
-  sed -n '2,10p' "$0" >&2
+  sed -n '2,9p' "$0" >&2
   exit 2
 fi
 arac=$1 model=$2 efor=$3 kip=$4
 klasor=$(realpath "$5") gorev=$(realpath "$6")
 shift 6
 resimler=("$@")
-zaman_asimi=${DIS_AJAN_ZAMAN_ASIMI:-3600}
+zaman_asimi=${EXTERNAL_AGENT_TIMEOUT:-${DIS_AJAN_ZAMAN_ASIMI:-3600}}
 
-case $arac in codex|agy) ;; *) echo "araç codex ya da agy olmalı: $arac" >&2; exit 2 ;; esac
-case $kip in okur|yazar) ;; *) echo "kip okur ya da yazar olmalı: $kip" >&2; exit 2 ;; esac
-[ -d "$klasor" ] || { echo "klasör yok: $klasor" >&2; exit 2; }
-[ -f "$gorev" ] || { echo "görev dosyası yok: $gorev" >&2; exit 2; }
+case $arac in codex|agy) ;; *) echo "tool must be codex or agy: $arac" >&2; exit 2 ;; esac
+# Günlükteki kip değerleri eski adlarıyla kalır (şema); komut satırı read|write alır.
+case $kip in read) kip=okur ;; write) kip=yazar ;; *) echo "mode must be read or write: $kip" >&2; exit 2 ;; esac
+[ -d "$klasor" ] || { echo "no such folder: $klasor" >&2; exit 2; }
+[ -f "$gorev" ] || { echo "no such task file: $gorev" >&2; exit 2; }
 
 if [ "$kip" = yazar ]; then
-  gd=$(git -C "$klasor" rev-parse --absolute-git-dir 2>/dev/null) || { echo "yazar kipi bir git worktree'si ister: $klasor" >&2; exit 3; }
+  gd=$(git -C "$klasor" rev-parse --absolute-git-dir 2>/dev/null) || { echo "write mode needs a git worktree: $klasor" >&2; exit 3; }
   cd_=$(git -C "$klasor" rev-parse --path-format=absolute --git-common-dir)
   if [ "$gd" = "$cd_" ]; then
-    echo "yazar kipi ana çalışma ağacında çalışmaz; önce: git worktree add .claude/worktrees/dis-<ad> -b dis-<ad> main" >&2
+    echo "write mode does not run in the main working tree; first: git worktree add .claude/worktrees/ext-<name> -b ext-<name> main" >&2
     exit 3
   fi
 fi
 
-kok=${DIS_AJAN_KAYIT:-$HOME/.cache/polycrew/dis-ajan}
+kok=${EXTERNAL_AGENT_LOG:-${DIS_AJAN_KAYIT:-$HOME/.cache/polycrew/dis-ajan}}
 # Her işçiye giden ortak kurallar (0002: Codex kum havuzunda kancayı atlatmayı seçebiliyor).
 # rules/git.md'nin kısa kopyası (0006): dış işçi o dosyayı okuyamaz; biri değişince öbürü de değişir.
 kural="Rules: do not git push. Never bypass a commit hook: no --no-verify, no changing core.hooksPath, no disabling the hook; if a hook fails, do not commit and report why. Do not add a Co-Authored-By line or any other tool signature to commit messages. Do not delete branches. Work only in this folder and on your own branch."
@@ -118,9 +123,9 @@ mkdir -p "$kayit"
 cp "$gorev" "$kayit/gorev.md"
 
 baslangic=$(date +%s.%N)
-baslik=$(grep -m1 -E '^#' "$gorev" | sed 's/^#* *//; s/^Görev: *//')
+baslik=$(grep -m1 -E '^#' "$gorev" | sed 's/^#* *//; s/^Görev: *//; s/^Task: *//')
 olay isci_basladi "id=$(basename "$kayit")" "kaynak=$arac" "model=$model" "efor=$efor" "kip=$kip" \
-  "klasor=$klasor" "aciklama=${baslik:-$(basename "$gorev")}" "kayit=$kayit" "oturum=${POLYCREW_OTURUM:-}"
+  "klasor=$klasor" "aciklama=${baslik:-$(basename "$gorev")}" "kayit=$kayit" "oturum=${POLYCREW_SESSION:-${POLYCREW_OTURUM:-}}"
 if [ "$arac" = codex ]; then
   sandbox=read-only
   [ "$kip" = yazar ] && sandbox=workspace-write
@@ -131,9 +136,9 @@ if [ "$arac" = codex ]; then
     # Worktree'nin git verisi ana deponun .git'inde: commit için yalnız gereken yerler (0002).
     for e in "$gd" "$cd_/objects" "$cd_/refs/heads" "$cd_/logs"; do [ -d "$e" ] && komut+=(--add-dir "$e"); done
   fi
-  DIS_AJAN_EK_DIZIN=${DIS_AJAN_EK_DIZIN-$HOME/.cache/uv}
-  if [ "$kip" = yazar ] && [ -n "$DIS_AJAN_EK_DIZIN" ]; then
-    IFS=: read -ra ek <<< "$DIS_AJAN_EK_DIZIN"
+  ek_dizin=${EXTERNAL_AGENT_EXTRA_DIRS-${DIS_AJAN_EK_DIZIN-$HOME/.cache/uv}}
+  if [ "$kip" = yazar ] && [ -n "$ek_dizin" ]; then
+    IFS=: read -ra ek <<< "$ek_dizin"
     for e in "${ek[@]}"; do [ -d "$e" ] && komut+=(--add-dir "$e"); done
   fi
   printf '%q ' "${komut[@]}" > "$kayit/komut.txt"; echo "< gorev.md" >> "$kayit/komut.txt"
@@ -157,15 +162,15 @@ else
   [ "$kip" = yazar ] && mode=accept-edits
   # agy komutları kendi çalışma klasörünü bilmeden boş bir klasörde çalıştırabiliyor (0002):
   # görevin başına klasör satırı eklenir.
-  on="Çalışma klasörü: $klasor. Kabuk komutlarını bu klasörde çalıştır (komut aracının çalışma klasörü alanına bu yolu ver)."
+  on="Working folder: $klasor. Run shell commands in this folder (pass this path as the working directory of the command tool)."
   # İzin listesinde olmayan ilk komut bütün işi çıktısız bitirir (0002): izinli komutlar söylenir.
   izinli=$(python3 -c 'import json,os,re;d=json.load(open(os.path.expanduser("~/.gemini/antigravity-cli/settings.json")));print(", ".join(re.sub(r"^command\((.*)\)$",r"\1",a) for a in d.get("permissions",{}).get("allow",[]) if a.startswith("command(")))' 2>/dev/null)
-  [ -n "$izinli" ] && on="$on Yalnız şu kabuk komutları izinli: $izinli. Başka bir komut (find, sed, python...) ve ';', '&&', '|' ile birleştirilmiş komutlar işi durdurur; her komutu tek başına çalıştır; dosya bulmak için 'rg --files', aramak için 'rg' ya da 'grep', okumak için dosya okuma aracını kullan."
-  for r in "${resimler[@]}"; do on="$on Bakılacak resim: $(realpath "$r")."; done
+  [ -n "$izinli" ] && on="$on Only these shell commands are allowed: $izinli. Any other command (find, sed, python...) and commands chained with ';', '&&' or '|' stop the whole job; run each command on its own; use 'rg --files' to find files, 'rg' or 'grep' to search, and the file reading tool to read."
+  for r in "${resimler[@]}"; do on="$on Image to look at: $(realpath "$r")."; done
   istem="$on $kural"$'\n\n'"$(cat "$gorev")"
   komut=(agy -p "$istem" --model "$model" --mode "$mode" --output-format json --print-timeout "${zaman_asimi}s")
   [ "$efor" != - ] && komut+=(--effort "$efor")
-  printf '%q ' agy -p "<gorev.md + klasör satırı>" --model "$model" --mode "$mode" --output-format json > "$kayit/komut.txt"
+  printf '%q ' agy -p "<gorev.md + folder line>" --model "$model" --mode "$mode" --output-format json > "$kayit/komut.txt"
   (cd "$klasor" && timeout "$((zaman_asimi + 60))" "${komut[@]}" < /dev/null > "$kayit/ham.json" 2> "$kayit/hata.txt")
   kod=$?
   python3 - "$kayit" <<'EOF'

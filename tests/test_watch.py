@@ -13,14 +13,14 @@ from unittest.mock import patch
 KOK = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(KOK / "skills" / "watch"))
 sys.path.insert(0, str(KOK / "hooks"))
-import izle  # noqa: E402
-import olay  # noqa: E402
+import watch as izle  # noqa: E402
+import events as olay  # noqa: E402
 
 
 def calistir(argv, stdin=None, gunluk=None):
-    env = {**os.environ, "POLYCREW_OLAYLAR": str(gunluk)}
+    env = {**os.environ, "POLYCREW_EVENTS": str(gunluk)}
     return subprocess.run(
-        [sys.executable, str(KOK / "hooks" / "olay.py"), *argv],
+        [sys.executable, str(KOK / "hooks" / "events.py"), *argv],
         input=stdin, capture_output=True, text=True, env=env, check=False,
     )
 
@@ -70,8 +70,8 @@ class Kanca(unittest.TestCase):
         self.assertEqual(isci["ust_kaynak"], "ham.agent_id")
 
     def test_command_writes_events_and_scores(self):
-        calistir(["yaz", "isci_basladi", "id=k1", "kaynak=codex", "cikis=0"], gunluk=self.gunluk)
-        calistir(["puan", "k1", "4", "iyi", "iş"], gunluk=self.gunluk)
+        calistir(["write", "isci_basladi", "id=k1", "kaynak=codex", "cikis=0"], gunluk=self.gunluk)
+        calistir(["score", "k1", "4", "iyi", "iş"], gunluk=self.gunluk)
         e1, e2 = izle.oku(self.gunluk)
         self.assertEqual((e1["kaynak"], e1["cikis"]), ("codex", 0))
         self.assertEqual((e2["tur"], e2["not"], e2["gerekce"]), ("puan", 4, "iyi iş"))
@@ -240,20 +240,20 @@ class ClaudeKota(unittest.TestCase):
         self.d.cleanup()
 
     def calistir(self, args):
-        return subprocess.run([sys.executable, str(KOK / "skills/watch/claude-kota.py"), *args],
-                              env={**os.environ, "POLYCREW_OLAYLAR": str(self.g)},
+        return subprocess.run([sys.executable, str(KOK / "skills/watch/claude-quota.py"), *args],
+                              env={**os.environ, "POLYCREW_EVENTS": str(self.g)},
                               capture_output=True, text=True)
 
     def args(self, bes="80", hafta="70"):
         reset = (datetime.now().astimezone() + timedelta(hours=2)).isoformat()
-        return ["--bes-saat", bes, "--bes-saat-yenilenir", reset,
-                "--hafta", hafta, "--hafta-yenilenir", reset]
+        return ["--five-hour", bes, "--five-hour-resets", reset,
+                "--week", hafta, "--week-resets", reset]
 
     def test_writes_claude_event_and_read_only_summary(self):
-        args = self.args() + ["--plan", "Max", "--baglam", "42", "--baglam-token", "84000"]
+        args = self.args() + ["--plan", "Max", "--context", "42", "--context-tokens", "84000"]
         r = self.calistir(args)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("Claude işlerini dış işçiye kaydır", r.stdout)
+        self.assertIn("shift Claude's jobs to external workers", r.stdout)
         [e] = izle.oku(self.g)
         self.assertEqual((e["tur"], e["kaynak"]), ("kota", "claude"))
         self.assertEqual([k["pencere"] for k in e["kovalar"]], ["5 saat", "hafta", "bağlam"])
@@ -265,21 +265,21 @@ class ClaudeKota(unittest.TestCase):
         self.assertEqual(e["kovalar"][2]["token"], 84000)
         once = self.g.read_bytes()
         r = self.calistir([])
-        self.assertIn("yaş", r.stdout)
+        self.assertIn("age", r.stdout)
         self.assertIn("84000 token", r.stdout)
         self.assertEqual(self.g.read_bytes(), once)
 
     def test_empty_read_and_thresholds(self):
-        self.assertIn("Claude: ölçüm yok", self.calistir([]).stdout)
+        self.assertIn("Claude: no reading yet", self.calistir([]).stdout)
         self.assertFalse(self.g.exists())
         for bes, hafta, uyari in (("79", "69", False), ("80", "0", True), ("0", "70", True)):
             r = self.calistir(self.args(bes, hafta))
             self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertEqual("Claude işlerini dış işçiye kaydır" in r.stdout, uyari)
+            self.assertEqual("shift Claude's jobs to external workers" in r.stdout, uyari)
 
     def test_iso_reset_is_converted_to_local_time(self):
         iso = "2026-10-12T10:30:00Z"
-        r = self.calistir(self.args("5", "10") + ["--bes-saat-yenilenir", iso])
+        r = self.calistir(self.args("5", "10") + ["--five-hour-resets", iso])
         self.assertEqual(r.returncode, 0, r.stderr)
         [e] = izle.oku(self.g)
         beklenen = datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone().strftime("%m-%d %H:%M")
@@ -287,10 +287,10 @@ class ClaudeKota(unittest.TestCase):
 
     def test_invalid_arguments_never_write(self):
         for args in (self.args("101"), self.args("nan"), self.args("-1"),
-                     self.args() + ["--baglam-token", "4"],
-                     self.args() + ["--baglam", "10", "--baglam-token", "-1"],
-                     ["--bes-saat", "10"],
-                     self.args() + ["--hafta-yenilenir", "2026-10-07"]):
+                     self.args() + ["--context-tokens", "4"],
+                     self.args() + ["--context", "10", "--context-tokens", "-1"],
+                     ["--five-hour", "10"],
+                     self.args() + ["--week-resets", "2026-10-07"]):
             with self.subTest(args=args):
                 self.assertEqual(self.calistir(args).returncode, 2)
                 self.assertFalse(self.g.exists())
@@ -301,7 +301,7 @@ class Rapor(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             g = Path(d) / "o.jsonl"
             cikti = Path(d) / "rapor.html"
-            with patch.dict(os.environ, {"POLYCREW_OLAYLAR": str(g)}):
+            with patch.dict(os.environ, {"POLYCREW_EVENTS": str(g)}):
                 olay.yaz({"tur": "agent_basladi", "id": "lider", "rol": "lider"})
                 olay.yaz({"tur": "agent_basladi", "id": "isci", "rol": "isci",
                           "ham": {"parent_agent_id": "lider"}})
@@ -310,8 +310,8 @@ class Rapor(unittest.TestCase):
                 olay.yaz({"tur": "kota", "kovalar": [{"saglayici": "codex", "grup": "Codex",
                            "pencere": "hafta", "kullanilan": 10}]})
                 once = g.read_bytes()
-                r = subprocess.run([sys.executable, str(KOK / "skills/watch/izle.py"), "rapor",
-                                    "--saat", "5", "--dil", "tr", "--cikti", str(cikti)],
+                r = subprocess.run([sys.executable, str(KOK / "skills/watch/watch.py"), "report",
+                                    "--hours", "5", "--lang", "tr", "--out", str(cikti)],
                                    capture_output=True, text=True)
                 self.assertEqual(r.returncode, 0, r.stderr)
                 self.assertEqual(g.read_bytes(), once)
@@ -329,12 +329,12 @@ class Rapor(unittest.TestCase):
             kayit.mkdir()
             (kayit / "rapor.md").write_text("Bulgular </script> bitti")
             g = Path(d) / "o.jsonl"
-            os.environ["POLYCREW_OLAYLAR"] = str(g)
+            os.environ["POLYCREW_EVENTS"] = str(g)
             try:
                 olay.yaz({"tur": "isci_basladi", "id": "k1", "kaynak": "codex", "kayit": str(kayit)})
                 html = izle.rapor_html(None)
             finally:
-                del os.environ["POLYCREW_OLAYLAR"]
+                del os.environ["POLYCREW_EVENTS"]
         self.assertNotIn("/*VERI*/null", html)
         self.assertIn("Bulgular <\\/script> bitti", html)
         self.assertEqual(html.count("</script>"), 1)

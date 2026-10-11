@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""polycrew izle: takımın agent'larını ve dış işçilerini canlı gösteren yerel sayfa (karar 0003).
+"""polycrew watch: takımın agent'larını ve dış işçilerini canlı gösteren yerel sayfa (karar 0003).
 
-    izle.py [--port 8770]                       canlı sayfa: http://localhost:8770
-    izle.py rapor [--saat 24] [--dil en|tr] --cikti x.html
+    watch.py [--port 8770]                      canlı sayfa: http://localhost:8770
+    watch.py report [--hours 24] [--lang en|tr] --out x.html
                                                 durağan rapor (veri gömülü; Artifact olarak yayımlanır)
 
 Sayfa İngilizce ve Türkçedir: tarayıcı diline göre açılır, üstteki EN/TR ile ya da ``?lang=`` ile
 değişir.
 
-Olaylar ``hooks/olay.py``'nin yazdığı günlükten okunur. Yalnız standart kütüphane.
+Olaylar ``hooks/events.py``'nin yazdığı günlükten okunur. Yalnız standart kütüphane.
 """
 
 from __future__ import annotations
@@ -26,10 +26,10 @@ from urllib.parse import parse_qs, urlparse
 
 KOK = Path(__file__).resolve().parent
 sys.path.insert(0, str(KOK.parent.parent / "hooks"))
-import olay  # noqa: E402
+import events as olay  # noqa: E402
 
-SAYFA = KOK / "sayfa.html"
-DIS_AJAN = KOK.parent / "external-agent" / "dis-ajan.sh"
+SAYFA = KOK / "page.html"
+DIS_AJAN = KOK.parent / "external-agent" / "external-agent.sh"
 ESLESME = 180.0  # saniye: bir SubagentStart, bu kadar önceki aynı roldeki başlatmaya bağlanır
 ESKI = 6 * 3600.0  # saniye: bitişi gelmeyen iş bu kadar sonra "bilinmiyor"
 KOTA_ONBELLEK = 60.0
@@ -96,6 +96,8 @@ def oku(yol: Path | None = None) -> list[dict]:
         except ValueError:
             continue
         if isinstance(e, dict) and "tur" in e:
+            if e.get("rol"):
+                e["rol"] = olay.rol_adi(e["rol"])  # 0.5.0 öncesinin rol adları (0007)
             out.append(e)
     return out
 
@@ -243,7 +245,7 @@ def birlestir(olaylar: list[dict], simdi: float | None = None) -> dict:
             kota_ts = ts
             for k in e.get("kovalar") or []:
                 if isinstance(k, dict):
-                    # dis-ajan.sh'nin eski sürümü agy'nin ham adlarını yazıyordu; aynı kova.
+                    # external-agent.sh'nin eski sürümü agy'nin ham adlarını yazıyordu; aynı kova.
                     k = {**k, "grup": ESKI_GRUP.get(k.get("grup"), k.get("grup")),
                          "pencere": ESKI_PENCERE.get(k.get("pencere"), k.get("pencere"))}
                     anahtar = (k.get("saglayici"), k.get("grup"), k.get("pencere"))
@@ -377,14 +379,14 @@ class _Kota:
         self.kilit = threading.Lock()
 
     def tazele(self) -> None:
-        """``dis-ajan.sh kota`` (o da bir ``kota`` olayı yazar); KOTA_ONBELLEK'te bir kez."""
+        """``external-agent.sh quota`` (o da bir ``kota`` olayı yazar); KOTA_ONBELLEK'te bir kez."""
         with self.kilit:
             if time.time() - self.zaman < KOTA_ONBELLEK or not DIS_AJAN.exists():
                 return
             self.zaman = time.time()
         threading.Thread(
             target=lambda: subprocess.run(
-                ["bash", str(DIS_AJAN), "kota"], capture_output=True, timeout=120, check=False
+                ["bash", str(DIS_AJAN), "quota"], capture_output=True, timeout=120, check=False
             ),
             daemon=True,
         ).start()
@@ -443,13 +445,13 @@ def rapor_html(saat: float | None, dil: str | None = None) -> str:
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("komut", nargs="?", choices=["rapor"])
+    ap.add_argument("komut", nargs="?", choices=["report"])
     ap.add_argument("--port", type=int, default=8770)
-    ap.add_argument("--saat", type=float, default=24.0)
-    ap.add_argument("--cikti", type=Path)
-    ap.add_argument("--dil", choices=["en", "tr"], help="raporun dili (varsayılan: okuyanın tarayıcısı)")
+    ap.add_argument("--hours", dest="saat", type=float, default=24.0)
+    ap.add_argument("--out", dest="cikti", type=Path)
+    ap.add_argument("--lang", dest="dil", choices=["en", "tr"], help="report language (default: the reader's browser)")
     a = ap.parse_args(argv)
-    if a.komut == "rapor":
+    if a.komut == "report":
         html = rapor_html(a.saat, a.dil)
         if a.cikti:
             a.cikti.write_text(html, encoding="utf-8")
@@ -458,7 +460,7 @@ def main(argv: list[str]) -> int:
             sys.stdout.write(html)
         return 0
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), Sunucu)
-    print(f"polycrew izle: http://localhost:{a.port}  (günlük: {olay.dosya()})", flush=True)
+    print(f"polycrew watch: http://localhost:{a.port}  (log: {olay.dosya()})", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

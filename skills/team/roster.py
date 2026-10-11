@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""polycrew dinamik kadro ve puan öneri aracı.
+"""polycrew dynamic roster: worker suggestions from the score ledger.
 
-Kullanım:
-  kadro.py oneri [--rol R] [--alan A] [--zorluk Z] [--tohumsuz]
-  kadro.py ozet [--gun N] [--tohumsuz] [--simdi TS]
-  kadro.py ekle <id> <not> [gerekçe] [--isci ...] [--rol ...] ...
+Usage:
+  roster.py suggest [--role R] [--field F] [--difficulty E|M|H] [--no-seed]
+  roster.py summary [--days N] [--no-seed] [--now TS]
+  roster.py add <id> <1-5> [reason] [--worker ...] [--role ...] ...
+
+Records written before 0.5.0 (Turkish role, field and difficulty values) are mapped to the new
+names when read; the files themselves are not changed.
 """
 
 from __future__ import annotations
@@ -20,7 +23,7 @@ from pathlib import Path
 # hooks modülünü içe aktarabilmek için ekle
 KOK = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(KOK / "hooks"))
-import olay  # noqa: E402
+import events as olay  # noqa: E402
 
 
 def tohum_dosyasi() -> Path:
@@ -42,7 +45,7 @@ def kayitlari_oku(tohumsuz: bool = False) -> list[dict]:
                     try:
                         k = json.loads(satir)
                         if isinstance(k, dict) and "isci" in k and "not" in k:
-                            kayitlar.append(k)
+                            kayitlar.append(olay.kayit_adlari(k))
                     except Exception:
                         continue
 
@@ -57,7 +60,7 @@ def kayitlari_oku(tohumsuz: bool = False) -> list[dict]:
                 try:
                     k = json.loads(satir)
                     if isinstance(k, dict) and "isci" in k and "not" in k:
-                        kayitlar.append(k)
+                        kayitlar.append(olay.kayit_adlari(k))
                 except Exception:
                     continue
 
@@ -140,7 +143,7 @@ def isci_istatistik(kayitlar: list[dict]) -> list[dict]:
             "ort_kota": ort_kota,
             "ort_sure": ort_sure,
             "son_ts": son_ts,
-            "durum": "veri az" if n < 3 else "",
+            "durum": "little data" if n < 3 else "",
         })
 
     sonuclar.sort(key=lambda x: (x["duzeltilmis"], x["n"], x["ortalama"]), reverse=True)
@@ -161,24 +164,23 @@ def format_kota(kota: float | None) -> str:
     if kota is None:
         return "—"
     if kota.is_integer():
-        return f"%{int(kota)}"
-    return f"%{kota:.1f}".replace(".", ",")
+        return f"{int(kota)}%"
+    return f"{kota:.1f}%"
 
 
 def format_sure(sure: float | None) -> str:
     if sure is None:
         return "—"
-    return f"{int(round(sure))} sn"
+    return f"{int(round(sure))} s"
 
 
 def format_sayi(val: float, basamak: int = 1) -> str:
-    s = f"{val:.{basamak}f}"
-    return s.replace(".", ",")
+    return f"{val:.{basamak}f}"
 
 
 def tablo_olustur_filtreli(istatistikler: list[dict]) -> str:
     satirlar = [
-        "| İşçi | n | Ortalama | Düzeltilmiş Puan | Ort. Kota | Ort. Süre | Son Not Tarihi | Durum |",
+        "| Worker | n | Mean | Adjusted score | Avg quota | Avg duration | Last scored | Status |",
         "|---|---|---|---|---|---|---|---|",
     ]
     for i in istatistikler:
@@ -208,12 +210,12 @@ def tablo_olustur_filtresiz(kayitlar: list[dict]) -> str:
             grup_listesi.append((rol, alan, en_iyi))
 
     if not grup_listesi:
-        return "Puan kaydı bulunamadı."
+        return "No score records found."
 
     grup_listesi.sort(key=lambda x: (x[0], x[1]))
 
     satirlar = [
-        "| Rol | Alan | En İyi İşçi | Düzeltilmiş Puan | n | Ortalama | Ort. Kota | Ort. Süre | Son Not Tarihi | Durum |",
+        "| Role | Field | Best worker | Adjusted score | n | Mean | Avg quota | Avg duration | Last scored | Status |",
         "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for rol, alan, i in grup_listesi:
@@ -226,23 +228,26 @@ def tablo_olustur_filtresiz(kayitlar: list[dict]) -> str:
 
 
 def cmd_oneri(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="kadro.py oneri", description="Kadro önerisi tablosu")
-    parser.add_argument("--rol", type=str, default=None, help="Rol filtresi")
-    parser.add_argument("--alan", type=str, default=None, help="Alan filtresi")
-    parser.add_argument("--zorluk", type=str, default=None, help="Zorluk filtresi (K, O, Z)")
-    parser.add_argument("--tohumsuz", action="store_true", help="Tohum verisini dahil etme")
+    parser = argparse.ArgumentParser(prog="roster.py suggest", description="Roster suggestion table")
+    parser.add_argument("--role", dest="rol", type=str, default=None, help="role filter")
+    parser.add_argument("--field", dest="alan", type=str, default=None, help="field filter")
+    parser.add_argument("--difficulty", dest="zorluk", type=str, default=None, help="difficulty filter (E, M, H)")
+    parser.add_argument("--no-seed", dest="tohumsuz", action="store_true", help="leave out the seed data")
     args = parser.parse_args(argv)
 
+    # Eski adla verilen filtre de yeni ada çevrilir (0007).
+    f = olay.kayit_adlari({"rol": args.rol, "alan": args.alan, "zorluk": args.zorluk})
+    args.rol, args.alan, args.zorluk = f["rol"], f["alan"], f["zorluk"]
     kayitlar = kayitlari_oku(tohumsuz=args.tohumsuz)
     if not kayitlar:
-        print("Puan kaydı bulunamadı.")
+        print("No score records found.")
         return 0
 
     filtre_var = any([args.rol is not None, args.alan is not None, args.zorluk is not None])
     if filtre_var:
         uygun_kayitlar = [k for k in kayitlar if kayit_filtrele(k, args.rol, args.alan, args.zorluk)]
         if not uygun_kayitlar:
-            print("Filtreye uyan puan kaydı bulunamadı.")
+            print("No score records match the filter.")
             return 0
         istatistikler = isci_istatistik(uygun_kayitlar)
         print(tablo_olustur_filtreli(istatistikler))
@@ -269,7 +274,7 @@ def tablo_olustur_ozet(
     simdi: float | None = None,
 ) -> str:
     if not kayitlar:
-        return "Kayıt yok."
+        return "No records."
 
     if simdi is None:
         simdi = time.time()
@@ -293,7 +298,7 @@ def tablo_olustur_ozet(
     sirali_ciftler = sorted(tum_gruplar.keys(), key=lambda x: (x[0], x[1]))
 
     satirlar = [
-        "| Rol | Alan | Kadro | Puan | n | Yedek | Yedek puanı | Dayanak |",
+        "| Role | Field | Roster | Score | n | Backup | Backup score | Basis |",
         "|---|---|---|---|---|---|---|---|",
     ]
 
@@ -307,7 +312,7 @@ def tablo_olustur_ozet(
             kadro_isci = kadro["isci"]
             puan = format_sayi(kadro["duzeltilmis"], 2)
             n = kadro["n"]
-            dayanak = "pencere, veri az" if n < 3 else "pencere"
+            dayanak = "window, little data" if n < 3 else "window"
 
             if len(p_ist) >= 2:
                 yedek = p_ist[1]
@@ -326,7 +331,7 @@ def tablo_olustur_ozet(
             kadro_isci = kadro["isci"]
             puan = format_sayi(kadro["duzeltilmis"], 2)
             n = kadro["n"]
-            dayanak = "eski"
+            dayanak = "stale"
 
             if len(t_ist) >= 2:
                 yedek = t_ist[1]
@@ -341,20 +346,20 @@ def tablo_olustur_ozet(
         )
 
     if len(satirlar) <= 2:
-        return "Kayıt yok."
+        return "No records."
 
     dt = datetime.fromtimestamp(simdi, tz=timezone.utc)
     tarih_str = dt.strftime("%Y-%m-%d")
-    baslik = f"Kadro özeti: son {gun} gün, {k_sayisi} kayıt (üretildi: {tarih_str})"
+    baslik = f"Roster summary: last {gun} days, {k_sayisi} records (generated: {tarih_str})"
     tablo = "\n".join(satirlar)
     return f"{baslik}\n\n{tablo}"
 
 
 def cmd_ozet(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="kadro.py ozet", description="Kadro özeti tablosu")
-    parser.add_argument("--gun", type=int, default=7, help="Son N günün kayıtları (varsayılan: 7)")
-    parser.add_argument("--tohumsuz", action="store_true", help="Tohum verisini dahil etme")
-    parser.add_argument("--simdi", type=float, default=None, help="Şimdiki zaman (epoch saniye, testler için)")
+    parser = argparse.ArgumentParser(prog="roster.py summary", description="Roster summary table")
+    parser.add_argument("--days", dest="gun", type=int, default=7, help="records of the last N days (default: 7)")
+    parser.add_argument("--no-seed", dest="tohumsuz", action="store_true", help="leave out the seed data")
+    parser.add_argument("--now", dest="simdi", type=float, default=None, help="current time (epoch seconds, for tests)")
     args = parser.parse_args(argv)
 
     kayitlar = kayitlari_oku(tohumsuz=args.tohumsuz)
@@ -369,14 +374,14 @@ def main(argv: list[str]) -> int:
         return 2
 
     cmd = argv[0]
-    if cmd == "oneri":
+    if cmd == "suggest":
         return cmd_oneri(argv[1:])
-    if cmd == "ozet":
+    if cmd == "summary":
         return cmd_ozet(argv[1:])
-    if cmd in ("ekle", "puan"):
+    if cmd in ("add", "score"):
         return olay.puan_isle(argv[1:])
 
-    print(f"Bilinmeyen komut: {cmd}\n{__doc__}", file=sys.stderr)
+    print(f"Unknown command: {cmd}\n{__doc__}", file=sys.stderr)
     return 2
 
 

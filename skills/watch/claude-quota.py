@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PM'in masaüstü aracından okuduğu Claude kotasını günlüğe aktar; argümansız son ölçümü göster."""
+"""Write the Claude quota the PM read from the desktop tool to the event log; without arguments show the last reading."""
 
 from __future__ import annotations
 
@@ -8,13 +8,13 @@ import math
 import sys
 from datetime import datetime
 
-import izle
+import watch as izle
 
 
 def yuzde(metin: str) -> float:
     sayi = float(metin)
     if not math.isfinite(sayi) or not 0 <= sayi <= 100:
-        raise argparse.ArgumentTypeError("yüzde 0–100 arasında olmalı")
+        raise argparse.ArgumentTypeError("percentage must be between 0 and 100")
     return sayi
 
 
@@ -24,19 +24,23 @@ def iso(metin: str) -> datetime:
             raise ValueError
         return datetime.fromisoformat(metin.replace("Z", "+00:00")).astimezone()
     except ValueError:
-        raise argparse.ArgumentTypeError("yenilenme zamanı ISO tarih ve saat olmalı") from None
+        raise argparse.ArgumentTypeError("reset time must be an ISO date and time") from None
 
 
 def token(metin: str) -> int:
     sayi = int(metin)
     if sayi < 0:
-        raise argparse.ArgumentTypeError("token sayısı negatif olamaz")
+        raise argparse.ArgumentTypeError("token count cannot be negative")
     return sayi
+
+
+# Günlükteki pencere adları Türkçe kalır (şema, 0007); ekrana İngilizce yazılır.
+ETIKET = {"5 saat": "5 hours", "hafta": "week", "bağlam": "context"}
 
 
 def goster(kovalar: list[dict], simdi: float) -> None:
     if not kovalar:
-        print("Claude: ölçüm yok (PM yazar)")
+        print("Claude: no reading yet (the PM records it)")
         return
     for k in kovalar:
         yas = max(0, int(simdi - k["olcum_ts"]))
@@ -44,14 +48,14 @@ def goster(kovalar: list[dict], simdi: float) -> None:
         if "token" in k:
             ek += f" · {k['token']} token"
         if k.get("yenilenir"):
-            ek += f" · yenilenir {k['yenilenir']}"
+            ek += f" · resets {k['yenilenir']}"
         if k.get("eski"):
-            ek += " · eski ölçüm"
-        print(f"Claude {k['pencere']}: %{k['kullanilan']:g} · ölçüm {k['olcum']} · yaş {yas} sn{ek}")
+            ek += " · stale reading"
+        print(f"Claude {ETIKET.get(k['pencere'], k['pencere'])}: {k['kullanilan']:g}% · measured {k['olcum']} · age {yas} s{ek}")
     if any(k["kullanilan"] >= esik
            for k in kovalar for pencere, esik in (("hafta", 70), ("5 saat", 80))
            if k["pencere"] == pencere):
-        print("Uyarı: Claude işlerini dış işçiye kaydır")
+        print("Warning: shift Claude's jobs to external workers")
 
 
 def main(argv: list[str]) -> int:
@@ -61,16 +65,16 @@ def main(argv: list[str]) -> int:
         goster([k for k in kovalar if k.get("saglayici") == "claude"], veri["simdi"])
         return 0
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--bes-saat", type=yuzde, required=True)
-    ap.add_argument("--bes-saat-yenilenir", type=iso, required=True)
-    ap.add_argument("--hafta", type=yuzde, required=True)
-    ap.add_argument("--hafta-yenilenir", type=iso, required=True)
+    ap.add_argument("--five-hour", dest="bes_saat", type=yuzde, required=True)
+    ap.add_argument("--five-hour-resets", dest="bes_saat_yenilenir", type=iso, required=True)
+    ap.add_argument("--week", dest="hafta", type=yuzde, required=True)
+    ap.add_argument("--week-resets", dest="hafta_yenilenir", type=iso, required=True)
     ap.add_argument("--plan")
-    ap.add_argument("--baglam", type=yuzde)
-    ap.add_argument("--baglam-token", type=token)
+    ap.add_argument("--context", dest="baglam", type=yuzde)
+    ap.add_argument("--context-tokens", dest="baglam_token", type=token)
     args = ap.parse_args(argv)
     if args.baglam_token is not None and args.baglam is None:
-        ap.error("--baglam-token için --baglam da verilmeli")
+        ap.error("--context-tokens also needs --context")
     simdi = datetime.now().astimezone()
     ortak = {"saglayici": "claude", "grup": "Claude", "olcum": simdi.isoformat()}
     if args.plan:

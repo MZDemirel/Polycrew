@@ -11,9 +11,9 @@ ATIF_YAPANLAR = (
     "skills/team/SKILL.md",
     "skills/session-end/SKILL.md",
     "skills/external-agent/SKILL.md",
-    "agents/gelistirici.md",
+    "agents/developer.md",
 )
-DIS_AJAN = "skills/external-agent/dis-ajan.sh"
+DIS_AJAN = "skills/external-agent/external-agent.sh"
 
 
 def oku(yol):
@@ -53,6 +53,49 @@ class KurallarTesti(unittest.TestCase):
         satir = next(s for s in oku(DIS_AJAN).splitlines() if s.startswith("kural="))
         for parca in ("do not git push", "--no-verify", "Co-Authored-By", "Do not delete branches"):
             self.assertIn(parca, satir)
+
+
+ESKI_ADLAR = re.compile(
+    r"oturum-ac|oturum-kapat|proje-kur|/takim|/karar|/izle(?![-\w])|dis-ajan\.sh|(?<![-\w])kadro\.(py|md)|izle\.py|olay\.py|"
+    r"claude-kota|nerede_kaldik|polycrew:(lider|gelistirici|gozden-gecirici|sanatci|tasarimci|arastirmaci)|"
+    r"agents/(lider|gelistirici|gozden-gecirici|sanatci|tasarimci|arastirmaci)\.md"
+)
+
+
+class IngilizceYuzeyTesti(unittest.TestCase):
+    """0007: kullanıcının gördüğü adlar İngilizce; eski ad skill, rol, kural ve kanca metninde kalmaz."""
+
+    def test_skill_ve_rol_adlari(self):
+        skiller = sorted(p.parent.name for p in KOK.glob("skills/*/SKILL.md"))
+        self.assertEqual(skiller, ["decision", "external-agent", "project-setup", "session-end",
+                                   "session-start", "team", "watch"])
+        roller = sorted(p.stem for p in KOK.glob("agents/*.md"))
+        self.assertEqual(roller, ["artist", "designer", "developer", "lead", "researcher", "reviewer"])
+        for p in [*KOK.glob("skills/*/SKILL.md"), *KOK.glob("agents/*.md")]:
+            ad = re.search(r"^name: (.+)$", p.read_text(encoding="utf-8"), re.M).group(1)
+            self.assertEqual(ad, p.parent.name if p.name == "SKILL.md" else p.stem)
+
+    def test_eski_ad_kalmadi(self):
+        dosyalar = [*KOK.glob("skills/*/SKILL.md"), *KOK.glob("skills/team/roster.md"), *KOK.glob("agents/*.md"),
+                    *KOK.glob("rules/*.md"), *KOK.glob("hooks/*.sh"), KOK / "hooks" / "hooks.json", KOK / "README.md"]
+        for dosya in dosyalar:
+            bulunan = ESKI_ADLAR.search(dosya.read_text(encoding="utf-8"))
+            self.assertIsNone(bulunan, f"{dosya.relative_to(KOK)}: {bulunan and bulunan.group(0)}")
+
+    def test_dis_isci_betigi_argumanlari(self):
+        import subprocess
+        betik = str(KOK / "skills/external-agent/external-agent.sh")
+        r = subprocess.run(["bash", betik], capture_output=True, text=True, check=False)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("<read|write>", r.stderr)
+        r = subprocess.run(["bash", betik, "codex", "m", "-", "okur", str(KOK), str(KOK / "README.md")],
+                           capture_output=True, text=True, check=False)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("mode must be read or write", r.stderr)
+        # write kipi ana çalışma ağacını ya da worktree olmayan klasörü reddeder (hiçbir CLI çağrılmaz).
+        r = subprocess.run(["bash", betik, "codex", "m", "-", "write", "/tmp", str(KOK / "README.md")],
+                           capture_output=True, text=True, check=False)
+        self.assertEqual(r.returncode, 3)
 
 
 if __name__ == "__main__":

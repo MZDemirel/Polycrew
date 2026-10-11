@@ -13,18 +13,18 @@ from pathlib import Path
 KOK = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(KOK / "skills" / "team"))
 sys.path.insert(0, str(KOK / "hooks"))
-import kadro  # noqa: E402
-import olay  # noqa: E402
+import roster as kadro  # noqa: E402
+import events as olay  # noqa: E402
 
 
 def calistir_olay(argv: list[str], gunluk: Path | None = None, defter: Path | None = None):
     env = {**os.environ}
     if gunluk:
-        env["POLYCREW_OLAYLAR"] = str(gunluk)
+        env["POLYCREW_EVENTS"] = str(gunluk)
     if defter:
-        env["POLYCREW_PUANLAR"] = str(defter)
+        env["POLYCREW_SCORES"] = str(defter)
     return subprocess.run(
-        [sys.executable, str(KOK / "hooks" / "olay.py"), *argv],
+        [sys.executable, str(KOK / "hooks" / "events.py"), *argv],
         capture_output=True,
         text=True,
         env=env,
@@ -35,11 +35,11 @@ def calistir_olay(argv: list[str], gunluk: Path | None = None, defter: Path | No
 def calistir_kadro(argv: list[str], defter: Path | None = None, gunluk: Path | None = None):
     env = {**os.environ}
     if defter:
-        env["POLYCREW_PUANLAR"] = str(defter)
+        env["POLYCREW_SCORES"] = str(defter)
     if gunluk:
-        env["POLYCREW_OLAYLAR"] = str(gunluk)
+        env["POLYCREW_EVENTS"] = str(gunluk)
     return subprocess.run(
-        [sys.executable, str(KOK / "skills" / "team" / "kadro.py"), *argv],
+        [sys.executable, str(KOK / "skills" / "team" / "roster.py"), *argv],
         capture_output=True,
         text=True,
         env=env,
@@ -57,7 +57,7 @@ class KadroVePuanTesti(unittest.TestCase):
         self.d.cleanup()
 
     def test_eski_puan_kullanimi_defter_yazmaz(self):
-        r = calistir_olay(["puan", "k1", "4", "eski", "gerekce"], gunluk=self.gunluk, defter=self.defter)
+        r = calistir_olay(["score", "k1", "4", "eski", "gerekce"], gunluk=self.gunluk, defter=self.defter)
         self.assertEqual(r.returncode, 0)
         self.assertTrue(self.gunluk.exists())
         self.assertFalse(self.defter.exists())
@@ -72,24 +72,24 @@ class KadroVePuanTesti(unittest.TestCase):
     def test_bayrakli_kullanim_hem_gunluge_hem_deftere_yazar(self):
         r = calistir_olay(
             [
-                "puan",
+                "score",
                 "k2",
                 "5",
                 "harika",
                 "iş",
-                "--isci",
+                "--worker",
                 "codex/gpt-6.1-sol/high",
-                "--rol",
+                "--role",
                 "gelistirici",
-                "--alan",
+                "--field",
                 "py",
-                "--zorluk",
+                "--difficulty",
                 "O",
-                "--kota",
+                "--quota",
                 "12",
-                "--sure",
+                "--duration",
                 "100",
-                "--duzeltme",
+                "--fixes",
                 "1",
             ],
             gunluk=self.gunluk,
@@ -124,15 +124,15 @@ class KadroVePuanTesti(unittest.TestCase):
         # kadro.py ekle aracılığıyla da deneme
         r2 = calistir_kadro(
             [
-                "ekle",
+                "add",
                 "k3",
                 "4",
                 "sanat",
-                "--isci",
+                "--worker",
                 "claude/sanatci/opus",
-                "--rol",
+                "--role",
                 "sanatci",
-                "--alan",
+                "--field",
                 "sanat",
             ],
             defter=self.defter,
@@ -162,37 +162,37 @@ class KadroVePuanTesti(unittest.TestCase):
                 f.write(json.dumps(k) + "\n")
 
         # 1. Rol filtresi
-        r1 = calistir_kadro(["oneri", "--rol", "gelistirici", "--tohumsuz"], defter=self.defter)
+        r1 = calistir_kadro(["suggest", "--role", "gelistirici", "--no-seed"], defter=self.defter)
         self.assertIn("isci-A", r1.stdout)
         self.assertIn("isci-B", r1.stdout)
         self.assertNotIn("isci-C", r1.stdout)
 
         # 2. Alan filtresi
-        r2 = calistir_kadro(["oneri", "--alan", "py", "--tohumsuz"], defter=self.defter)
+        r2 = calistir_kadro(["suggest", "--field", "py", "--no-seed"], defter=self.defter)
         self.assertIn("isci-A", r2.stdout)
         self.assertNotIn("isci-B", r2.stdout)
         self.assertIn("isci-C", r2.stdout)
 
         # 3. Zorluk filtresi
-        r3 = calistir_kadro(["oneri", "--zorluk", "Z", "--tohumsuz"], defter=self.defter)
+        r3 = calistir_kadro(["suggest", "--difficulty", "Z", "--no-seed"], defter=self.defter)
         self.assertNotIn("isci-A", r3.stdout)
         self.assertNotIn("isci-B", r3.stdout)
         self.assertIn("isci-C", r3.stdout)
 
         # 4. Filtresiz rol x alan kırılımı
-        r4 = calistir_kadro(["oneri", "--tohumsuz"], defter=self.defter)
-        self.assertIn("gelistirici", r4.stdout)
-        self.assertIn("gozden-gecirici", r4.stdout)
+        r4 = calistir_kadro(["suggest", "--no-seed"], defter=self.defter)
+        self.assertIn("developer", r4.stdout)
+        self.assertIn("reviewer", r4.stdout)
         self.assertIn("py", r4.stdout)
         self.assertIn("js", r4.stdout)
 
     def test_kadro_oneri_tohumlu_varsayilan_cikti(self):
-        r = calistir_kadro(["oneri"], defter=self.defter)
+        r = calistir_kadro(["suggest"], defter=self.defter)
         self.assertEqual(r.returncode, 0)
-        self.assertIn("| Rol | Alan | En İyi İşçi |", r.stdout)
-        self.assertIn("claude/gelistirici/sonnet", r.stdout)
+        self.assertIn("| Role | Field | Best worker |", r.stdout)
+        self.assertIn("claude/developer/sonnet", r.stdout)
         self.assertIn("codex/gpt-6.1-sol/high", r.stdout)
-        self.assertIn("claude/sanatci/opus", r.stdout)
+        self.assertIn("claude/artist/opus", r.stdout)
 
     def test_bozuk_satir_atlanir(self):
         with open(self.defter, "w", encoding="utf-8") as f:
@@ -201,14 +201,14 @@ class KadroVePuanTesti(unittest.TestCase):
             f.write('{"not": 4}\n')  # isci yok
             f.write('{"isci": "temiz/isci", "not": 5, "rol": "sanatci", "alan": "sanat", "ts": 1000}\n')
 
-        r = calistir_kadro(["oneri", "--tohumsuz"], defter=self.defter)
+        r = calistir_kadro(["suggest", "--no-seed"], defter=self.defter)
         self.assertEqual(r.returncode, 0)
         self.assertIn("temiz/isci", r.stdout)
 
     def test_bos_defter_anlamli_mesaj(self):
-        r = calistir_kadro(["oneri", "--tohumsuz"], defter=self.defter)
+        r = calistir_kadro(["suggest", "--no-seed"], defter=self.defter)
         self.assertEqual(r.returncode, 0)
-        self.assertIn("Puan kaydı bulunamadı", r.stdout)
+        self.assertIn("No score records found", r.stdout)
 
     def test_tohum_dosyasi_zorunlu_alanlari_tasir(self):
         tohum_yolu = kadro.tohum_dosyasi()
@@ -233,9 +233,9 @@ class KadroVePuanTesti(unittest.TestCase):
         self.assertGreaterEqual(satir_sayisi, 10)
 
     def test_ozet_bos_defter(self):
-        r = calistir_kadro(["ozet", "--tohumsuz"], defter=self.defter)
+        r = calistir_kadro(["summary", "--no-seed"], defter=self.defter)
         self.assertEqual(r.returncode, 0)
-        self.assertEqual(r.stdout.strip(), "Kayıt yok.")
+        self.assertEqual(r.stdout.strip(), "No records.")
 
     def test_ozet_pencere_suzmesi_ve_simdi(self):
         # simdi = 1_000_000. 7 gun = 604_800 sn. Esik = 395_200.
@@ -252,12 +252,12 @@ class KadroVePuanTesti(unittest.TestCase):
                 f.write(json.dumps(k) + "\n")
 
         r = calistir_kadro(
-            ["ozet", "--simdi", "1000000", "--gun", "7", "--tohumsuz"],
+            ["summary", "--now", "1000000", "--days", "7", "--no-seed"],
             defter=self.defter,
         )
         self.assertEqual(r.returncode, 0)
         # 1970-01-12 UTC
-        self.assertIn("Kadro özeti: son 7 gün, 1 kayıt (üretildi: 1970-01-12)", r.stdout)
+        self.assertIn("Roster summary: last 7 days, 1 records (generated: 1970-01-12)", r.stdout)
         self.assertIn("yeni-isci", r.stdout)
         self.assertNotIn("eski-isci", r.stdout)
         self.assertNotIn("gelecek-isci", r.stdout)
@@ -277,12 +277,12 @@ class KadroVePuanTesti(unittest.TestCase):
                 f.write(json.dumps(k) + "\n")
 
         r1 = calistir_kadro(
-            ["ozet", "--simdi", "1000000", "--gun", "7", "--tohumsuz"],
+            ["summary", "--now", "1000000", "--days", "7", "--no-seed"],
             defter=self.defter,
         )
         self.assertEqual(r1.returncode, 0)
         # z-isci (n=4) Kadro, a-isci (n=2) Yedek
-        self.assertIn("| gelistirici | py | z-isci | 3,50 | 4 | a-isci | 3,50 | pencere |", r1.stdout)
+        self.assertIn("| developer | py | z-isci | 3.50 | 4 | a-isci | 3.50 | window |", r1.stdout)
 
         # 2. Puan ve n esitliginde alfabetik once gelen kazanir
         kayitlar_alfa = [
@@ -296,12 +296,12 @@ class KadroVePuanTesti(unittest.TestCase):
                 f.write(json.dumps(k) + "\n")
 
         r2 = calistir_kadro(
-            ["ozet", "--simdi", "1000000", "--gun", "7", "--tohumsuz"],
+            ["summary", "--now", "1000000", "--days", "7", "--no-seed"],
             defter=self.defter,
         )
         self.assertEqual(r2.returncode, 0)
         # a-isci Kadro, b-isci Yedek
-        self.assertIn("| gelistirici | py | a-isci | 4,25 | 2 | b-isci | 4,25 | pencere, veri az |", r2.stdout)
+        self.assertIn("| developer | py | a-isci | 4.25 | 2 | b-isci | 4.25 | window, little data |", r2.stdout)
 
     def test_ozet_eski_dayanagi(self):
         # Pencerede kayit yok (ts: 100_000 < 395_200, simdi: 1_000_000)
@@ -313,12 +313,12 @@ class KadroVePuanTesti(unittest.TestCase):
                 f.write(json.dumps(k) + "\n")
 
         r = calistir_kadro(
-            ["ozet", "--simdi", "1000000", "--gun", "7", "--tohumsuz"],
+            ["summary", "--now", "1000000", "--days", "7", "--no-seed"],
             defter=self.defter,
         )
         self.assertEqual(r.returncode, 0)
-        self.assertIn("Kadro özeti: son 7 gün, 0 kayıt", r.stdout)
-        self.assertIn("| gelistirici | py | vefakar-kodcu | 3,67 | 1 | — | — | eski |", r.stdout)
+        self.assertIn("Roster summary: last 7 days, 0 records", r.stdout)
+        self.assertIn("| developer | py | vefakar-kodcu | 3.67 | 1 | — | — | stale |", r.stdout)
 
     def test_ozet_veri_az_ve_pencere_dayanagi(self):
         # n < 3 -> "pencere, veri az", n >= 3 -> "pencere"
@@ -336,12 +336,12 @@ class KadroVePuanTesti(unittest.TestCase):
                 f.write(json.dumps(k) + "\n")
 
         r = calistir_kadro(
-            ["ozet", "--simdi", "1000000", "--gun", "7", "--tohumsuz"],
+            ["summary", "--now", "1000000", "--days", "7", "--no-seed"],
             defter=self.defter,
         )
         self.assertEqual(r.returncode, 0)
-        self.assertIn("| gelistirici | js | az-kodcu | 4,25 | 2 | — | — | pencere, veri az |", r.stdout)
-        self.assertIn("| gelistirici | py | cok-kodcu | 4,40 | 3 | — | — | pencere |", r.stdout)
+        self.assertIn("| developer | js | az-kodcu | 4.25 | 2 | — | — | window, little data |", r.stdout)
+        self.assertIn("| developer | py | cok-kodcu | 4.40 | 3 | — | — | window |", r.stdout)
 
     def test_ozet_yedek_durumlari(self):
         # Iki isci varsa yedek ve puani gorunur, tek isci varsa "—"
@@ -355,12 +355,12 @@ class KadroVePuanTesti(unittest.TestCase):
                 f.write(json.dumps(k) + "\n")
 
         r = calistir_kadro(
-            ["ozet", "--simdi", "1000000", "--gun", "7", "--tohumsuz"],
+            ["summary", "--now", "1000000", "--days", "7", "--no-seed"],
             defter=self.defter,
         )
         self.assertEqual(r.returncode, 0)
-        self.assertIn("| sanatci | sanat | as-isci | 4,00 | 1 | yedek-isci | 3,67 | pencere, veri az |", r.stdout)
-        self.assertIn("| gelistirici | py | tek-isci | 4,00 | 1 | — | — | pencere, veri az |", r.stdout)
+        self.assertIn("| artist | art | as-isci | 4.00 | 1 | yedek-isci | 3.67 | window, little data |", r.stdout)
+        self.assertIn("| developer | py | tek-isci | 4.00 | 1 | — | — | window, little data |", r.stdout)
 
     def test_ozet_siralama_rol_sonra_alan(self):
         kayitlar = [
@@ -373,15 +373,46 @@ class KadroVePuanTesti(unittest.TestCase):
                 f.write(json.dumps(k) + "\n")
 
         r = calistir_kadro(
-            ["ozet", "--simdi", "1000000", "--gun", "7", "--tohumsuz"],
+            ["summary", "--now", "1000000", "--days", "7", "--no-seed"],
             defter=self.defter,
         )
         self.assertEqual(r.returncode, 0)
-        satirlar = [s for s in r.stdout.splitlines() if s.startswith("|") and not s.startswith("| Rol") and not s.startswith("|---")]
+        satirlar = [s for s in r.stdout.splitlines() if s.startswith("|") and not s.startswith("| Role") and not s.startswith("|---")]
         self.assertEqual(len(satirlar), 3)
-        self.assertIn("| gelistirici | js |", satirlar[0])
-        self.assertIn("| gelistirici | py |", satirlar[1])
-        self.assertIn("| sanatci | sanat |", satirlar[2])
+        self.assertIn("| artist | art |", satirlar[0])
+        self.assertIn("| developer | js |", satirlar[1])
+        self.assertIn("| developer | py |", satirlar[2])
+
+    def test_eski_ve_yeni_adlar_ayni_kovada(self):
+        """0007: 0.5.0 öncesinin rol, alan, zorluk ve işçi adları okurken yeni ada çevrilir."""
+        kayitlar = [
+            {"isci": "claude/gelistirici/sonnet", "rol": "polycrew:gelistirici", "alan": "py", "zorluk": "Z", "not": 4, "ts": 900_000},
+            {"isci": "claude/developer/sonnet", "rol": "developer", "alan": "py", "zorluk": "H", "not": 5, "ts": 900_001},
+            {"isci": "codex/x", "rol": "gozden-gecirici", "alan": "inceleme", "zorluk": "orta", "not": 5, "ts": 900_002},
+        ]
+        with open(self.defter, "w", encoding="utf-8") as f:
+            for k in kayitlar:
+                f.write(json.dumps(k) + "\n")
+        onceki = self.defter.read_text(encoding="utf-8")
+
+        for filtre in (["--role", "developer", "--field", "py", "--difficulty", "H"],
+                       ["--role", "gelistirici", "--difficulty", "Z"]):
+            r = calistir_kadro(["suggest", *filtre, "--no-seed"], defter=self.defter)
+            self.assertEqual(r.returncode, 0)
+            self.assertIn("| claude/developer/sonnet | 2 |", r.stdout)
+            self.assertNotIn("gelistirici", r.stdout)
+
+        r = calistir_kadro(["summary", "--now", "1000000", "--no-seed"], defter=self.defter)
+        self.assertIn("| reviewer | review | codex/x |", r.stdout)
+        self.assertEqual(self.defter.read_text(encoding="utf-8"), onceki)  # dosya değişmez
+
+    def test_eski_ortam_degiskeni_yedek_olarak_okunur(self):
+        env = {k: v for k, v in os.environ.items() if k not in ("POLYCREW_EVENTS", "POLYCREW_SCORES")}
+        env.update(POLYCREW_OLAYLAR=str(self.gunluk), POLYCREW_PUANLAR=str(self.defter))
+        r = subprocess.run([sys.executable, str(KOK / "hooks" / "events.py"), "score", "k9", "3", "--worker", "w/x"],
+                           capture_output=True, text=True, env=env, check=False)
+        self.assertEqual(r.returncode, 0)
+        self.assertTrue(self.gunluk.exists() and self.defter.exists())
 
 
 if __name__ == "__main__":
