@@ -22,7 +22,7 @@ polycrew answers each one:
 - **A PM-led team.** The main session acts as project manager. It splits a stage into streams and hands items to roles (developer, artist, reviewer, designer, researcher, lead). Developers work in their own git worktree and branch; only the PM merges to `main`.
 - **External workers.** Codex and Gemini (through `agy`) run non-interactively with a chosen model and effort, in read-only or writer mode, with full logs. That spreads the work across three quotas.
 - **A measured roster that keeps learning.** Which worker gets which job (by role, field and difficulty) comes from real runs with scores, time, tokens and quota use, not from guesses. Every score the PM gives goes into a ledger, and `roster.py suggest` ranks the workers from it. See [`skills/team/roster.md`](skills/team/roster.md) and decisions [`0002`](docs/decisions/0002-agent-deneyi.md) and [`0004`](docs/decisions/0004-dinamik-kadro.md).
-- **Live visibility.** Hooks and the worker script write one event log. A local page shows an agent map (who started whom, who is still running), a timeline, quota cards for all three providers, each worker's last report and the PM's scores. At the end of the session the same view becomes a shareable report.
+- **Live visibility.** Hooks and the worker script write one event log. A local page shows a small pixel office (who is at a desk working, who is done and in the break room), an agent map (who started whom, who is still running), a timeline, quota cards for all three providers, each worker's last report and the PM's scores. At the end of the session the same view becomes a shareable report.
 
 ## Commands
 

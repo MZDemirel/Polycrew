@@ -14,6 +14,10 @@ Events are collected in one log (`hooks/events.py`, decision `0003`): Claude sub
 2. Give the user the address: in VS Code `Ctrl+Shift+P → Simple Browser: Show → http://localhost:8770` (or a browser).
 3. The page is in English and Turkish (by browser language; the EN/TR button or `?lang=tr`). It refreshes every 3 seconds: who is running now, the timeline (Claude orange, Codex green, Gemini blue), the agent map, quota bars (external quota once a minute via `external-agent.sh quota`), jobs and scores. Clicking a job or a map node shows its last report and task in the side panel.
 
+## Office
+
+The first section of the page is a small pixel office. The PM sits on the left; every running Claude agent sits at a desk in the Claude room and every running external worker (Codex, agy) in the external workers' room, typing, with the monitor in the provider's color. Finished jobs stand in the break room, dimmed: the last 8, the rest as "+N done". A failed job has a red "!" over its head, an unknown one a "?". Each role has a small accessory (developer headphones, reviewer magnifier, artist beret, designer ruler, researcher book, lead tie). Hovering shows who it is and what it is doing; a click opens the same side panel as everywhere else. It is a picture of the same data: the cards, the map and the table below remain the accessible, complete view.
+
 ## Claude quota
 
 The PM reads the plan name, the 5-hour and weekly usage percentages and the ISO reset times from the desktop app's usage tool, and adds its own context fill and token count if available. The script cannot read these from the CLI by itself; it writes the given measurement to the log:

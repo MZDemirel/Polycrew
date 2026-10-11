@@ -114,6 +114,13 @@ button:focus-visible, .row:focus-visible, .card:focus-visible { outline: 2px sol
   .dal > .cocuklar::before, .dal > .cocuklar::after, .dal > .cocuklar > .dal::before { display: none; }
   .dugum { width: auto; }
 }
+/* Office: a pixel floor plan drawn on a canvas; the map and the table below are its accessible equivalent. */
+.ofis { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+.ofis canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; border-radius: 4px; }
+.balon { position: absolute; z-index: 2; max-width: min(18rem, 80%); background: var(--ink); color: var(--bg); border-radius: 6px;
+  padding: 6px 9px; font-size: 12px; line-height: 1.35; pointer-events: none; transform: translate(-50%, -100%); overflow-wrap: anywhere; }
+.balon b { display: block; }
+.balon[hidden] { display: none; }
 .tbl { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
 th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -146,6 +153,8 @@ aside pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5px/1.55 va
     </div>
   </header>
   <div class="sayac" id="sayac"></div>
+  <section><h2 data-t="ofis"></h2><div class="ofis" id="ofis-kutu">
+    <canvas id="ofis" width="320" height="150" role="img"></canvas><div class="balon" id="balon" hidden></div></div></section>
   <section><h2 data-t="simdi"></h2><div class="cards" id="simdi"></div></section>
   <section><h2 data-t="cizelge"></h2><div class="cizelge"><div class="eksen" id="eksen"></div><div id="satirlar"></div></div></section>
   <section><h2 data-t="harita"></h2><div class="harita" id="harita"></div><p class="meta" data-t="pmNot"></p></section>
@@ -173,6 +182,8 @@ const METIN = {
     bosPencere: "No jobs in this window.", bosKota: "No quota reading yet (external-agent.sh quota).", yenilenir: "resets", p5: "5 hours", pHafta: "week",
     olcum: "measured", claudeNot: "Claude: no reading (PM records it)", eski: "stale reading", baglam: "context",
     harita: "Agent map", pm: "PM · main session", baslatan: "started by",
+    ofis: "Office", odaPm: "PM", odaClaude: "Claude", odaDis: "External workers", odaMola: "Break room",
+    ofisOzet: "Office: {c} working, {b} finished", dahaCalisan: "+{n} more", dahaBiten: "+{n} done",
     pmNot: "PM shows a summary of the selected jobs; its model is not logged.",
     yukleniyor: "loading…", okunamadi: "could not be read", yok: "(none)", henuzRapor: "(no report yet)",
     raporYok: "(no report found)", sunucuYok: "cannot reach the server",
@@ -188,6 +199,8 @@ const METIN = {
     bosPencere: "Bu pencerede iş yok.", bosKota: "Kota ölçümü yok (external-agent.sh quota).", yenilenir: "yenilenir", p5: "5 saat", pHafta: "hafta",
     olcum: "ölçüm", claudeNot: "Claude: ölçüm yok (PM yazar)", eski: "eski ölçüm", baglam: "bağlam",
     harita: "Agent haritası", pm: "PM · ana oturum", baslatan: "başlatan",
+    ofis: "Ofis", odaPm: "PM", odaClaude: "Claude", odaDis: "Dış işçiler", odaMola: "Dinlenme köşesi",
+    ofisOzet: "Ofis: {c} çalışıyor, {b} bitti", dahaCalisan: "+{n} daha", dahaBiten: "+{n} bitti",
     pmNot: "PM seçili işlerin özetini gösterir; kendi modeli günlüğe yazılmıyor.",
     yukleniyor: "yükleniyor…", okunamadi: "okunamadı", yok: "(yok)", henuzRapor: "(henüz rapor yok)",
     raporYok: "(rapor bulunamadı)", sunucuYok: "sunucuya ulaşılamıyor",
@@ -221,6 +234,173 @@ function kim(i) {
   return (i.model || i.kaynak) + (i.efor && i.efor !== "-" ? " " + i.efor : "") + (i.rol ? " · " + t(i.rol) : "");
 }
 function token(n) { return n == null ? "—" : n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n); }
+
+/*OFIS-MANTIK*/
+// Pure layout logic for the office view (no DOM): who sits where. Tested with Node (tests/test_watch.py).
+const OFIS = {
+  gen: 320, yuk: 150,
+  pm: { x: 4, y: 20, w: 58, h: 76 },
+  claude: { x: 66, y: 20, w: 124, h: 76, sutun: 4, satir: 2 },
+  dis: { x: 194, y: 20, w: 122, h: 76, sutun: 4, satir: 2 },
+  mola: { x: 4, y: 106, w: 312, h: 40, yer: 8 },
+  hucre: { w: 29, h: 36 },
+};
+function ofisTohum(id) {
+  let h = 2166136261;
+  for (const c of String(id)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; }
+  return h;
+}
+function ofisRol(rol) { return String(rol || "").replace(/^polycrew:/, ""); }
+function ofisYerlesim(isler) {
+  const kisi = (i, x, y, oturuyor) => ({ id: i.id, x, y, oturuyor, durum: i.durum, saglayici: i.saglayici,
+    rol: ofisRol(i.rol), tohum: ofisTohum(i.id), is: i });
+  const calisan = isler.filter((i) => i.durum === "calisiyor").sort((a, b) => (a.baslangic ?? 0) - (b.baslangic ?? 0));
+  const biten = isler.filter((i) => i.durum !== "calisiyor")
+    .sort((a, b) => (b.bitis ?? b.baslangic ?? 0) - (a.bitis ?? a.baslangic ?? 0));
+  const oda = (ad, liste) => {
+    const o = OFIS[ad], sigan = o.sutun * o.satir;
+    return {
+      kisiler: liste.slice(0, sigan).map((i, n) => kisi(i,
+        o.x + 5 + (n % o.sutun) * OFIS.hucre.w, o.y + 12 + Math.floor(n / o.sutun) * OFIS.hucre.h, true)),
+      tasan: Math.max(0, liste.length - sigan),
+    };
+  };
+  const claude = oda("claude", calisan.filter((i) => i.kaynak === "claude"));
+  const dis = oda("dis", calisan.filter((i) => i.kaynak !== "claude"));
+  const m = OFIS.mola;
+  const mola = biten.slice(0, m.yer).map((i, n) => kisi(i, m.x + 62 + n * 26, m.y + 18, false));
+  return { claude: claude.kisiler, dis: dis.kisiler, mola,
+    tasan: { claude: claude.tasan, dis: dis.tasan, mola: Math.max(0, biten.length - m.yer) },
+    calisan: calisan.length, biten: biten.length };
+}
+/*OFIS-MANTIK-SON*/
+
+// Drawing. One function draws a character; set OFIS_SPRITE to a sprite sheet URL (12x16 cells: columns =
+// frame 0/1, rows = role order of OFIS_ROLLER) to replace the built-in figures.
+const OFIS_SPRITE = "";
+const OFIS_ROLLER = ["developer", "reviewer", "artist", "designer", "researcher", "lead"];
+const OFIS_TEN = ["#f2c9a0", "#e0ac7e", "#c68a5b", "#8d5a3b"];
+const OFIS_SAC = ["#2b2118", "#5a3a22", "#9a6a35", "#c9a15a", "#3d3d46", "#7a2e2e"];
+let ofisKare = 0, ofisAlanlar = [], ofisResim = null;
+if (OFIS_SPRITE) { ofisResim = new Image(); ofisResim.src = OFIS_SPRITE; }
+const cssRenk = (ad) => getComputedStyle(document.documentElement).getPropertyValue(ad).trim();
+
+function karakterCiz(c, x, y, k, kare, renk) {
+  const px = (dx, dy, w, h, r) => { c.fillStyle = r; c.fillRect(x + dx, y + dy, w, h); };
+  c.globalAlpha = k.oturuyor ? 1 : 0.6;
+  if (ofisResim && ofisResim.complete && ofisResim.naturalWidth) {
+    const satir = Math.max(0, OFIS_ROLLER.indexOf(k.rol));
+    c.drawImage(ofisResim, (k.oturuyor ? kare : 0) * 12, satir * 16, 12, 16, x, y, 12, 16);
+  } else {
+    const ten = OFIS_TEN[k.tohum % OFIS_TEN.length], sac = OFIS_SAC[(k.tohum >>> 3) % OFIS_SAC.length];
+    const gomlek = renk[k.saglayici] || renk.muted;
+    px(3, 1, 6, 6, ten); px(3, 0, 6, 2, sac); px(2, 1, 1, 3, sac); px(9, 1, 1, 3, sac);   // head, hair
+    px(4, 4, 1, 1, renk.ink); px(7, 4, 1, 1, renk.ink);                                     // eyes
+    px(2, 7, 8, 6, gomlek);                                                                  // shirt
+    const kol = k.oturuyor && kare ? 1 : 0;                                                 // typing arms
+    px(1, 8 + kol, 1, 4, gomlek); px(10, 9 - kol, 1, 4, gomlek);
+    px(1, 12 + kol, 1, 1, ten); px(10, 13 - kol, 1, 1, ten);
+    if (!k.oturuyor) { px(3, 13, 2, 3, renk.ink); px(7, 13, 2, 3, renk.ink); }               // legs when standing
+    // one small accessory per role
+    if (k.rol === "developer") { px(2, 2, 1, 3, renk.ink); px(9, 2, 1, 3, renk.ink); px(3, 0, 6, 1, renk.ink); }
+    else if (k.rol === "reviewer") { px(6, 3, 3, 3, renk.surface); px(7, 4, 1, 1, renk.ink); px(9, 6, 1, 1, renk.ink); }
+    else if (k.rol === "artist") { px(2, 0, 8, 1, renk.hata); px(3, -1, 5, 1, renk.hata); }
+    else if (k.rol === "designer") { px(11, 6, 1, 7, renk.focus); }
+    else if (k.rol === "researcher") { px(4, 10, 4, 3, renk.surface); px(6, 10, 1, 3, renk.muted); }
+    else if (k.rol === "lead" || k.rol === "pm") { px(6, 7, 1, 4, renk.hata); }
+    else if (k.is && k.is.kaynak !== "claude") { px(7, 8, 2, 2, renk.surface); }
+  }
+  c.globalAlpha = 1;
+  if (k.durum === "hata" || k.durum === "bilinmiyor") {
+    c.fillStyle = k.durum === "hata" ? renk.hata : renk.muted;
+    c.font = "bold 7px monospace"; c.textAlign = "center";
+    c.fillText(k.durum === "hata" ? "!" : "?", x + 6, y - 2);
+  }
+}
+
+function ofisCiz() {
+  const tuval = $("ofis");
+  if (!tuval || !veri) return;
+  const kutu = tuval.clientWidth || OFIS.gen;
+  const olcek = Math.max(1, Math.floor((kutu * (window.devicePixelRatio || 1)) / OFIS.gen));
+  if (tuval.width !== OFIS.gen * olcek) { tuval.width = OFIS.gen * olcek; tuval.height = OFIS.yuk * olcek; }
+  const c = tuval.getContext("2d");
+  c.setTransform(olcek, 0, 0, olcek, 0, 0);
+  c.imageSmoothingEnabled = false;
+  const renk = { claude: cssRenk("--claude"), codex: cssRenk("--codex"), gemini: cssRenk("--gemini"), ink: cssRenk("--ink"),
+    muted: cssRenk("--muted"), surface: cssRenk("--surface"), track: cssRenk("--track"), line: cssRenk("--line"),
+    hata: cssRenk("--hata"), focus: cssRenk("--focus"), bg: cssRenk("--bg") };
+  const koyu = parseInt(renk.bg.slice(1, 3), 16) < 128;
+  const ahsap = koyu ? "#6b5238" : "#b9915f", ahsapGolge = koyu ? "#4d3a27" : "#94703f";
+  const govde = koyu ? "#0c0d10" : "#33343c";  // monitor and coffee machine bodies: dark in both themes
+  const y = ofisYerlesim(veri.isler);
+  c.fillStyle = renk.bg; c.fillRect(0, 0, OFIS.gen, OFIS.yuk);
+  const oda = (o, ad, sayi) => {
+    c.fillStyle = renk.track; c.fillRect(o.x, o.y, o.w, o.h);
+    c.strokeStyle = renk.line; c.lineWidth = 1; c.strokeRect(o.x + 0.5, o.y + 0.5, o.w - 1, o.h - 1);
+    c.fillStyle = renk.muted; c.font = "6px monospace"; c.textAlign = "left";
+    c.fillText(ad + (sayi ? " · " + sayi : ""), o.x + 2, o.y - 3);
+  };
+  oda(OFIS.pm, t("odaPm"), 0);
+  oda(OFIS.claude, t("odaClaude"), y.claude.length + y.tasan.claude);
+  oda(OFIS.dis, t("odaDis"), y.dis.length + y.tasan.dis);
+  oda(OFIS.mola, t("odaMola"), y.biten);
+  const masa = (x, yy, ekran, yanik) => {
+    c.fillStyle = govde; c.fillRect(x + 10, yy + 8, 6, 7);                     // monitor, beside the worker
+    c.fillStyle = ekran; c.fillRect(x + 11, yy + 9, 4, 4);                        // screen in the provider colour
+    if (yanik) { c.fillStyle = govde; c.fillRect(x + 11, yy + 10, 3, 1); } // a line of text that blinks
+    c.fillStyle = ahsap; c.fillRect(x - 3, yy + 15, 18, 5);                       // desk top
+    c.fillStyle = ahsapGolge; c.fillRect(x - 3, yy + 20, 18, 2); c.fillRect(x - 2, yy + 22, 2, 4); c.fillRect(x + 12, yy + 22, 2, 4);
+  };
+  ofisAlanlar = [];
+  const yerlestir = (k) => {
+    karakterCiz(c, k.x, k.y, k, ofisKare, renk);
+    if (k.oturuyor) masa(k.x, k.y, renk[k.saglayici] || renk.muted, ofisKare === 0);
+    ofisAlanlar.push({ x: k.x - 3, y: k.y - 4, w: 18, h: k.oturuyor ? 30 : 22, k });
+  };
+  // PM: always at the desk on the left.
+  const pm = { id: veri.harita ? veri.harita.id : "pm", x: OFIS.pm.x + 23, y: OFIS.pm.y + 30, oturuyor: true, durum: "",
+    saglayici: "claude", rol: "pm", tohum: 7, is: veri.harita || null, pm: true };
+  yerlestir(pm);
+  for (const k of [...y.claude, ...y.dis, ...y.mola]) yerlestir(k);
+  // Break room furniture: coffee machine and a sofa.
+  const m = OFIS.mola;
+  c.fillStyle = govde; c.fillRect(m.x + 8, m.y + 12, 10, 18); c.fillStyle = renk.hata; c.fillRect(m.x + 10, m.y + 15, 2, 2);
+  c.fillStyle = renk.surface; c.fillRect(m.x + 11, m.y + 24, 4, 4);
+  c.fillStyle = ahsapGolge; c.fillRect(m.x + 26, m.y + 22, 26, 10); c.fillStyle = ahsap; c.fillRect(m.x + 28, m.y + 18, 22, 6);
+  c.fillStyle = renk.muted; c.font = "6px monospace"; c.textAlign = "right";
+  const fazla = (o, n, anahtar) => { if (n) c.fillText(t(anahtar).replace("{n}", n), o.x + o.w - 3, o.y + o.h - 3); };
+  fazla(OFIS.claude, y.tasan.claude, "dahaCalisan"); fazla(OFIS.dis, y.tasan.dis, "dahaCalisan"); fazla(m, y.tasan.mola, "dahaBiten");
+  tuval.setAttribute("aria-label", t("ofisOzet").replace("{c}", y.calisan).replace("{b}", y.biten));
+}
+function ofisBul(e) {
+  const tuval = $("ofis"), k = tuval.getBoundingClientRect();
+  const x = ((e.clientX - k.left) / k.width) * OFIS.gen, yy = ((e.clientY - k.top) / k.height) * OFIS.yuk;
+  return ofisAlanlar.find((a) => x >= a.x && x <= a.x + a.w && yy >= a.y && yy <= a.y + a.h) || null;
+}
+function ofisBagla() {
+  const tuval = $("ofis"), balon = $("balon");
+  tuval.addEventListener("mousemove", (e) => {
+    const a = ofisBul(e);
+    tuval.style.cursor = a ? "pointer" : "";
+    if (!a) { balon.hidden = true; return; }
+    const i = a.k.is, k = tuval.getBoundingClientRect(), kutu = $("ofis-kutu").getBoundingClientRect();
+    balon.innerHTML = a.k.pm ? `<b>${esc(t("pm"))}</b>` : `<b>${esc(kim(i))}</b>${esc(i.aciklama || "")}<br>${esc(t(i.durum))} · ${esc(sure(i.sure))}`;
+    balon.style.left = `${k.left - kutu.left + ((a.x + a.w / 2) / OFIS.gen) * k.width}px`;
+    // Above the figure, or below it when there is no room above (top row).
+    const ust = k.top - kutu.top + (a.y / OFIS.yuk) * k.height - 4;
+    balon.hidden = false;
+    const alta = ust - balon.offsetHeight < 0;
+    balon.style.top = `${alta ? k.top - kutu.top + ((a.y + a.h) / OFIS.yuk) * k.height + 4 : ust}px`;
+    balon.style.transform = alta ? "translate(-50%, 0)" : "translate(-50%, -100%)";
+  });
+  tuval.addEventListener("mouseleave", () => { balon.hidden = true; });
+  tuval.addEventListener("click", (e) => { const a = ofisBul(e); if (a && a.k.is) ac(a.k.is.id); });
+  const hareketsiz = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!hareketsiz) setInterval(() => { if (!document.hidden) { ofisKare = 1 - ofisKare; ofisCiz(); } }, 280);
+  window.addEventListener("resize", ofisCiz);
+  if (window.matchMedia) matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ofisCiz);
+}
 
 function sabitler() {
   document.documentElement.lang = dil;
@@ -322,6 +502,7 @@ function ciz() {
       <td class="dur-${i.durum}">${t(i.durum)}</td>
       <td>${i.puan ? `<b>${esc(i.puan.not)}/5</b> <span class="meta">${esc(i.puan.gerekce || "")}</span>` : "—"}</td></tr>`).join("");
   if (secili) panelBaslik();
+  ofisCiz();
 }
 
 function panelBaslik() {
@@ -384,6 +565,7 @@ async function yenile() {
   } catch { $("guncel").textContent = t("sunucuYok"); }
 }
 sabitler();
+ofisBagla();
 if (GOMULU) {
   veri = GOMULU;
   $("pencere").hidden = true;

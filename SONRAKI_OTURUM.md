@@ -1,8 +1,10 @@
 # Sonraki oturum
 
-Son güncelleme: **2026-10-11** (git kuralları `0006`; İngilizce yüzey `0007`; öğrenen kadro `0008`; maliyet, dış işçisiz kadro ve CI `0009`; kota ölçümü `0010`, 0.8.0).
+Son güncelleme: **2026-10-11** (git kuralları `0006`; İngilizce yüzey `0007`; öğrenen kadro `0008`; maliyet, dış işçisiz kadro ve CI `0009`; kota ölçümü `0010`; yapı önerisi `0011`; ofis görünümü `0012`, 0.9.0).
 
 ## Nerede kaldık
+
+- **0.9.0 (2026-10-11, `0011`, `0012`).** `roster.py structure`: rol başına Claude ve dış işçi karşılaştırması, kaçınılacak işçi, liderin kullanılıp kullanılmadığı; yalnız önerir, yapıyı kullanıcı onaylar. İzleme sayfasının en üstünde piksel ofis (`page.html`, canvas; yerleşim mantığı `OFIS-MANTIK` bloğunda, Node ile test ediliyor). 76 test, 6 sn. Aşama 3'te açık kalan: gerçek oturum denemeleri ve ofisin sprite'ları.
 
 - **0.8.0 (2026-10-11, `0010`).** `external-agent.sh` her koşudan önce ve sonra kotayı okuyor; fark kayıt klasöründe `kota.json` ve `isci_bitti` olayında. `events.py score` kotayı ve süreyi kendiliğinden yazıyor (elle verilen ezer); Claude agent'ında yalnız süre. Pencere yenilenirse ya da aynı aracın koşusu çakışırsa fark yazılmıyor. Betiğin koşu yolu ilk kez test altında (sahte `codex` ve `agy`). 71 test, 6 sn.
 
@@ -33,6 +35,7 @@ Son güncelleme: **2026-10-11** (git kuralları `0006`; İngilizce yüzey `0007`
 - Kullanıcının isteği (2026-10-02): bir sonraki koşuda **çıktı kalitesine göre** sistemi (kadro, roller, `dis-ajan`) revize et. Her işçinin çıktısını kaydet: kalite notu, süre, kota (`dis-ajan.sh kota` öncesi ve sonrası).
 
 ### 2. Açık kalanlar
+- `0012`: ofisi gerçek bir takım oturumunda aç (`/watch`); kalabalıkta okunuyor mu, Pixlender'dan sprite sayfası isteniyor mu. README üst görseli o oturumdan.
 - `0010`: ilk gerçek dış işçi koşusundan sonra kayıt klasöründeki `kota.json`'a bak (fark makul mü, agy'de grup doğru mu). Bitti: gözlem `0010`'a yazıldı.
 - `0009`: push'tan sonra GitHub'da CI sonucuna bak; `tests (3.11)` ya da `plugin-validate` kırmızıysa düzelt. Bitti: iki iş de yeşil.
 - Ofis görünümü (`watch`): temiz bir oturumda tek başına; önce yerleşim ve karakter kararları.

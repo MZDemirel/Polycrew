@@ -56,6 +56,7 @@
 - [x] Codex ve agy olmadan ilk deneyim: `roster.py` kurulu olmayan aracın işçilerini önermez, `external-agent.sh` çıkış 4 ve açık iletiyle durur, `quota` "not installed" der (`0009`)
 - [x] Otomatik denetim: `.github/workflows/ci.yml` (birim testleri, `bash -n`, manifest JSON, `claude plugin validate`) (`0009`)
 - [ ] `0009`'un açık kalanı: ilk push'ta CI sonucuna bak (Python 3.11 ve `plugin-validate` işi yerelde denenemedi)
-- [ ] `watch`: ofis görünümü. Mevcut haritanın yanında üçüncü görünüm: masalar, çalışan ve boşta karakterler, son raporu gösteren konuşma balonu, dış işçiler için ayrı oda. Tek HTML içinde canvas, derleme adımı ve dış kütüphane yok; karakterler Pixlender'dan. README'nin üst görseli olur (kullanıcı, 2026-10-11)
+- [x] `watch`: ofis görünümü. Sayfanın en üstünde canvas ile piksel ofis: PM, Claude odası, dış işçiler odası, dinlenme köşesi; kodla çizilen karakterler, balon ve tıklama (`0012`)
+- [ ] Ofis: Pixlender sprite sayfası (`OFIS_SPRITE` hazır), odalar arası yürüme, README üst görselinin gerçek bir oturumdan alınması
 
 **Bitti sayılır:** yeni bir model çıktığında kadro onu eski modelin puanıyla değil kendi koşularıyla sıralıyor; eski puanlar sıralamayı tek başına belirlemiyor; Codex ve agy kurulu olmayan bir makinede `/team` çalışıyor.

@@ -22,7 +22,7 @@ polycrew her birine bir cevap veriyor:
 - **PM'in yönettiği takım.** Ana oturum proje yöneticisidir. Aşamayı akışlara böler, maddeleri rollere verir: geliştirici, sanatçı, gözden geçirici, tasarımcı, araştırmacı, lider. Geliştiriciler kendi git worktree'sinde ve dalında çalışır; `main`'e yalnız PM birleştirir.
 - **Dış işçiler.** Codex ve Gemini (`agy` üzerinden), seçilen model ve eforla, okur ya da yazar kipte, etkileşimsiz ve tam kayıtla çalışır. Böylece iş üç ayrı kotaya dağılır.
 - **Ölçülmüş ve öğrenen kadro.** Hangi işin (rolüne, alanına ve zorluğuna göre) hangi işçiye gideceği tahminden değil, gerçek koşulardan gelir: puan, süre, token ve kota payı. PM'in verdiği her puan bir deftere yazılır, `roster.py suggest` işçileri oradan sıralar. Bkz. [`skills/team/roster.md`](skills/team/roster.md), karar [`0002`](docs/decisions/0002-agent-deneyi.md) ve [`0004`](docs/decisions/0004-dinamik-kadro.md).
-- **Canlı görünürlük.** Kancalar ve işçi betiği tek bir olay günlüğüne yazar. Yerel bir sayfada şunlar görünür: agent haritası (kimi kim başlattı, kim hâlâ çalışıyor), zaman çizelgesi, üç sağlayıcının kota kartları, her işçinin son raporu ve PM'in puanları. Oturum sonunda aynı görünüm paylaşılabilir bir rapora dönüşür.
+- **Canlı görünürlük.** Kancalar ve işçi betiği tek bir olay günlüğüne yazar. Yerel bir sayfada şunlar görünür: küçük bir piksel ofis (kim masasında çalışıyor, kim işini bitirip dinlenme köşesinde), agent haritası (kimi kim başlattı, kim hâlâ çalışıyor), zaman çizelgesi, üç sağlayıcının kota kartları, her işçinin son raporu ve PM'in puanları. Oturum sonunda aynı görünüm paylaşılabilir bir rapora dönüşür.
 
 ## Komutlar
 

@@ -342,3 +342,78 @@ class Rapor(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+import re  # noqa: E402
+import shutil  # noqa: E402
+
+NODE = shutil.which("node")
+
+
+@unittest.skipUnless(NODE, "node yok: ofis yerleşim mantığı Node ile sınanır")
+class OfisYerlesim(unittest.TestCase):
+    """0012: ofis görünümünün saf yerleşim mantığı (sayfadaki OFIS-MANTIK bloğu)."""
+
+    def yerlesim(self, isler):
+        sayfa = (KOK / "skills" / "watch" / "page.html").read_text(encoding="utf-8")
+        mantik = re.search(r"/\*OFIS-MANTIK\*/(.*?)/\*OFIS-MANTIK-SON\*/", sayfa, re.S).group(1)
+        betik = mantik + "\nconst y = ofisYerlesim(JSON.parse(process.argv.at(-1)));\n" \
+            "const sade = (l) => l.map((k) => ({id: k.id, x: k.x, y: k.y, oturuyor: k.oturuyor, durum: k.durum, rol: k.rol, tohum: k.tohum}));\n" \
+            "console.log(JSON.stringify({claude: sade(y.claude), dis: sade(y.dis), mola: sade(y.mola), tasan: y.tasan, calisan: y.calisan, biten: y.biten, ofis: OFIS}));\n"
+        r = subprocess.run([NODE, "-e", betik, "--", json.dumps(isler)], capture_output=True, text=True, check=False)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    @staticmethod
+    def i(kimlik, kaynak="claude", durum="calisiyor", rol="polycrew:developer", bas=0, bit=None):
+        return {"id": kimlik, "kaynak": kaynak, "saglayici": "claude" if kaynak == "claude" else kaynak,
+                "durum": durum, "rol": rol, "baslangic": bas, "bitis": bit}
+
+    def test_calisan_odasinda_biten_dinlenme_kosesinde(self):
+        y = self.yerlesim([
+            self.i("c1", bas=2), self.i("c0", bas=1), self.i("x1", kaynak="codex", rol=None),
+            self.i("g1", kaynak="agy", rol=None),
+            self.i("b1", durum="bitti", bit=50), self.i("h1", durum="hata", bit=60),
+            self.i("u1", durum="bilinmiyor", rol="polycrew:artist", bas=5),
+        ])
+        self.assertEqual([k["id"] for k in y["claude"]], ["c0", "c1"])  # başlangıç sırasıyla
+        self.assertEqual({k["id"] for k in y["dis"]}, {"x1", "g1"})  # agy de dış işçi odasında
+        self.assertEqual([k["id"] for k in y["mola"]], ["h1", "b1", "u1"])  # en son biten önce
+        self.assertTrue(all(k["oturuyor"] for k in y["claude"] + y["dis"]))
+        self.assertFalse(any(k["oturuyor"] for k in y["mola"]))
+        self.assertEqual((y["calisan"], y["biten"]), (4, 3))
+        self.assertEqual(y["claude"][0]["rol"], "developer")  # önek atılır
+        self.assertEqual({k["durum"] for k in y["mola"]}, {"hata", "bitti", "bilinmiyor"})
+
+    def test_sigmayan_sayiyla_gosterilir_ve_herkes_odasinin_icinde(self):
+        y = self.yerlesim([self.i(f"c{n}", bas=n) for n in range(11)]
+                          + [self.i(f"b{n}", durum="bitti", bit=n) for n in range(13)])
+        self.assertEqual((len(y["claude"]), y["tasan"]["claude"]), (8, 3))
+        self.assertEqual((len(y["mola"]), y["tasan"]["mola"]), (8, 5))
+        self.assertEqual(y["mola"][0]["id"], "b12")
+        for oda, kisiler in (("claude", y["claude"]), ("mola", y["mola"])):
+            o = y["ofis"][oda]
+            for k in kisiler:
+                self.assertGreaterEqual(k["x"] - 3, o["x"], (oda, k))
+                self.assertLessEqual(k["x"] + 15, o["x"] + o["w"], (oda, k))
+                self.assertGreaterEqual(k["y"], o["y"], (oda, k))
+                self.assertLessEqual(k["y"] + 26 if k["oturuyor"] else k["y"] + 16, o["y"] + o["h"], (oda, k))
+        yerler = [(k["x"], k["y"]) for k in y["claude"]]
+        self.assertEqual(len(set(yerler)), len(yerler))  # iki kişi aynı masada değil
+
+    def test_ayni_kimlik_ayni_gorunum(self):
+        a = self.yerlesim([self.i("ayni"), self.i("baska")])["claude"]
+        b = self.yerlesim([self.i("baska", bas=9), self.i("ayni", bas=1)])["claude"]
+        tohum = {k["id"]: k["tohum"] for k in a}
+        self.assertEqual(tohum, {k["id"]: k["tohum"] for k in b})
+        self.assertNotEqual(tohum["ayni"], tohum["baska"])
+
+    def test_rapor_ofisi_tasir(self):
+        with tempfile.TemporaryDirectory() as d:
+            g = Path(d) / "o.jsonl"
+            g.write_text(json.dumps({"tur": "isci_basladi", "ts": 1, "id": "k1", "kaynak": "codex"}) + "\n", encoding="utf-8")
+            with patch.dict(os.environ, {"POLYCREW_EVENTS": str(g)}):
+                html = izle.rapor_html(None, "en")
+        self.assertIn('<canvas id="ofis"', html)
+        self.assertIn("function ofisYerlesim", html)
+        self.assertIn('"id": "k1"', html)
