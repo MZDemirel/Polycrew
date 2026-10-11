@@ -29,8 +29,6 @@
 - [ ] Başka bir projede `/project-setup` (ör. Go_RestApi ya da RotaWeb)
 - [x] İlk gerçek takım işinde kancaların yükünü denetle (`0003`'ün açık kalanı; Pixlender oturum 15: başlatma, başlama ve bitiş olayları rol ve kimlikle geliyor; dış işçinin kopyası olay yazmıyordu, düzeltildi, `0004`)
 - [x] Dinamik kadro: puan defteri, `kadro.py oneri`, iki deneyden tohum veri (`0004`)
-- [ ] Kadro önerisinde kota ve süreyi de tartan bir sıralama (veri biriktikçe)
-- [ ] `kadro.py`: aynı iş kimliğinin sonraki puanı öncekinin yerine geçsin (inceleme sonrası güncelleme; bugün iki satır olur)
 - [ ] `izle` raporu: Claude agent'ının raporu `SubagentHandback` iletisinden gelsin (bugün transkriptin son ara cümlesi: "Now the comparison script.")
 - [ ] `/takim`: dalgalar arasında `main` ilerlediyse görevin ilk satırı "önce `git merge --ff-only main`" (Claude Code'un worktree yalıtımı oturum başındaki main'den açıyor, `0004`)
 - [x] `izle`: agent haritası (PM → lider → işçi ağacı; kim kimi başlattı, hangi sağlayıcı, durum). Kullanıcının isteği, 2026-10-05; `0005`: canlı sayfa ve rapor, ilişki bulunamazsa PM
@@ -41,3 +39,19 @@
 - [ ] İç kod ve veri şeması İngilizce (Python tanımlayıcıları, JSON alanları, önbellek yolları; göç betiğiyle); katkı gelmeye başlarsa
 - [ ] README ekran görüntüleri: eski rol adları görünüyorsa yenile
 - [ ] `/takim` ve `kadro.md`: dağıtım üç sağlayıcıya işin ağırlığına ve ölçülmüş beceriye göre; sabit "en çok N Claude agent" yerine planda iş, ağırlık, işçi, neden tablosu (kullanıcı, 2026-10-05)
+
+### Aşama 3: Öğrenen kadro ve dışa açılma
+**Hedef:** Kadro zamanla ve yeni modellerle kendini düzeltsin; eklentiyi ilk kez kuran biri Codex ve agy olmadan da işe yarar bir takım görsün.
+**Mod:** yapımcı
+- [ ] 0.5.0'ı gerçek oturumda dene (Pixlender): `/session-start` eski not dosyasıyla, `/team` ile bir koşu, `external-agent.sh quota` ve bir `read` koşusu; gözlem `0007`'ye (Aşama 2'deki açık kalanla aynı iş)
+- [ ] Puanlama, zaman ağırlığı: `roster.py suggest` ve `summary` puanları yarı ömürle soldursun (eski puan başlangıç değerine yaklaşır, silinmez); yarı ömür ölçülerek seçilir
+- [ ] Puanlama, sürümlü işçi adı: Claude rollerinde işçi adı model sürümünü taşısın (`claude/developer/sonnet` yeni Sonnet'e eski puanları devretmesin); eski sürümsüz satırların nasıl okunacağı kararla
+- [ ] Puanlama, "dene" satırı: az verili ya da yeni işçi özet tablosunda kolay bir iş için önerilsin; hiç denenmeyen işçinin puanı oluşmuyor
+- [ ] Aynı iş kimliğinin sonraki puanı öncekinin yerine geçsin (Aşama 2'den taşındı)
+- [ ] Sıralamada kota ve süre de tartılsın: yakın puanda ucuz ve hızlı işçi öne geçsin (Aşama 2'den taşındı)
+- [ ] Takım yapısı önerisi: puan ortalamalarından "bu rol için lider gereksiz", "bu alanda dış işçi yeter" gibi öneriler çıksın; yapıyı kullanıcı onaylar, kendiliğinden değişmez
+- [ ] Codex ve agy olmadan ilk deneyim: `/team` dış işçi yoksa yalnız Claude rolleriyle kadro önersin; `external-agent.sh` eksik aracı açık bir iletiyle söylesin
+- [ ] Otomatik denetim: her push'ta birim testleri, `bash -n` ve `claude plugin validate` (GitHub Actions)
+- [ ] `watch`: ofis görünümü. Mevcut haritanın yanında üçüncü görünüm: masalar, çalışan ve boşta karakterler, son raporu gösteren konuşma balonu, dış işçiler için ayrı oda. Tek HTML içinde canvas, derleme adımı ve dış kütüphane yok; karakterler Pixlender'dan. README'nin üst görseli olur (kullanıcı, 2026-10-11)
+
+**Bitti sayılır:** yeni bir model çıktığında kadro onu eski modelin puanıyla değil kendi koşularıyla sıralıyor; eski puanlar sıralamayı tek başına belirlemiyor; Codex ve agy kurulu olmayan bir makinede `/team` çalışıyor.
