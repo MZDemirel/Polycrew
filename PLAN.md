@@ -50,7 +50,8 @@
 - [ ] `0008`'in açık kalanı: gerçek bir takım koşusunda kancanın modeli yazdığını ve `score`'un sürümü eklediğini doğrula; yarı ömrü birkaç haftalık veriyle yeniden değerlendir
 - [x] Aynı işin (proje + id) sonraki puanı öncekinin yerine geçer; defter eklemeli kalır (`0009`)
 - [x] Sıralamada maliyet eşitlik bozucu: puan farkı ≤ 0,10 ise %20 az kotalı, yoksa %20 hızlı işçi öne geçer (`0009`)
-- [ ] Kotanın otomatik ölçülmesi: dış işçi koşusundan önce ve sonra kota okunup puana yazılsın (bugün 106 kayıttan 5'inde kota var; maliyet puana ancak o zaman katılabilir)
+- [x] Kotanın ve sürenin otomatik ölçülmesi: dış işçi koşusundan önce ve sonra kota okunur, fark `kota.json`'a ve puana yazılır; süre Claude agent'ında da dolar (`0010`)
+- [ ] `0010`'un açık kalanı: ilk gerçek Codex ve agy koşusunda `kota.json`'a bak; veri birikince maliyeti puana katmayı yeniden değerlendir (`0009`'daki eşitlik bozucu)
 - [ ] Takım yapısı önerisi: puan ortalamalarından "bu rol için lider gereksiz", "bu alanda dış işçi yeter" gibi öneriler çıksın; yapıyı kullanıcı onaylar, kendiliğinden değişmez
 - [x] Codex ve agy olmadan ilk deneyim: `roster.py` kurulu olmayan aracın işçilerini önermez, `external-agent.sh` çıkış 4 ve açık iletiyle durur, `quota` "not installed" der (`0009`)
 - [x] Otomatik denetim: `.github/workflows/ci.yml` (birim testleri, `bash -n`, manifest JSON, `claude plugin validate`) (`0009`)

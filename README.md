@@ -139,6 +139,7 @@ skills/external-agent/external-agent.sh quota                               # cu
 - **Workers never push** and never bypass git hooks.
 - **Fixed git rules** live in one file, [`rules/git.md`](rules/git.md): no tool signature in commits (`Co-Authored-By`), no tool line in PR descriptions, merged branches are kept, workers never push. They are never asked per project; `/project-setup` writes them into each project's `CLAUDE.md`, and the script passes them to external workers.
 - **Logs:** each run writes the task, raw output, last message, duration, tokens and exit code to `~/.cache/polycrew/dis-ajan/`.
+- **Cost per run:** the script reads the tool's quota before and after each run; the difference and the duration go into the score automatically. Parallel runs of the same tool are not measured, because their shares cannot be told apart.
 - **Time limit:** a run is stopped after an hour (`EXTERNAL_AGENT_TIMEOUT`, seconds). A stopped run leaves no last message, so ask writers for work-in-progress commits, and raise the limit for heavy jobs.
 - **Parallel runs:** bash reads the script line by line, so use a copy of it for long parallel runs. If the copy cannot find the event log, set `POLYCREW_EVENTS_SCRIPT=<plugin>/hooks/events.py`; otherwise the worker does not show on the page.
 - **Sandbox:** Codex in its sandbox has no network and cannot open sockets or start tools like Blender. Prepare the worktree (dependencies, untracked assets) yourself, pass a package cache with `EXTERNAL_AGENT_EXTRA_DIRS`, and run those checks as the PM.

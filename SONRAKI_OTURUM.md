@@ -1,8 +1,10 @@
 # Sonraki oturum
 
-Son güncelleme: **2026-10-11** (git kuralları `0006`; İngilizce yüzey `0007`; öğrenen kadro `0008`; maliyet, dış işçisiz kadro ve CI `0009`, 0.7.0).
+Son güncelleme: **2026-10-11** (git kuralları `0006`; İngilizce yüzey `0007`; öğrenen kadro `0008`; maliyet, dış işçisiz kadro ve CI `0009`; kota ölçümü `0010`, 0.8.0).
 
 ## Nerede kaldık
+
+- **0.8.0 (2026-10-11, `0010`).** `external-agent.sh` her koşudan önce ve sonra kotayı okuyor; fark kayıt klasöründe `kota.json` ve `isci_bitti` olayında. `events.py score` kotayı ve süreyi kendiliğinden yazıyor (elle verilen ezer); Claude agent'ında yalnız süre. Pencere yenilenirse ya da aynı aracın koşusu çakışırsa fark yazılmıyor. Betiğin koşu yolu ilk kez test altında (sahte `codex` ve `agy`). 71 test, 6 sn.
 
 - **0.7.0 (2026-10-11, `0009`).** Aynı işin ikinci puanı ilkinin yerine geçiyor. Yakın puanda (≤ 0,10) belirgin ucuz ya da hızlı işçi öne geçiyor (`cheaper` / `faster`, `--no-cost` kapatır). Kurulu olmayan aracın işçileri önerilmiyor (`--providers`, `POLYCREW_PROVIDERS`); `external-agent.sh` araç yoksa çıkış 4. `.github/workflows/ci.yml` eklendi. 63 test, 3,6 sn. Aşama 3'te kalanlar: 0.5.0+ gerçek oturum denemesi, kotanın otomatik ölçülmesi, takım yapısı önerisi, ofis görünümü.
 
@@ -31,6 +33,7 @@ Son güncelleme: **2026-10-11** (git kuralları `0006`; İngilizce yüzey `0007`
 - Kullanıcının isteği (2026-10-02): bir sonraki koşuda **çıktı kalitesine göre** sistemi (kadro, roller, `dis-ajan`) revize et. Her işçinin çıktısını kaydet: kalite notu, süre, kota (`dis-ajan.sh kota` öncesi ve sonrası).
 
 ### 2. Açık kalanlar
+- `0010`: ilk gerçek dış işçi koşusundan sonra kayıt klasöründeki `kota.json`'a bak (fark makul mü, agy'de grup doğru mu). Bitti: gözlem `0010`'a yazıldı.
 - `0009`: push'tan sonra GitHub'da CI sonucuna bak; `tests (3.11)` ya da `plugin-validate` kırmızıysa düzelt. Bitti: iki iş de yeşil.
 - Ofis görünümü (`watch`): temiz bir oturumda tek başına; önce yerleşim ve karakter kararları.
 - `0008`: gerçek bir takım koşusundan sonra `agent_bitti` olayında `model` var mı, `events.py score ... --worker claude/developer/sonnet` adı sürümlü yazdı mı bak. Bitti: gözlem `0008`'e yazıldı.

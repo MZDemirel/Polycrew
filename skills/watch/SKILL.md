@@ -47,6 +47,8 @@ python3 "${CLAUDE_PLUGIN_ROOT}/hooks/events.py" score <job id> <1-5> [reason] \
   [--quota <percent>] [--duration <s>] [--fixes <count>] [--project <name>]
 ```
 
+`--quota` and `--duration` are optional: for an external worker both come from the run's own measurement, for a Claude agent the duration comes from its start and end events (Claude quota cannot be read from the CLI, so it stays empty). A value you pass wins.
+
 With `--worker` the record goes both to the event log and to the persistent score ledger (`${XDG_DATA_HOME:-~/.local/share}/polycrew/puanlar.jsonl`). For a Claude agent write `--worker claude/<role>/<sonnet|opus|haiku>`; the script reads the real model from the agent's transcript and stores the name with its version (`claude/developer/sonnet-5-5`), so a new model starts with its own scores. If it warns that the version was not found, write the version yourself. The flagless form works too. Job id: for an external worker the name of the log folder (the last line of `external-agent.sh`), for a Claude agent the id of its row on the page (the Agent tool's `tool_use_id` or the agent id).
 
 ## Session report

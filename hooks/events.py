@@ -14,6 +14,7 @@ Kullanım:
 - **Kanca** (argümansız, stdin'de Claude Code'un kanca yükü): PreToolUse, SubagentStart, SubagentStop.
 - **Komut:**
   - ``events.py write <tur> anahtar=değer ...``
+  - ``events.py overlap <id> <kaynak> <başlangıç ts>``: aynı aracın çakışan koşusu varsa 1 (0010)
   - ``events.py score <id> <1-5> [reason] [--worker ...] [--role ...] [--field ...] [--difficulty ...] [--quota ...] [--duration ...] [--fixes ...] [--project ...]``
 """
 
@@ -73,6 +74,78 @@ def surumlu_isci(isci: str, model: str | None) -> str:
     if not kisa.startswith(parcalar[2]):
         return isci  # verilen ad başka bir aile; kullanıcının yazdığına dokunma
     return "/".join([*parcalar[:2], kisa])
+
+
+CAKISMA_PENCERESI = 6 * 3600.0  # saniye: bundan eski, bitişi gelmemiş koşu çakışma sayılmaz
+
+
+def _olaylar() -> list[dict]:
+    out = []
+    try:
+        with open(dosya(), encoding="utf-8", errors="ignore") as f:
+            for satir in f:
+                try:
+                    e = json.loads(satir)
+                except ValueError:
+                    continue
+                if isinstance(e, dict):
+                    out.append(e)
+    except OSError:
+        pass
+    return out
+
+
+def cakisan_var(is_id: str, kaynak: str, baslangic: float, simdi: float | None = None) -> bool:
+    """Aynı aracın başka bir koşusu [baslangic, simdi] aralığıyla çakıştı mı (0010)?"""
+    simdi = time.time() if simdi is None else simdi
+    basla, bitis = {}, {}
+    for e in _olaylar():
+        if e.get("kaynak") != kaynak or str(e.get("id")) == str(is_id):
+            continue
+        if e.get("tur") == "isci_basladi":
+            basla[str(e.get("id"))] = float(e.get("ts") or 0)
+        elif e.get("tur") == "isci_bitti":
+            bitis[str(e.get("id"))] = float(e.get("ts") or 0)
+    for kimlik, b in basla.items():
+        if b > simdi or b < baslangic - CAKISMA_PENCERESI:
+            continue
+        if bitis.get(kimlik, simdi) >= baslangic:
+            return True
+    return False
+
+
+def is_bilgisi(is_id: str) -> dict:
+    """Bir işin ölçülmüş süresi ve kotası (0010): dış işçide ``isci_bitti`` olayından, Claude
+    agent'ında başlangıç ve bitişten. Bulunamayan alan sözlükte olmaz."""
+    bilgi: dict = {}
+    for e in _olaylar():
+        if e.get("tur") == "isci_bitti" and str(e.get("id")) == str(is_id):
+            if isinstance(e.get("sure_sn"), (int, float)):
+                bilgi["sure"] = e["sure_sn"]
+            if isinstance(e.get("kota"), (int, float)):
+                bilgi["kota"] = e["kota"]
+    if "sure" not in bilgi:
+        ts = {e.get("tur"): e.get("ts") for e in _olaylar()
+              if str(e.get("id")) == str(is_id) and e.get("tur") in ("agent_basladi", "agent_bitti")}
+        if isinstance(ts.get("agent_basladi"), (int, float)) and isinstance(ts.get("agent_bitti"), (int, float)):
+            bilgi["sure"] = round(ts["agent_bitti"] - ts["agent_basladi"], 1)
+    if "sure" not in bilgi:
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "skills" / "watch"))
+            import watch  # tembel: kanca yolunda yüklenmez
+
+            ham = _olaylar()
+            for e in ham:
+                if e.get("rol"):
+                    e["rol"] = rol_adi(e["rol"])
+            # Kimlik agent kimliği de olabilir: o agent'ın biten olayından işi bul.
+            for i in watch.birlestir([e for e in ham if "tur" in e])["isler"]:
+                if str(i.get("id")) == str(is_id) and i.get("kaynak") == "claude":
+                    if i.get("baslangic") is not None and i.get("bitis") is not None:
+                        bilgi["sure"] = round(i["bitis"] - i["baslangic"], 1)
+        except Exception:  # noqa: BLE001 - puan yazmak süreye bağlı değildir
+            pass
+    return bilgi
 
 
 def is_modeli(is_id: str) -> str | None:
@@ -293,6 +366,10 @@ def puan_ayristir(argv: list[str]) -> tuple[dict, bool]:
         else:
             olay[k] = v
 
+    # 0010: elle verilmediyse ölçülmüş süre ve kota kendiliğinden yazılır.
+    for alan, deger in is_bilgisi(is_id).items():
+        olay.setdefault(alan, deger)
+
     deftere_yazilsin = "isci" in bayraklar and bool(bayraklar["isci"])
     if deftere_yazilsin and olay["isci"].startswith("claude/"):
         surumlu = surumlu_isci(olay["isci"], is_modeli(is_id))
@@ -332,6 +409,9 @@ def main(argv: list[str]) -> int:
             anahtar, _, deger = parca.partition("=")
             olay[anahtar] = _deger(deger)
         yaz(olay)
+        return 0
+    if argv[0] == "overlap" and len(argv) == 4:
+        print(1 if cakisan_var(argv[1], argv[2], float(argv[3])) else 0)
         return 0
     if argv[0] == "score" and len(argv) >= 3:
         return puan_isle(argv[1:])
