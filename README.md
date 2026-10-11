@@ -133,6 +133,7 @@ skills/dis-ajan/dis-ajan.sh kota                                              # 
 
 - **Writer mode** refuses the main working tree. Create a worktree first.
 - **Workers never push** and never bypass git hooks.
+- **Fixed git rules** live in one file, [`kurallar/git.md`](kurallar/git.md): no tool signature in commits (`Co-Authored-By`), no tool line in PR descriptions, merged branches are kept, workers never push. They are never asked per project; `/proje-kur` writes them into each project's `CLAUDE.md`, and the script passes them to external workers.
 - **Logs:** each run writes the task, raw output, last message, duration, tokens and exit code to `~/.cache/polycrew/dis-ajan/`.
 - **Time limit:** a run is stopped after an hour (`DIS_AJAN_ZAMAN_ASIMI`, seconds). A stopped run leaves no last message, so ask writers for work-in-progress commits, and raise the limit for heavy jobs.
 - **Parallel runs:** bash reads the script line by line, so use a copy of it for long parallel runs. If the copy cannot find the event log, set `POLYCREW_OLAY=<plugin>/hooks/olay.py`; otherwise the worker does not show on the page.
@@ -162,10 +163,11 @@ skills/dis-ajan/dis-ajan.sh kota                                              # 
 .claude-plugin/   plugin and marketplace manifests
 agents/           roles (model, effort, tools)
 skills/           oturum-ac, oturum-kapat, karar, proje-kur, takim (+ kadro.md, kadro.py), dis-ajan (+ dis-ajan.sh), izle (+ izle.py, claude-kota.py, sayfa.html)
+kurallar/         fixed git rules (single source; skills and roles point here)
 hooks/            SessionStart "where we left off", olay.py (event log and score ledger)
 docs/decisions/   why things are the way they are
 deney/            measured runs: tasks, answer keys, scores
-tests/            unit tests for the event log and the live page
+tests/            unit tests for the event log, the live page and the git rules
 ```
 
 ## Development

@@ -39,11 +39,11 @@ Görünürlük: işe başlarken `/izle` ile canlı sayfayı aç ve adresini kull
 - Kullanıcıya her birleştirmede kısa bilgi ver: ne birleşti, ölçü, resim.
 
 ## 4. Birleştir (yalnız PM)
-Bir madde hazır olduğunda (lider raporu, gözden geçirici "engel yok", sanatçı onayı):
+Bir madde hazır olduğunda (lider raporu, gözden geçirici "engel yok", sanatçı onayı). Birleştirme commit'i dahil her commit sabit git kurallarına uyar: `${CLAUDE_PLUGIN_ROOT}/kurallar/git.md`.
 1. Resme kendin de bak; ölçüyü doğrula.
 2. `git -C <worktree> rebase main` (çakışma olursa lidere geri ver), sonra ana depoda `git merge --ff-only <dal>`.
 3. Tam testi, lint'i ve tip denetimini arka planda koş. Kırmızıysa `main`'i geri alma; düzeltmeyi lidere ver.
-4. Dal işi bittiyse `git worktree remove <yol>` ve `git branch -D <dal>`.
+4. Dal işi bittiyse `git worktree remove <yol>`. **Dal kalır;** birleşen dal silinmez (kullanıcı ayrıca ve açıkça isterse silinir).
 
 ## 5. Kapat
 - Açık worktree ve dalları (`git worktree list`) yarım işin yeriyle `SONRAKI_OTURUM.md`'ye yaz; limit ya da hata yarıda keserse önce bunu yap.

@@ -111,7 +111,8 @@ fi
 
 kok=${DIS_AJAN_KAYIT:-$HOME/.cache/polycrew/dis-ajan}
 # Her işçiye giden ortak kurallar (0002: Codex kum havuzunda kancayı atlatmayı seçebiliyor).
-kural="Kurallar: git push yapma. Commit kancasını (hook) asla atlatma: --no-verify, core.hooksPath değiştirme ya da kancayı kapatma yok; kanca çalışmazsa commit atma ve nedenini yaz. Yalnız bu klasörde ve kendi dalında çalış."
+# kurallar/git.md'nin kısa kopyası (0006): dış işçi o dosyayı okuyamaz; biri değişince öbürü de değişir.
+kural="Kurallar: git push yapma. Commit kancasını (hook) asla atlatma: --no-verify, core.hooksPath değiştirme ya da kancayı kapatma yok; kanca çalışmazsa commit atma ve nedenini yaz. Commit mesajına Co-Authored-By satırı ya da başka bir araç imzası ekleme. Dal silme. Yalnız bu klasörde ve kendi dalında çalış."
 kayit="$kok/$(date +%Y%m%d-%H%M%S)-$arac-${model//\//_}-$$"
 mkdir -p "$kayit"
 cp "$gorev" "$kayit/gorev.md"

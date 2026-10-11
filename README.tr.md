@@ -133,6 +133,7 @@ skills/dis-ajan/dis-ajan.sh kota                                              # 
 
 - **Yazar kip** ana çalışma ağacını reddeder; önce bir worktree aç.
 - **İşçiler push etmez** ve git kancasını atlatmaz.
+- **Sabit git kuralları** tek dosyada durur, [`kurallar/git.md`](kurallar/git.md): commit'te araç imzası (`Co-Authored-By`) yok, PR açıklamasında araç satırı yok, birleşen dal silinmez, işçiler push etmez. Projeye göre sorulmaz; `/proje-kur` her projenin `CLAUDE.md`'sine yazar, betik dış işçilere iletir.
 - **Kayıt:** her koşu görevi, ham çıktıyı, son mesajı, süreyi, token'ı ve çıkış kodunu `~/.cache/polycrew/dis-ajan/` altına yazar.
 - **Süre sınırı:** bir koşu bir saat sonra durdurulur (`DIS_AJAN_ZAMAN_ASIMI`, saniye). Durdurulan koşu son mesaj bırakmaz; yazar işçiden ara commit iste, ağır işte sınırı yükselt.
 - **Paralel koşu:** bash betiği satır satır okur; uzun paralel koşularda betiğin bir kopyasını kullan. Kopya olay günlüğünü bulamazsa `POLYCREW_OLAY=<eklenti>/hooks/olay.py` ver; yoksa işçi sayfada görünmez.
@@ -162,10 +163,11 @@ skills/dis-ajan/dis-ajan.sh kota                                              # 
 .claude-plugin/   eklenti ve marketplace tanımları
 agents/           roller (model, efor, araçlar)
 skills/           oturum-ac, oturum-kapat, karar, proje-kur, takim (+ kadro.md, kadro.py), dis-ajan (+ dis-ajan.sh), izle (+ izle.py, claude-kota.py, sayfa.html)
+kurallar/         sabit git kuralları (tek kaynak; skill'ler ve roller buraya işaret eder)
 hooks/            SessionStart "nerede kaldık", olay.py (olay günlüğü ve puan defteri)
 docs/decisions/   neden böyle olduğu
 deney/            ölçülen koşular: görevler, cevap anahtarları, puanlar
-tests/            olay günlüğü ve canlı sayfa için birim testleri
+tests/            olay günlüğü, canlı sayfa ve git kuralları için birim testleri
 ```
 
 ## Geliştirme

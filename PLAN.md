@@ -35,4 +35,6 @@
 - [ ] `/takim`: dalgalar arasında `main` ilerlediyse görevin ilk satırı "önce `git merge --ff-only main`" (Claude Code'un worktree yalıtımı oturum başındaki main'den açıyor, `0004`)
 - [x] `izle`: agent haritası (PM → lider → işçi ağacı; kim kimi başlattı, hangi sağlayıcı, durum). Kullanıcının isteği, 2026-10-05; `0005`: canlı sayfa ve rapor, ilişki bulunamazsa PM
 - [x] `izle` kota: ölçüm yenilenme saatinden eskiyse "eski ölçüm" diye göster; Claude ölçüm betiği ve sağlayıcı/grup/pencere başına son ölçüm (`0005`)
+- [x] Evrensel git kuralları tek dosyada (`kurallar/git.md`): imza yok, PR'da araç satırı yok, birleşen dal silinmez, işçi push etmez; `proje-kur` sormadan yazar, `takim` dalı silmez (`0006`, 0.4.1)
+- [ ] `0006`'nın açık kalanı: kurulu 0.4.1 ile gerçek projede `/proje-kur`; rol gövdesinde `${CLAUDE_PLUGIN_ROOT}` çözülüyor mu
 - [ ] `/takim` ve `kadro.md`: dağıtım üç sağlayıcıya işin ağırlığına ve ölçülmüş beceriye göre; sabit "en çok N Claude agent" yerine planda iş, ağırlık, işçi, neden tablosu (kullanıcı, 2026-10-05)
