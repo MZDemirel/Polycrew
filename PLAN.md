@@ -44,9 +44,10 @@
 **Hedef:** Kadro zamanla ve yeni modellerle kendini düzeltsin; eklentiyi ilk kez kuran biri Codex ve agy olmadan da işe yarar bir takım görsün.
 **Mod:** yapımcı
 - [ ] 0.5.0'ı gerçek oturumda dene (Pixlender): `/session-start` eski not dosyasıyla, `/team` ile bir koşu, `external-agent.sh quota` ve bir `read` koşusu; gözlem `0007`'ye (Aşama 2'deki açık kalanla aynı iş)
-- [ ] Puanlama, zaman ağırlığı: `roster.py suggest` ve `summary` puanları yarı ömürle soldursun (eski puan başlangıç değerine yaklaşır, silinmez); yarı ömür ölçülerek seçilir
-- [ ] Puanlama, sürümlü işçi adı: Claude rollerinde işçi adı model sürümünü taşısın (`claude/developer/sonnet` yeni Sonnet'e eski puanları devretmesin); eski sürümsüz satırların nasıl okunacağı kararla
-- [ ] Puanlama, "dene" satırı: az verili ya da yeni işçi özet tablosunda kolay bir iş için önerilsin; hiç denenmeyen işçinin puanı oluşmuyor
+- [x] Puanlama, zaman ağırlığı: `roster.py suggest` ve `summary` puanları 30 günlük yarı ömürle soldurur (eski puan başlangıç değerine yaklaşır, silinmez); `--half-life` (`0008`)
+- [x] Puanlama, sürümlü işçi adı: `events.py score` Claude işçisinin sürümünü transkriptten ekler (`claude/developer/sonnet-5-5`); 2026-10-12 öncesi sürümsüz satırlar 5-5 okunur (`0008`)
+- [x] Puanlama, "dene" önerisi: özet tablosunda `Try` sütunu; az verili ve rolde önselin altına düşmemiş işçi kolay bir iş için önerilir (`0008`)
+- [ ] `0008`'in açık kalanı: gerçek bir takım koşusunda kancanın modeli yazdığını ve `score`'un sürümü eklediğini doğrula; yarı ömrü birkaç haftalık veriyle yeniden değerlendir
 - [ ] Aynı iş kimliğinin sonraki puanı öncekinin yerine geçsin (Aşama 2'den taşındı)
 - [ ] Sıralamada kota ve süre de tartılsın: yakın puanda ucuz ve hızlı işçi öne geçsin (Aşama 2'den taşındı)
 - [ ] Takım yapısı önerisi: puan ortalamalarından "bu rol için lider gereksiz", "bu alanda dış işçi yeter" gibi öneriler çıksın; yapıyı kullanıcı onaylar, kendiliğinden değişmez

@@ -2,8 +2,12 @@
 """polycrew dynamic roster: worker suggestions from the score ledger.
 
 Usage:
-  roster.py suggest [--role R] [--field F] [--difficulty E|M|H] [--no-seed]
-  roster.py summary [--days N] [--no-seed] [--now TS]
+  roster.py suggest [--role R] [--field F] [--difficulty E|M|H] [--half-life DAYS] [--no-seed]
+  roster.py summary [--days N] [--half-life DAYS] [--no-seed] [--now TS]
+
+Scores fade with age (0008): a score one half-life old (default 30 days) counts half, so an old
+impression drifts back to the prior (3.5) instead of being remembered forever. --half-life 0 turns
+fading off.
   roster.py add <id> <1-5> [reason] [--worker ...] [--role ...] ...
 
 Records written before 0.5.0 (Turkish role, field and difficulty values) are mapped to the new
@@ -67,10 +71,28 @@ def kayitlari_oku(tohumsuz: bool = False) -> list[dict]:
     return kayitlar
 
 
-def duzeltilmis_puan(notlar: list[float], onsel: float = 3.5, k: float = 2.0) -> float:
+YARI_OMUR = 30.0  # gün: bu yaştaki puan yarım sayar (0008)
+AZ_VERI = 3.0  # etkin n bunun altındaysa "little data"
+
+
+def agirlik(ts, simdi: float | None, yari_omur: float) -> float:
+    """Bir puanın yaşına göre ağırlığı; ``ts`` yoksa ya da soldurma kapalıysa 1."""
+    if not yari_omur or yari_omur <= 0 or simdi is None:
+        return 1.0
+    try:
+        yas_gun = max(0.0, (simdi - float(ts)) / 86400.0)
+    except (ValueError, TypeError):
+        return 1.0
+    return 0.5 ** (yas_gun / yari_omur)
+
+
+def duzeltilmis_puan(notlar: list[float], onsel: float = 3.5, k: float = 2.0,
+                     agirliklar: list[float] | None = None) -> float:
     if not notlar:
         return onsel
-    return (onsel * k + sum(notlar)) / (k + len(notlar))
+    if agirliklar is None:
+        agirliklar = [1.0] * len(notlar)
+    return (onsel * k + sum(a * n for a, n in zip(agirliklar, notlar))) / (k + sum(agirliklar))
 
 
 def kayit_filtrele(kayit: dict, rol: str | None, alan: str | None, zorluk: str | None) -> bool:
@@ -83,7 +105,8 @@ def kayit_filtrele(kayit: dict, rol: str | None, alan: str | None, zorluk: str |
     return True
 
 
-def isci_istatistik(kayitlar: list[dict]) -> list[dict]:
+def isci_istatistik(kayitlar: list[dict], simdi: float | None = None,
+                    yari_omur: float = YARI_OMUR) -> list[dict]:
     gruplar: dict[str, dict] = {}
     for k in kayitlar:
         isci = k.get("isci")
@@ -92,15 +115,17 @@ def isci_istatistik(kayitlar: list[dict]) -> list[dict]:
         if isci not in gruplar:
             gruplar[isci] = {
                 "notlar": [],
+                "agirliklar": [],
                 "kotalar": [],
                 "sureler": [],
                 "ts_ler": [],
             }
         try:
             n_val = float(k["not"])
-            gruplar[isci]["notlar"].append(n_val)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, KeyError):
             continue
+        gruplar[isci]["notlar"].append(n_val)
+        gruplar[isci]["agirliklar"].append(agirlik(k.get("ts"), simdi, yari_omur))
 
         kota = k.get("kota")
         if kota is not None:
@@ -130,7 +155,8 @@ def isci_istatistik(kayitlar: list[dict]) -> list[dict]:
             continue
         n = len(notlar)
         ort = sum(notlar) / n
-        dp = duzeltilmis_puan(notlar)
+        etkin = sum(veri["agirliklar"])
+        dp = duzeltilmis_puan(notlar, agirliklar=veri["agirliklar"])
         ort_kota = sum(veri["kotalar"]) / len(veri["kotalar"]) if veri["kotalar"] else None
         ort_sure = sum(veri["sureler"]) / len(veri["sureler"]) if veri["sureler"] else None
         son_ts = max(veri["ts_ler"]) if veri["ts_ler"] else None
@@ -138,12 +164,13 @@ def isci_istatistik(kayitlar: list[dict]) -> list[dict]:
         sonuclar.append({
             "isci": isci,
             "n": n,
+            "etkin": etkin,
             "ortalama": ort,
             "duzeltilmis": dp,
             "ort_kota": ort_kota,
             "ort_sure": ort_sure,
             "son_ts": son_ts,
-            "durum": "little data" if n < 3 else "",
+            "durum": "little data" if etkin < AZ_VERI else "",
         })
 
     sonuclar.sort(key=lambda x: (x["duzeltilmis"], x["n"], x["ortalama"]), reverse=True)
@@ -180,19 +207,20 @@ def format_sayi(val: float, basamak: int = 1) -> str:
 
 def tablo_olustur_filtreli(istatistikler: list[dict]) -> str:
     satirlar = [
-        "| Worker | n | Mean | Adjusted score | Avg quota | Avg duration | Last scored | Status |",
-        "|---|---|---|---|---|---|---|---|",
+        "| Worker | n | Eff. n | Mean | Adjusted score | Avg quota | Avg duration | Last scored | Status |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for i in istatistikler:
         satirlar.append(
-            f"| {i['isci']} | {i['n']} | {format_sayi(i['ortalama'], 1)} | "
+            f"| {i['isci']} | {i['n']} | {format_sayi(i['etkin'], 1)} | {format_sayi(i['ortalama'], 1)} | "
             f"{format_sayi(i['duzeltilmis'], 2)} | {format_kota(i['ort_kota'])} | "
             f"{format_sure(i['ort_sure'])} | {format_ts(i['son_ts'])} | {i['durum']} |"
         )
     return "\n".join(satirlar)
 
 
-def tablo_olustur_filtresiz(kayitlar: list[dict]) -> str:
+def tablo_olustur_filtresiz(kayitlar: list[dict], simdi: float | None = None,
+                            yari_omur: float = YARI_OMUR) -> str:
     gruplar: dict[tuple[str, str], list[dict]] = {}
     for k in kayitlar:
         rol = k.get("rol") or "—"
@@ -204,7 +232,7 @@ def tablo_olustur_filtresiz(kayitlar: list[dict]) -> str:
 
     grup_listesi = []
     for (rol, alan), grup_kayitlari in gruplar.items():
-        istatistikler = isci_istatistik(grup_kayitlari)
+        istatistikler = isci_istatistik(grup_kayitlari, simdi, yari_omur)
         if istatistikler:
             en_iyi = istatistikler[0]
             grup_listesi.append((rol, alan, en_iyi))
@@ -215,13 +243,13 @@ def tablo_olustur_filtresiz(kayitlar: list[dict]) -> str:
     grup_listesi.sort(key=lambda x: (x[0], x[1]))
 
     satirlar = [
-        "| Role | Field | Best worker | Adjusted score | n | Mean | Avg quota | Avg duration | Last scored | Status |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "| Role | Field | Best worker | Adjusted score | n | Eff. n | Mean | Avg quota | Avg duration | Last scored | Status |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for rol, alan, i in grup_listesi:
         satirlar.append(
             f"| {rol} | {alan} | {i['isci']} | {format_sayi(i['duzeltilmis'], 2)} | "
-            f"{i['n']} | {format_sayi(i['ortalama'], 1)} | {format_kota(i['ort_kota'])} | "
+            f"{i['n']} | {format_sayi(i['etkin'], 1)} | {format_sayi(i['ortalama'], 1)} | {format_kota(i['ort_kota'])} | "
             f"{format_sure(i['ort_sure'])} | {format_ts(i['son_ts'])} | {i['durum']} |"
         )
     return "\n".join(satirlar)
@@ -233,7 +261,11 @@ def cmd_oneri(argv: list[str]) -> int:
     parser.add_argument("--field", dest="alan", type=str, default=None, help="field filter")
     parser.add_argument("--difficulty", dest="zorluk", type=str, default=None, help="difficulty filter (E, M, H)")
     parser.add_argument("--no-seed", dest="tohumsuz", action="store_true", help="leave out the seed data")
+    parser.add_argument("--half-life", dest="yari_omur", type=float, default=YARI_OMUR,
+                        help="days after which a score counts half (default: 30; 0 = no fading)")
+    parser.add_argument("--now", dest="simdi", type=float, default=None, help="current time (epoch seconds, for tests)")
     args = parser.parse_args(argv)
+    simdi = args.simdi if args.simdi is not None else time.time()
 
     # Eski adla verilen filtre de yeni ada çevrilir (0007).
     f = olay.kayit_adlari({"rol": args.rol, "alan": args.alan, "zorluk": args.zorluk})
@@ -249,11 +281,11 @@ def cmd_oneri(argv: list[str]) -> int:
         if not uygun_kayitlar:
             print("No score records match the filter.")
             return 0
-        istatistikler = isci_istatistik(uygun_kayitlar)
+        istatistikler = isci_istatistik(uygun_kayitlar, simdi, args.yari_omur)
         print(tablo_olustur_filtreli(istatistikler))
         return 0
     else:
-        print(tablo_olustur_filtresiz(kayitlar))
+        print(tablo_olustur_filtresiz(kayitlar, simdi, args.yari_omur))
         return 0
 
 
@@ -272,6 +304,7 @@ def tablo_olustur_ozet(
     kayitlar: list[dict],
     gun: int = 7,
     simdi: float | None = None,
+    yari_omur: float = YARI_OMUR,
 ) -> str:
     if not kayitlar:
         return "No records."
@@ -297,14 +330,28 @@ def tablo_olustur_ozet(
 
     sirali_ciftler = sorted(tum_gruplar.keys(), key=lambda x: (x[0], x[1]))
 
+    # 0008: "dene" adayı aynı rolde görülmüş, bu rol + alanda az verisi olan ve rolün bütününde
+    # önselin (3,5) altına düşmemiş işçidir. Kötü puan zamanla solar; işçi o zaman yeniden aday olur.
+    rol_kayitlari: dict[str, list[dict]] = {}
+    for k in kayitlar:
+        rol_kayitlari.setdefault(k.get("rol") or "—", []).append(k)
+    rol_istatistik = {rol: isci_istatistik(ks, simdi, yari_omur) for rol, ks in rol_kayitlari.items()}
+
+    def dene_adayi(rol: str, alan: str, secilenler: set[str]) -> str:
+        etkin = {i["isci"]: i["etkin"] for i in isci_istatistik(tum_gruplar[(rol, alan)], simdi, yari_omur)}
+        adaylar = [(-i["duzeltilmis"], etkin.get(i["isci"], 0.0), i["isci"]) for i in rol_istatistik.get(rol, [])
+                   if i["isci"] not in secilenler and etkin.get(i["isci"], 0.0) < AZ_VERI
+                   and i["duzeltilmis"] >= 3.5]
+        return min(adaylar)[2] if adaylar else "—"
+
     satirlar = [
-        "| Role | Field | Roster | Score | n | Backup | Backup score | Basis |",
-        "|---|---|---|---|---|---|---|---|",
+        "| Role | Field | Roster | Score | n | Backup | Backup score | Basis | Try |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
 
     for rol, alan in sirali_ciftler:
         pencere_kayit_grubu = pencere_gruplar.get((rol, alan), [])
-        p_ist = isci_istatistik(pencere_kayit_grubu) if pencere_kayit_grubu else []
+        p_ist = isci_istatistik(pencere_kayit_grubu, simdi, yari_omur) if pencere_kayit_grubu else []
 
         if p_ist:
             p_ist.sort(key=lambda x: (-x["duzeltilmis"], -x["n"], x["isci"]))
@@ -312,7 +359,7 @@ def tablo_olustur_ozet(
             kadro_isci = kadro["isci"]
             puan = format_sayi(kadro["duzeltilmis"], 2)
             n = kadro["n"]
-            dayanak = "window, little data" if n < 3 else "window"
+            dayanak = "window, little data" if kadro["etkin"] < AZ_VERI else "window"
 
             if len(p_ist) >= 2:
                 yedek = p_ist[1]
@@ -323,7 +370,7 @@ def tablo_olustur_ozet(
                 yedek_puani = "—"
         else:
             tum_kayit_grubu = tum_gruplar[(rol, alan)]
-            t_ist = isci_istatistik(tum_kayit_grubu)
+            t_ist = isci_istatistik(tum_kayit_grubu, simdi, yari_omur)
             if not t_ist:
                 continue
             t_ist.sort(key=lambda x: (-x["duzeltilmis"], -x["n"], x["isci"]))
@@ -341,8 +388,9 @@ def tablo_olustur_ozet(
                 yedek_isci = "—"
                 yedek_puani = "—"
 
+        dene = dene_adayi(rol, alan, {kadro_isci, yedek_isci})
         satirlar.append(
-            f"| {rol} | {alan} | {kadro_isci} | {puan} | {n} | {yedek_isci} | {yedek_puani} | {dayanak} |"
+            f"| {rol} | {alan} | {kadro_isci} | {puan} | {n} | {yedek_isci} | {yedek_puani} | {dayanak} | {dene} |"
         )
 
     if len(satirlar) <= 2:
@@ -360,10 +408,12 @@ def cmd_ozet(argv: list[str]) -> int:
     parser.add_argument("--days", dest="gun", type=int, default=7, help="records of the last N days (default: 7)")
     parser.add_argument("--no-seed", dest="tohumsuz", action="store_true", help="leave out the seed data")
     parser.add_argument("--now", dest="simdi", type=float, default=None, help="current time (epoch seconds, for tests)")
+    parser.add_argument("--half-life", dest="yari_omur", type=float, default=YARI_OMUR,
+                        help="days after which a score counts half (default: 30; 0 = no fading)")
     args = parser.parse_args(argv)
 
     kayitlar = kayitlari_oku(tohumsuz=args.tohumsuz)
-    cikti = tablo_olustur_ozet(kayitlar, gun=args.gun, simdi=args.simdi)
+    cikti = tablo_olustur_ozet(kayitlar, gun=args.gun, simdi=args.simdi, yari_omur=args.yari_omur)
     print(cikti)
     return 0
 

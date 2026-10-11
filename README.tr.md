@@ -128,6 +128,8 @@ Arka planda:
 
 ## Kadro (`roster.py`)
 
+Puanlar zamanla solar: 30 günlük bir puan yarım sayar (`--half-life`), eski bir izlenim sonsuza kadar kalmaz, nötre döner. Claude işçileri model sürümüyle kaydedilir (`claude/developer/sonnet-5-5`); yeni model kendi koşularıyla sıralanır. Oturum özeti, az verisi olan bir işçiyi kolay bir işte **denemek** için de önerir.
+
 ```bash
 python3 skills/team/roster.py suggest                 # rol ve alan başına en iyi işçi
 python3 skills/team/roster.py suggest --role developer --field py # daraltılmış

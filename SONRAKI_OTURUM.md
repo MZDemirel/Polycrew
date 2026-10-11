@@ -1,8 +1,10 @@
 # Sonraki oturum
 
-Son güncelleme: **2026-10-11** (evrensel git kuralları `0006`; İngilizce yüzey `0007`, 0.5.0).
+Son güncelleme: **2026-10-11** (git kuralları `0006`; İngilizce yüzey `0007`; öğrenen kadro `0008`, 0.6.0).
 
 ## Nerede kaldık
+
+- **0.6.0 (2026-10-11, `0008`): öğrenen kadro.** Puanlar 30 günlük yarı ömürle soluyor (`roster.py --half-life`, 0 kapatır); tabloda `Eff. n` sayılan veri miktarı, "little data" ona bakıyor. `events.py score` Claude işçisine model sürümünü transkriptten ekliyor (`claude/developer/sonnet-5-5`); kanca biten agent'ın gerçek modelini günlüğe yazıyor. 2026-10-12 öncesi sürümsüz Claude satırları 5-5 okunuyor. Özet tablosunda `Try` sütunu. 59 test, 3,4 sn. PLAN.md'de Aşama 3 açıldı (kalanlar: yeniden puanlama, kota ve süre, takım yapısı önerisi, dış işçisiz ilk deneyim, GitHub Actions, ofis görünümü).
 
 - **0.5.0 (2026-10-11, `0007`): adlar İngilizce.** Komutlar `/session-start`, `/session-end`, `/decision`, `/project-setup`, `/team`, `/external-agent`, `/watch`; roller `lead`, `developer`, `reviewer`, `artist`, `designer`, `researcher`; betikler `external-agent.sh read|write|quota`, `roster.py suggest|summary`, `events.py score`, `watch.py report`; zorluk E/M/H. Skill, rol ve kural metinleri İngilizce (kurallar `rules/git.md`), çıktı proje dilinde. Yeni projede not dosyası `NEXT_SESSION.md`; bu depo `SONRAKI_OTURUM.md`'yi kullanmaya devam ediyor (kanca ikisini de tanır). Eski puan verisi okurken yeni ada çevrilir, dosyalar değişmedi. İç kod ve JSON şeması Türkçe kaldı. 53 test, 2,8 sn. Eşleme tablosu `0007`'de ve `README.tr.md`'de.
 - Aşağıdaki eski maddeler o günkü adlarla yazılı (`dis-ajan`, `kadro.md`, `/oturum-ac`); tarihsel kayıt, düzeltilmedi.
@@ -27,6 +29,7 @@ Son güncelleme: **2026-10-11** (evrensel git kuralları `0006`; İngilizce yüz
 - Kullanıcının isteği (2026-10-02): bir sonraki koşuda **çıktı kalitesine göre** sistemi (kadro, roller, `dis-ajan`) revize et. Her işçinin çıktısını kaydet: kalite notu, süre, kota (`dis-ajan.sh kota` öncesi ve sonrası).
 
 ### 2. Açık kalanlar
+- `0008`: gerçek bir takım koşusundan sonra `agent_bitti` olayında `model` var mı, `events.py score ... --worker claude/developer/sonnet` adı sürümlü yazdı mı bak. Bitti: gözlem `0008`'e yazıldı.
 - `0007`: kurulu 0.5.0 ile gerçek oturum denemesi: `/session-start` eski bir projede (Pixlender: `SONRAKI_OTURUM.md` tanınıyor mu, çıktı Türkçe mi), `/team` ile bir koşu (`polycrew:developer` yükleniyor mu), `external-agent.sh quota` ve bir `read` koşusu. Bitti: gözlem `0007`'ye yazıldı.
 - `0006`: kurulu sürümle gerçek bir projede `/project-setup` (yeni proje, var olan `CLAUDE.md`, `~/.claude/CLAUDE.md` önerisi). Bitti: `Git` bölümünde sabit satırlar sorulmadan var.
 - `0006`: bir takım koşusunda `developer`'ın `${CLAUDE_PLUGIN_ROOT}/rules/git.md`'yi okuyabildiğini doğrula.

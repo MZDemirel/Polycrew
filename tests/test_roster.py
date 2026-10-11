@@ -233,7 +233,7 @@ class KadroVePuanTesti(unittest.TestCase):
         self.assertGreaterEqual(satir_sayisi, 10)
 
     def test_ozet_bos_defter(self):
-        r = calistir_kadro(["summary", "--no-seed"], defter=self.defter)
+        r = calistir_kadro(["summary", "--half-life", "0", "--no-seed"], defter=self.defter)
         self.assertEqual(r.returncode, 0)
         self.assertEqual(r.stdout.strip(), "No records.")
 
@@ -252,15 +252,17 @@ class KadroVePuanTesti(unittest.TestCase):
                 f.write(json.dumps(k) + "\n")
 
         r = calistir_kadro(
-            ["summary", "--now", "1000000", "--days", "7", "--no-seed"],
+            ["summary", "--half-life", "0", "--now", "1000000", "--days", "7", "--no-seed"],
             defter=self.defter,
         )
         self.assertEqual(r.returncode, 0)
         # 1970-01-12 UTC
         self.assertIn("Roster summary: last 7 days, 1 records (generated: 1970-01-12)", r.stdout)
-        self.assertIn("yeni-isci", r.stdout)
-        self.assertNotIn("eski-isci", r.stdout)
-        self.assertNotIn("gelecek-isci", r.stdout)
+        self.assertIn("| developer | py | yeni-isci |", r.stdout)
+        # Pencere dışındakiler kadro ya da yedek olmaz (yalnız "Try" sütununda görünebilirler, 0008).
+        self.assertNotIn("| py | eski-isci |", r.stdout)
+        self.assertNotIn("| py | gelecek-isci |", r.stdout)
+        self.assertNotIn("| eski-isci | 3", r.stdout)
 
     def test_ozet_esitlik_kurali(self):
         # 1. Puan esitliginde n'si buyuk olan kazanir
@@ -277,7 +279,7 @@ class KadroVePuanTesti(unittest.TestCase):
                 f.write(json.dumps(k) + "\n")
 
         r1 = calistir_kadro(
-            ["summary", "--now", "1000000", "--days", "7", "--no-seed"],
+            ["summary", "--half-life", "0", "--now", "1000000", "--days", "7", "--no-seed"],
             defter=self.defter,
         )
         self.assertEqual(r1.returncode, 0)
@@ -296,7 +298,7 @@ class KadroVePuanTesti(unittest.TestCase):
                 f.write(json.dumps(k) + "\n")
 
         r2 = calistir_kadro(
-            ["summary", "--now", "1000000", "--days", "7", "--no-seed"],
+            ["summary", "--half-life", "0", "--now", "1000000", "--days", "7", "--no-seed"],
             defter=self.defter,
         )
         self.assertEqual(r2.returncode, 0)
@@ -313,7 +315,7 @@ class KadroVePuanTesti(unittest.TestCase):
                 f.write(json.dumps(k) + "\n")
 
         r = calistir_kadro(
-            ["summary", "--now", "1000000", "--days", "7", "--no-seed"],
+            ["summary", "--half-life", "0", "--now", "1000000", "--days", "7", "--no-seed"],
             defter=self.defter,
         )
         self.assertEqual(r.returncode, 0)
@@ -336,7 +338,7 @@ class KadroVePuanTesti(unittest.TestCase):
                 f.write(json.dumps(k) + "\n")
 
         r = calistir_kadro(
-            ["summary", "--now", "1000000", "--days", "7", "--no-seed"],
+            ["summary", "--half-life", "0", "--now", "1000000", "--days", "7", "--no-seed"],
             defter=self.defter,
         )
         self.assertEqual(r.returncode, 0)
@@ -355,7 +357,7 @@ class KadroVePuanTesti(unittest.TestCase):
                 f.write(json.dumps(k) + "\n")
 
         r = calistir_kadro(
-            ["summary", "--now", "1000000", "--days", "7", "--no-seed"],
+            ["summary", "--half-life", "0", "--now", "1000000", "--days", "7", "--no-seed"],
             defter=self.defter,
         )
         self.assertEqual(r.returncode, 0)
@@ -373,7 +375,7 @@ class KadroVePuanTesti(unittest.TestCase):
                 f.write(json.dumps(k) + "\n")
 
         r = calistir_kadro(
-            ["summary", "--now", "1000000", "--days", "7", "--no-seed"],
+            ["summary", "--half-life", "0", "--now", "1000000", "--days", "7", "--no-seed"],
             defter=self.defter,
         )
         self.assertEqual(r.returncode, 0)
@@ -397,14 +399,109 @@ class KadroVePuanTesti(unittest.TestCase):
 
         for filtre in (["--role", "developer", "--field", "py", "--difficulty", "H"],
                        ["--role", "gelistirici", "--difficulty", "Z"]):
-            r = calistir_kadro(["suggest", *filtre, "--no-seed"], defter=self.defter)
+            r = calistir_kadro(["suggest", *filtre, "--no-seed", "--half-life", "0"], defter=self.defter)
             self.assertEqual(r.returncode, 0)
-            self.assertIn("| claude/developer/sonnet | 2 |", r.stdout)
+            self.assertIn("| claude/developer/sonnet-5-5 | 2 |", r.stdout)  # sürümsüz eski satır (0008)
             self.assertNotIn("gelistirici", r.stdout)
 
-        r = calistir_kadro(["summary", "--now", "1000000", "--no-seed"], defter=self.defter)
+        r = calistir_kadro(["summary", "--half-life", "0", "--now", "1000000", "--no-seed"], defter=self.defter)
         self.assertIn("| reviewer | review | codex/x |", r.stdout)
         self.assertEqual(self.defter.read_text(encoding="utf-8"), onceki)  # dosya değişmez
+
+    # ---- 0008: zaman ağırlığı, sürümlü işçi adı, "dene" önerisi
+
+    def _defter(self, kayitlar):
+        with open(self.defter, "w", encoding="utf-8") as f:
+            for k in kayitlar:
+                f.write(json.dumps(k) + "\n")
+
+    def test_agirlik_yari_omur(self):
+        gun = 86400
+        self.assertAlmostEqual(kadro.agirlik(0, 30 * gun, 30), 0.5)
+        self.assertAlmostEqual(kadro.agirlik(0, 60 * gun, 30), 0.25)
+        self.assertEqual(kadro.agirlik(0, 60 * gun, 0), 1.0)  # 0 soldurmayı kapatır
+        self.assertEqual(kadro.agirlik(None, 60 * gun, 30), 1.0)  # ts yoksa tam ağırlık
+        self.assertEqual(kadro.agirlik(90 * gun, 60 * gun, 30), 1.0)  # gelecekteki ts
+        # Ağırlıksız çağrı eski sonucu verir; yarım ağırlıklı tek 5 puan önsele daha yakın kalır.
+        self.assertAlmostEqual(kadro.duzeltilmis_puan([5.0]), 4.0)
+        self.assertAlmostEqual(kadro.duzeltilmis_puan([5.0], agirliklar=[0.5]), (7.0 + 2.5) / 2.5)
+
+    def test_eski_iyi_puan_yeni_puanin_altina_duser(self):
+        gun, simdi = 86400, 400 * 86400
+        self._defter(
+            [{"isci": "eski-usta", "rol": "developer", "alan": "py", "not": 5, "ts": simdi - 200 * gun}] * 4
+            + [{"isci": "yeni-isci", "rol": "developer", "alan": "py", "not": 4, "ts": simdi - gun}] * 4
+        )
+        ortak = ["suggest", "--role", "developer", "--no-seed", "--now", str(simdi)]
+        solmayan = calistir_kadro([*ortak, "--half-life", "0"], defter=self.defter).stdout.splitlines()
+        solan = calistir_kadro(ortak, defter=self.defter).stdout.splitlines()
+        self.assertIn("eski-usta", solmayan[2])
+        self.assertIn("yeni-isci", solan[2])
+        eski = next(s for s in solan if "eski-usta" in s)
+        self.assertIn("| 4 | 0.0 |", eski)  # ham n 4, etkin n ~0
+        self.assertIn("little data", eski)
+        self.assertNotIn("little data", solan[2])
+
+    def test_surumsuz_eski_claude_satiri_bugunku_surum_okunur(self):
+        sinir = olay.SURUM_SINIRI
+        once = olay.kayit_adlari({"isci": "claude/gelistirici/sonnet", "ts": sinir - 1})
+        sonra = olay.kayit_adlari({"isci": "claude/developer/sonnet", "ts": sinir + 1})
+        self.assertEqual(once["isci"], "claude/developer/sonnet-5-5")
+        self.assertEqual(sonra["isci"], "claude/developer/sonnet")
+        self.assertEqual(olay.kayit_adlari({"isci": "claude/artist/opus", "ts": 1})["isci"], "claude/artist/opus-5-5")
+        self.assertEqual(olay.kayit_adlari({"isci": "codex/gpt-6.1-sol/high", "ts": 1})["isci"], "codex/gpt-6.1-sol/high")
+
+    def test_puan_claude_iscisine_surumu_ekler(self):
+        transkript = self.gunluk.parent / "agent.jsonl"
+        transkript.write_text(
+            json.dumps({"message": {"model": "<synthetic>"}}) + "\n"
+            + json.dumps({"message": {"model": "claude-sonnet-9-1"}}) + "\n", encoding="utf-8")
+        with open(self.gunluk, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"tur": "agent_bitti", "ts": 5, "id": "ag7", "rol": "polycrew:developer",
+                                "kaynak": "claude", "transkript": str(transkript)}) + "\n")
+        r = calistir_olay(["score", "ag7", "4", "--worker", "claude/developer/sonnet", "--role", "developer"],
+                          gunluk=self.gunluk, defter=self.defter)
+        self.assertEqual((r.returncode, r.stderr), (0, ""))
+        d = json.loads(self.defter.read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual(d["isci"], "claude/developer/sonnet-9-1")
+
+        # İş bulunamazsa ad değişmez ve uyarı çıkar; dış işçiye ve sürümlü ada dokunulmaz.
+        r = calistir_olay(["score", "yok", "4", "--worker", "claude/developer/sonnet"],
+                          gunluk=self.gunluk, defter=self.defter)
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("model version not found", r.stderr)
+        r = calistir_olay(["score", "ag7", "4", "--worker", "claude/developer/opus-7"],
+                          gunluk=self.gunluk, defter=self.defter)
+        self.assertEqual(r.stderr, "")
+        satirlar = [json.loads(s)["isci"] for s in self.defter.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(satirlar[-2:], ["claude/developer/sonnet", "claude/developer/opus-7"])
+        self.assertEqual(olay.surumlu_isci("claude/developer/opus", "claude-sonnet-9-1"), "claude/developer/opus")
+
+    def test_kanca_biten_agentin_modelini_yazar(self):
+        transkript = self.gunluk.parent / "t.jsonl"
+        transkript.write_text(json.dumps({"message": {"model": "claude-opus-9-9"}}) + "\n", encoding="utf-8")
+        yuk = {"hook_event_name": "SubagentStop", "agent_id": "a1", "agent_type": "polycrew:artist",
+               "agent_transcript_path": str(transkript)}
+        self.assertEqual(olay.kancadan(yuk)["model"], "claude-opus-9-9")
+        self.assertNotIn("model", olay.kancadan({**yuk, "agent_transcript_path": "/yok/yok.jsonl"}))
+        self.assertNotIn("model", olay.kancadan({**yuk, "hook_event_name": "SubagentStart"}))
+
+    def test_ozet_dene_sutunu(self):
+        simdi = 1_000_000
+        self._defter(
+            [{"isci": "usta", "rol": "developer", "alan": "py", "not": 5, "ts": simdi - 10}] * 4
+            + [{"isci": "yedek", "rol": "developer", "alan": "py", "not": 4, "ts": simdi - 10}] * 4
+            + [{"isci": "cirak", "rol": "developer", "alan": "js", "not": 4, "ts": simdi - 10}] * 4
+            + [{"isci": "ressam", "rol": "artist", "alan": "art", "not": 5, "ts": simdi - 10}] * 4
+            + [{"isci": "kotu", "rol": "developer", "alan": "js", "not": 1, "ts": simdi - 10}]
+        )
+        r = calistir_kadro(["summary", "--now", str(simdi), "--no-seed"], defter=self.defter)
+        satir = {tuple(h.strip() for h in s.split("|")[1:3]): [h.strip() for h in s.split("|")] for s in r.stdout.splitlines() if s.startswith("| ")}
+        self.assertEqual(satir[("Role", "Field")][-2], "Try")
+        self.assertEqual(satir[("developer", "py")][-2], "cirak")  # aynı rolde, bu alanda verisi yok
+        self.assertEqual(satir[("developer", "js")][-2], "usta")  # adaylardan rolde en iyisi
+        self.assertNotIn("kotu", [v[-2] for v in satir.values()])  # önselin altına düşen aday olmaz
+        self.assertEqual(satir[("artist", "art")][-2], "—")  # rolde başka işçi yok
 
     def test_eski_ortam_degiskeni_yedek_olarak_okunur(self):
         env = {k: v for k, v in os.environ.items() if k not in ("POLYCREW_EVENTS", "POLYCREW_SCORES")}

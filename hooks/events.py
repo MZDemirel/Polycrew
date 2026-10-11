@@ -39,6 +39,73 @@ ESKI_ALAN = {"sanat": "art", "arastirma": "research", "inceleme": "review", "tas
 ESKI_ZORLUK = {"K": "E", "O": "M", "Z": "H", "hafif": "E", "orta": "M", "agir": "H"}
 
 
+# 0008: Claude rollerinde işçi adı model sürümünü taşır. Bu tarihten önceki sürümsüz satırlar,
+# o dönemin transkriptlerinin gösterdiği sürüm olarak okunur.
+SURUM_SINIRI = 1791763200  # 2026-10-12 00:00 UTC
+ESKI_SURUM = {"sonnet": "sonnet-5-5", "opus": "opus-5-5"}
+TRANSKRIPT_SATIR = 400  # model aranırken okunan en çok satır
+
+
+def transkript_modeli(yol) -> str | None:
+    """Agent transkriptinin başından gerçek model kimliği (``claude-sonnet-5-5``); yoksa None."""
+    try:
+        with open(yol, encoding="utf-8", errors="ignore") as f:
+            for i, satir in enumerate(f):
+                if i >= TRANSKRIPT_SATIR:
+                    break
+                try:
+                    m = (json.loads(satir).get("message") or {}).get("model")
+                except (ValueError, AttributeError):
+                    continue
+                if isinstance(m, str) and m and not m.startswith("<"):
+                    return m
+    except (OSError, TypeError):
+        pass
+    return None
+
+
+def surumlu_isci(isci: str, model: str | None) -> str:
+    """``claude/developer/sonnet`` + ``claude-sonnet-5-5`` → ``claude/developer/sonnet-5-5``."""
+    parcalar = isci.split("/")
+    if not model or len(parcalar) != 3 or parcalar[0] != "claude" or any(c.isdigit() for c in parcalar[2]):
+        return isci
+    kisa = model[len("claude-"):] if model.startswith("claude-") else model
+    if not kisa.startswith(parcalar[2]):
+        return isci  # verilen ad başka bir aile; kullanıcının yazdığına dokunma
+    return "/".join([*parcalar[:2], kisa])
+
+
+def is_modeli(is_id: str) -> str | None:
+    """Bir Claude işinin modelini olay günlüğünden bulur (kimlik agent kimliği ya da tool_use_id)."""
+    try:
+        # Önce doğrudan: bu kimlikle biten agent olayı (agent kimliği verildiyse).
+        with open(dosya(), encoding="utf-8", errors="ignore") as f:
+            for satir in f:
+                try:
+                    e = json.loads(satir)
+                except ValueError:
+                    continue
+                if e.get("tur") == "agent_bitti" and str(e.get("id")) == str(is_id):
+                    m = e.get("model") or transkript_modeli(e.get("transkript"))
+                    if m:
+                        return m
+    except OSError:
+        pass
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "skills" / "watch"))
+        import watch  # tembel: kanca yolunda yüklenmez
+
+        for i in watch.birlestir(watch.oku())["isler"]:
+            if str(i.get("id")) == str(is_id):
+                m = i.get("model")
+                if isinstance(m, str) and any(c.isdigit() for c in m):
+                    return m
+                return transkript_modeli(i.get("transkript"))
+    except Exception:  # noqa: BLE001 - puan yazmak modele bağlı değildir
+        pass
+    return None
+
+
 def rol_adi(rol, onek: bool = True):
     """Eski rol adını yenisine çevirir; ``onek=False`` ise ``polycrew:`` önekini atar."""
     if not isinstance(rol, str):
@@ -60,7 +127,14 @@ def kayit_adlari(kayit: dict) -> dict:
     if isinstance(k.get("zorluk"), str):
         k["zorluk"] = ESKI_ZORLUK.get(k["zorluk"], k["zorluk"])
     if isinstance(k.get("isci"), str):
-        k["isci"] = "/".join(ESKI_ROL.get(p, p) for p in k["isci"].split("/"))
+        parcalar = [ESKI_ROL.get(p, p) for p in k["isci"].split("/")]
+        try:
+            eski = float(k.get("ts")) < SURUM_SINIRI
+        except (ValueError, TypeError):
+            eski = False
+        if eski and len(parcalar) == 3 and parcalar[0] == "claude":
+            parcalar[2] = ESKI_SURUM.get(parcalar[2], parcalar[2])
+        k["isci"] = "/".join(parcalar)
     return k
 
 
@@ -134,6 +208,7 @@ def kancadan(yuk: dict) -> dict | None:
             "id": yuk.get("agent_id"),
             "rol": yuk.get("agent_type"),
             "transkript": yuk.get("agent_transcript_path"),
+            **({"model": m} if ad == "SubagentStop" and (m := transkript_modeli(yuk.get("agent_transcript_path"))) else {}),
             "ham": _kisa({k: v for k, v in yuk.items() if k != "hook_event_name"}),
         }
     return None
@@ -219,6 +294,12 @@ def puan_ayristir(argv: list[str]) -> tuple[dict, bool]:
             olay[k] = v
 
     deftere_yazilsin = "isci" in bayraklar and bool(bayraklar["isci"])
+    if deftere_yazilsin and olay["isci"].startswith("claude/"):
+        surumlu = surumlu_isci(olay["isci"], is_modeli(is_id))
+        if surumlu == olay["isci"] and not any(c.isdigit() for c in olay["isci"].rsplit("/", 1)[-1]):
+            print(f"model version not found for {is_id}; write it in --worker (e.g. claude/developer/sonnet-5-5)",
+                  file=sys.stderr)
+        olay["isci"] = surumlu
     if deftere_yazilsin and "proje" not in olay:
         olay["proje"] = Path.cwd().name
 

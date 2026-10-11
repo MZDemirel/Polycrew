@@ -113,6 +113,8 @@ Under the hood:
 
 ## The roster (`roster.py`)
 
+Scores fade with age: one that is 30 days old counts half (`--half-life`), so an old impression drifts back to neutral instead of sticking forever. Claude workers are recorded with their model version (`claude/developer/sonnet-5-5`), so a new model is ranked by its own runs. The session summary also names a worker to **try** on an easy job when it has little data.
+
 ```bash
 python3 skills/team/roster.py suggest                 # best worker per role and field
 python3 skills/team/roster.py suggest --role developer --field py # narrowed

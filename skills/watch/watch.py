@@ -217,6 +217,8 @@ def birlestir(olaylar: list[dict], simdi: float | None = None) -> dict:
             if i is None:
                 i = yeni(str(e.get("id") or f"agent-{ts}"), e, rol=e.get("rol"))
             i.update(bitis=ts, durum="bitti", transkript=e.get("transkript"))
+            if e.get("model"):
+                i["model"] = e["model"]  # transkriptten okunan gerçek model (0008)
             if e.get("id"):
                 agent_kimligi[str(e["id"])] = i["id"]
             bagla(i, e)

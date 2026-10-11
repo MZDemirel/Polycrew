@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "polycrew",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "A multi-model crew for Claude Code: session discipline plus a PM-led team of Claude roles and external Codex/Gemini workers, measured and visible. Session workflow (CLAUDE.md, PLAN.md, decision notes, NEXT_SESSION.md), agent team and external workers, live watch page.",
   "author": {
     "name": "Muhammed Zahid Demirel",

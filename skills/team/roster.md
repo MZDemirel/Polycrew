@@ -1,6 +1,6 @@
 # Roster: worker by difficulty (built from measurements, the plugin's decision note 0002, 2026-10-02)
 
-This table is the prior; the current ranking is `roster.py suggest`.
+This table is the prior; the current ranking is `roster.py suggest`. Ledger scores fade with a 30-day half-life and Claude workers are tracked per model version, so when a new model arrives it is ranked by its own runs and this table is the fallback until it has some.
 
 Difficulty **E** easy, **M** medium, **H** hard. Claude quota is kept for the PM, the artist, design and H-level code.
 External workers run through the `external-agent` skill (Codex: `codex`; Gemini, and Claude via agy: `agy`).
