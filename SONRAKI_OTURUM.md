@@ -1,8 +1,11 @@
 # Sonraki oturum
 
-Son güncelleme: **2026-10-11** (evrensel git kuralları tek dosyada, 0.4.1, `0006`).
+Son güncelleme: **2026-10-11** (evrensel git kuralları `0006`; İngilizce yüzey `0007`, 0.5.0).
 
 ## Nerede kaldık
+
+- **0.5.0 (2026-10-11, `0007`): adlar İngilizce.** Komutlar `/session-start`, `/session-end`, `/decision`, `/project-setup`, `/team`, `/external-agent`, `/watch`; roller `lead`, `developer`, `reviewer`, `artist`, `designer`, `researcher`; betikler `external-agent.sh read|write|quota`, `roster.py suggest|summary`, `events.py score`, `watch.py report`; zorluk E/M/H. Skill, rol ve kural metinleri İngilizce (kurallar `rules/git.md`), çıktı proje dilinde. Yeni projede not dosyası `NEXT_SESSION.md`; bu depo `SONRAKI_OTURUM.md`'yi kullanmaya devam ediyor (kanca ikisini de tanır). Eski puan verisi okurken yeni ada çevrilir, dosyalar değişmedi. İç kod ve JSON şeması Türkçe kaldı. 53 test, 2,8 sn. Eşleme tablosu `0007`'de ve `README.tr.md`'de.
+- Aşağıdaki eski maddeler o günkü adlarla yazılı (`dis-ajan`, `kadro.md`, `/oturum-ac`); tarihsel kayıt, düzeltilmedi.
 
 - **0.4.1 (2026-10-11, `0006`):** sabit git kuralları `kurallar/git.md`'de (imza yok, PR'da araç satırı yok, birleşen dal silinmez, işçi push etmez). `proje-kur` bunları sormaz, her projenin `CLAUDE.md` `Git` bölümüne yazar; `takim` 4. adım dalı silmez; `oturum-kapat`, `gelistirici`, `dis-ajan` dosyaya atıf yapar; `dis-ajan.sh` dış işçiye imza yasağını iletir. 44 test, 2,9 sn. İş `claude/universal-git-rules-ff6998` dalında; push ve birleştirme kullanıcıda, dal silinmez.
 
@@ -24,22 +27,27 @@ Son güncelleme: **2026-10-11** (evrensel git kuralları tek dosyada, 0.4.1, `00
 - Kullanıcının isteği (2026-10-02): bir sonraki koşuda **çıktı kalitesine göre** sistemi (kadro, roller, `dis-ajan`) revize et. Her işçinin çıktısını kaydet: kalite notu, süre, kota (`dis-ajan.sh kota` öncesi ve sonrası).
 
 ### 2. Açık kalanlar
-- `0006`: kurulu 0.4.1 ile gerçek bir projede `/proje-kur` (yeni proje, var olan `CLAUDE.md`, `~/.claude/CLAUDE.md` önerisi). Bitti: `Git` bölümünde sabit satırlar sorulmadan var.
-- `0006`: bir takım koşusunda `gelistirici`'nin `${CLAUDE_PLUGIN_ROOT}/kurallar/git.md`'yi okuyabildiğini doğrula.
+- `0007`: kurulu 0.5.0 ile gerçek oturum denemesi: `/session-start` eski bir projede (Pixlender: `SONRAKI_OTURUM.md` tanınıyor mu, çıktı Türkçe mi), `/team` ile bir koşu (`polycrew:developer` yükleniyor mu), `external-agent.sh quota` ve bir `read` koşusu. Bitti: gözlem `0007`'ye yazıldı.
+- `0006`: kurulu sürümle gerçek bir projede `/project-setup` (yeni proje, var olan `CLAUDE.md`, `~/.claude/CLAUDE.md` önerisi). Bitti: `Git` bölümünde sabit satırlar sorulmadan var.
+- `0006`: bir takım koşusunda `developer`'ın `${CLAUDE_PLUGIN_ROOT}/rules/git.md`'yi okuyabildiğini doğrula.
+- README ekran görüntülerinde eski rol adları varsa yenile.
 - Pixlender ve Masalino `CLAUDE.md`'lerine sabit git bloğunu ekle (kullanıcının onayıyla).
 - Gemini Pro ve agy Opus kodlamayı yeniden denemek (geniş izin kullanıcının kararı; Opus kotası).
 - Tasarımcı ve lider rolleri ölçülmedi.
 - Yeni model çıkınca `deney/` ile tekrar.
-- Başka bir projede `/proje-kur`.
+- Başka bir projede `/project-setup`.
 
 ## Senin yapman gerekenler
 
-- `claude/universal-git-rules-ff6998` dalını gözden geçir, `main`'e al ve push et (dalı silme).
+- `claude/universal-git-rules-ff6998` dalındaki üç commit'i (`0007`) gözden geçir, `main`'e al ve push et (dalı silme).
 - Sonra kurulumu güncelle: `claude plugin marketplace update polycrew && claude plugin update polycrew@polycrew`.
-- `~/.claude/CLAUDE.md`'ye sabit kuralları yazmak isteyip istemediğine karar ver (blok `kurallar/git.md`'de).
+- Pixlender ve Masalino'nun not dosyalarındaki başlangıç promptlarında `/oturum-ac` → `/session-start`.
+- İzin listelerinde (`.claude/settings*.json`, agy `settings.json`) `dis-ajan.sh`, `kadro.py`, `olay.py`, `izle.py` geçen kuralları yeni adlara çevir.
+- `~/.cache/polycrew/dis-ajan-kopya.sh` eski betiğin kopyası; yeni `events.py`'yi bulamaz, sil ya da yenisinden kopyala.
+- `~/.claude/CLAUDE.md`'ye sabit kuralları yazmak isteyip istemediğine karar ver (blok `rules/git.md`'de).
 
 ## Başlangıç promptu
 
 ```text
-Merhaba Claude, polycrew eklentisine devam ediyoruz. /oturum-ac
+Merhaba Claude, polycrew eklentisine devam ediyoruz. /session-start
 ```

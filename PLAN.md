@@ -26,7 +26,7 @@
 - [x] Gözlemlere göre roller ve `/takim` düzeltmeleri (`0002`)
 - [x] Kadroyla gerçek bir aşama (Pixlender 6.6'nın kalanı); kadronun düzeltmesi (koşu 2, `960cace`)
 - [x] Ad `polycrew`, takımın görünürlüğü: olay günlüğü, canlı sayfa, oturum raporu (`0003`)
-- [ ] Başka bir projede `/proje-kur` (ör. Go_RestApi ya da RotaWeb)
+- [ ] Başka bir projede `/project-setup` (ör. Go_RestApi ya da RotaWeb)
 - [x] İlk gerçek takım işinde kancaların yükünü denetle (`0003`'ün açık kalanı; Pixlender oturum 15: başlatma, başlama ve bitiş olayları rol ve kimlikle geliyor; dış işçinin kopyası olay yazmıyordu, düzeltildi, `0004`)
 - [x] Dinamik kadro: puan defteri, `kadro.py oneri`, iki deneyden tohum veri (`0004`)
 - [ ] Kadro önerisinde kota ve süreyi de tartan bir sıralama (veri biriktikçe)
@@ -36,5 +36,8 @@
 - [x] `izle`: agent haritası (PM → lider → işçi ağacı; kim kimi başlattı, hangi sağlayıcı, durum). Kullanıcının isteği, 2026-10-05; `0005`: canlı sayfa ve rapor, ilişki bulunamazsa PM
 - [x] `izle` kota: ölçüm yenilenme saatinden eskiyse "eski ölçüm" diye göster; Claude ölçüm betiği ve sağlayıcı/grup/pencere başına son ölçüm (`0005`)
 - [x] Evrensel git kuralları tek dosyada (`kurallar/git.md`): imza yok, PR'da araç satırı yok, birleşen dal silinmez, işçi push etmez; `proje-kur` sormadan yazar, `takim` dalı silmez (`0006`, 0.4.1)
-- [ ] `0006`'nın açık kalanı: kurulu 0.4.1 ile gerçek projede `/proje-kur`; rol gövdesinde `${CLAUDE_PLUGIN_ROOT}` çözülüyor mu
+- [x] İngilizce yüzey: 7 skill ve 6 rol İngilizce adla, betik komutları ve bayrakları, `rules/`, kanca; not dosyası yeni projede `NEXT_SESSION.md`; eski veri ve `SONRAKI_OTURUM.md` tanınır (`0007`, 0.5.0)
+- [ ] `0006` ve `0007`'nin açık kalanı: kurulu 0.5.0 ile gerçek projede `/project-setup`, `/session-start` ve bir takım koşusu; rol gövdesinde `${CLAUDE_PLUGIN_ROOT}` çözülüyor mu
+- [ ] İç kod ve veri şeması İngilizce (Python tanımlayıcıları, JSON alanları, önbellek yolları; göç betiğiyle); katkı gelmeye başlarsa
+- [ ] README ekran görüntüleri: eski rol adları görünüyorsa yenile
 - [ ] `/takim` ve `kadro.md`: dağıtım üç sağlayıcıya işin ağırlığına ve ölçülmüş beceriye göre; sabit "en çok N Claude agent" yerine planda iş, ağırlık, işçi, neden tablosu (kullanıcı, 2026-10-05)

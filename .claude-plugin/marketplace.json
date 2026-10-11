@@ -1,6 +1,6 @@
 {
   "name": "polycrew",
-  "description": "polycrew: Claude Code için çok modelli kadro.",
+  "description": "polycrew: a multi-model crew for Claude Code.",
   "owner": {
     "name": "Muhammed Zahid Demirel",
     "email": "mzahiddemirel@gmail.com"
@@ -9,7 +9,7 @@
     {
       "name": "polycrew",
       "source": "./",
-      "description": "Oturum düzeni, ajan takımı, dış işçiler (Codex, Gemini) ve canlı izleme."
+      "description": "Session workflow, agent team, external workers (Codex, Gemini) and a live watch page."
     }
   ]
 }
