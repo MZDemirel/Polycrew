@@ -1,5 +1,7 @@
 # polycrew
 
+[![CI](https://github.com/MZDemirel/Polycrew/actions/workflows/ci.yml/badge.svg)](https://github.com/MZDemirel/Polycrew/actions/workflows/ci.yml)
+
 **Claude Code için çok modelli kadro.** Uzun projeler oturumdan oturuma hafızasını korur. Büyük işler küçük bir takıma bölünür: Claude rolleri ve dış işçi olarak Codex ve Gemini, ölçülmüş kalite ve maliyete göre seçilir. Hepsini tek bir canlı sayfadan izlersin.
 
 [English](README.md)
@@ -128,7 +130,7 @@ Arka planda:
 
 ## Kadro (`roster.py`)
 
-Puanlar zamanla solar: 30 günlük bir puan yarım sayar (`--half-life`), eski bir izlenim sonsuza kadar kalmaz, nötre döner. Claude işçileri model sürümüyle kaydedilir (`claude/developer/sonnet-5-5`); yeni model kendi koşularıyla sıralanır. Oturum özeti, az verisi olan bir işçiyi kolay bir işte **denemek** için de önerir.
+Puanlar zamanla solar: 30 günlük bir puan yarım sayar (`--half-life`), eski bir izlenim sonsuza kadar kalmaz, nötre döner. Claude işçileri model sürümüyle kaydedilir (`claude/developer/sonnet-5-5`); yeni model kendi koşularıyla sıralanır. Oturum özeti, az verisi olan bir işçiyi kolay bir işte **denemek** için de önerir. Aynı işe verilen ikinci puan ilkinin yerine geçer. İki işçinin puanı 0,10 içinde yakınsa belirgin biçimde ucuz ya da hızlı olan öne geçer. Kurulu olmayan aracın işçileri önerilmez; Codex ve agy yoksa kadro yalnız Claude rollerinden kurulur.
 
 ```bash
 python3 skills/team/roster.py suggest                 # rol ve alan başına en iyi işçi

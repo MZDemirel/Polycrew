@@ -48,11 +48,13 @@
 - [x] Puanlama, sürümlü işçi adı: `events.py score` Claude işçisinin sürümünü transkriptten ekler (`claude/developer/sonnet-5-5`); 2026-10-12 öncesi sürümsüz satırlar 5-5 okunur (`0008`)
 - [x] Puanlama, "dene" önerisi: özet tablosunda `Try` sütunu; az verili ve rolde önselin altına düşmemiş işçi kolay bir iş için önerilir (`0008`)
 - [ ] `0008`'in açık kalanı: gerçek bir takım koşusunda kancanın modeli yazdığını ve `score`'un sürümü eklediğini doğrula; yarı ömrü birkaç haftalık veriyle yeniden değerlendir
-- [ ] Aynı iş kimliğinin sonraki puanı öncekinin yerine geçsin (Aşama 2'den taşındı)
-- [ ] Sıralamada kota ve süre de tartılsın: yakın puanda ucuz ve hızlı işçi öne geçsin (Aşama 2'den taşındı)
+- [x] Aynı işin (proje + id) sonraki puanı öncekinin yerine geçer; defter eklemeli kalır (`0009`)
+- [x] Sıralamada maliyet eşitlik bozucu: puan farkı ≤ 0,10 ise %20 az kotalı, yoksa %20 hızlı işçi öne geçer (`0009`)
+- [ ] Kotanın otomatik ölçülmesi: dış işçi koşusundan önce ve sonra kota okunup puana yazılsın (bugün 106 kayıttan 5'inde kota var; maliyet puana ancak o zaman katılabilir)
 - [ ] Takım yapısı önerisi: puan ortalamalarından "bu rol için lider gereksiz", "bu alanda dış işçi yeter" gibi öneriler çıksın; yapıyı kullanıcı onaylar, kendiliğinden değişmez
-- [ ] Codex ve agy olmadan ilk deneyim: `/team` dış işçi yoksa yalnız Claude rolleriyle kadro önersin; `external-agent.sh` eksik aracı açık bir iletiyle söylesin
-- [ ] Otomatik denetim: her push'ta birim testleri, `bash -n` ve `claude plugin validate` (GitHub Actions)
+- [x] Codex ve agy olmadan ilk deneyim: `roster.py` kurulu olmayan aracın işçilerini önermez, `external-agent.sh` çıkış 4 ve açık iletiyle durur, `quota` "not installed" der (`0009`)
+- [x] Otomatik denetim: `.github/workflows/ci.yml` (birim testleri, `bash -n`, manifest JSON, `claude plugin validate`) (`0009`)
+- [ ] `0009`'un açık kalanı: ilk push'ta CI sonucuna bak (Python 3.11 ve `plugin-validate` işi yerelde denenemedi)
 - [ ] `watch`: ofis görünümü. Mevcut haritanın yanında üçüncü görünüm: masalar, çalışan ve boşta karakterler, son raporu gösteren konuşma balonu, dış işçiler için ayrı oda. Tek HTML içinde canvas, derleme adımı ve dış kütüphane yok; karakterler Pixlender'dan. README'nin üst görseli olur (kullanıcı, 2026-10-11)
 
 **Bitti sayılır:** yeni bir model çıktığında kadro onu eski modelin puanıyla değil kendi koşularıyla sıralıyor; eski puanlar sıralamayı tek başına belirlemiyor; Codex ve agy kurulu olmayan bir makinede `/team` çalışıyor.

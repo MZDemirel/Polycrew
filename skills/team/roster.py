@@ -4,6 +4,11 @@
 Usage:
   roster.py suggest [--role R] [--field F] [--difficulty E|M|H] [--half-life DAYS] [--no-seed]
   roster.py summary [--days N] [--half-life DAYS] [--no-seed] [--now TS]
+  common: [--no-cost] [--providers claude,codex,agy]
+
+A later score for the same job (project + id) replaces the earlier one. When two workers are within
+0.10 of each other, the clearly cheaper one (20% less quota, else 20% less time) goes first (0009).
+Workers of an external tool that is not installed (codex, agy) are left out.
 
 Scores fade with age (0008): a score one half-life old (default 30 days) counts half, so an old
 impression drifts back to the prior (3.5) instead of being remembered forever. --half-life 0 turns
@@ -20,6 +25,7 @@ import argparse
 from datetime import datetime, timezone
 import json
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -68,7 +74,69 @@ def kayitlari_oku(tohumsuz: bool = False) -> list[dict]:
                 except Exception:
                     continue
 
-    return kayitlar
+    return tekillestir(kayitlar)
+
+
+def tekillestir(kayitlar: list[dict]) -> list[dict]:
+    """Aynı işin (proje + id) sonraki puanı öncekinin yerine geçer (0009); id'siz kayıt kalır."""
+    son: dict[tuple, int] = {}
+    for sira, k in enumerate(kayitlar):
+        if k.get("id") not in (None, ""):
+            son[(k.get("proje"), str(k["id"]))] = sira
+    return [k for sira, k in enumerate(kayitlar)
+            if k.get("id") in (None, "") or son[(k.get("proje"), str(k["id"]))] == sira]
+
+
+DIS_ARACLAR = ("codex", "agy")  # işçi adının ilk parçası; araç PATH'te yoksa önerilmez (0009)
+
+
+def kurulu_saglayicilar(verilen: str | None = None) -> set[str] | None:
+    """Kullanılabilir dış araçlar; ``verilen`` (ya da POLYCREW_PROVIDERS) yoksa PATH'e bakılır."""
+    verilen = verilen or os.environ.get("POLYCREW_PROVIDERS")
+    if verilen:
+        return {p.strip() for p in verilen.split(",") if p.strip()}
+    return {a for a in DIS_ARACLAR if shutil.which(a)}
+
+
+def saglayici_suz(kayitlar: list[dict], kurulu: set[str]) -> tuple[list[dict], list[str]]:
+    """Kurulu olmayan dış aracın işçilerini çıkarır; (kalan kayıtlar, dışarıda kalan araçlar)."""
+    disarida = set()
+    kalan = []
+    for k in kayitlar:
+        arac = str(k.get("isci") or "").split("/", 1)[0]
+        if arac in DIS_ARACLAR and arac not in kurulu:
+            disarida.add(arac)
+        else:
+            kalan.append(k)
+    return kalan, sorted(disarida)
+
+
+MALIYET = True  # --no-cost kapatır
+YAKIN_PUAN = 0.10  # bu kadar yakın iki işçide ucuz olan öne geçer
+BELIRGIN = 0.20  # "ucuz": en az bu oranda az kota ya da kısa süre
+
+
+def maliyet_sirasi(liste: list[dict]) -> list[dict]:
+    """Puana göre sıralı listede, yakın puanlı komşulardan belirgin ucuz olanı öne alır (0009)."""
+    if not MALIYET:
+        return liste
+    for i in range(len(liste) - 1):
+        ust, alt = liste[i], liste[i + 1]
+        if ust["duzeltilmis"] - alt["duzeltilmis"] > YAKIN_PUAN:
+            continue
+        neden = None
+        if ust["ort_kota"] is not None and alt["ort_kota"] is not None:
+            if alt["ort_kota"] <= ust["ort_kota"] * (1 - BELIRGIN):
+                neden = "cheaper"
+        elif ust["ort_sure"] is not None and alt["ort_sure"] is not None:
+            if alt["ort_sure"] <= ust["ort_sure"] * (1 - BELIRGIN):
+                neden = "faster"
+        if neden:
+            liste[i], liste[i + 1] = alt, ust
+            if alt.get("neden") != neden:
+                alt["neden"] = neden
+                alt["durum"] = f"{alt['durum']}, {neden}" if alt["durum"] else neden
+    return liste
 
 
 YARI_OMUR = 30.0  # gün: bu yaştaki puan yarım sayar (0008)
@@ -174,7 +242,7 @@ def isci_istatistik(kayitlar: list[dict], simdi: float | None = None,
         })
 
     sonuclar.sort(key=lambda x: (x["duzeltilmis"], x["n"], x["ortalama"]), reverse=True)
-    return sonuclar
+    return maliyet_sirasi(sonuclar)
 
 
 def format_ts(ts: float | None) -> str:
@@ -255,6 +323,24 @@ def tablo_olustur_filtresiz(kayitlar: list[dict], simdi: float | None = None,
     return "\n".join(satirlar)
 
 
+def ortak_bayraklar(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--no-cost", dest="maliyetsiz", action="store_true",
+                        help="do not let the cheaper of two near-equal workers go first")
+    parser.add_argument("--providers", dest="saglayicilar", type=str, default=None,
+                        help="installed external tools, comma separated (default: detect codex and agy on PATH)")
+
+
+def ortak_uygula(args, kayitlar: list[dict]) -> tuple[list[dict], list[str]]:
+    global MALIYET
+    MALIYET = not args.maliyetsiz
+    return saglayici_suz(kayitlar, kurulu_saglayicilar(args.saglayicilar))
+
+
+def disarida_yaz(disarida: list[str]) -> None:
+    if disarida:
+        print(f"\nLeft out (not installed): {', '.join(disarida)}")
+
+
 def cmd_oneri(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="roster.py suggest", description="Roster suggestion table")
     parser.add_argument("--role", dest="rol", type=str, default=None, help="role filter")
@@ -264,15 +350,17 @@ def cmd_oneri(argv: list[str]) -> int:
     parser.add_argument("--half-life", dest="yari_omur", type=float, default=YARI_OMUR,
                         help="days after which a score counts half (default: 30; 0 = no fading)")
     parser.add_argument("--now", dest="simdi", type=float, default=None, help="current time (epoch seconds, for tests)")
+    ortak_bayraklar(parser)
     args = parser.parse_args(argv)
     simdi = args.simdi if args.simdi is not None else time.time()
 
     # Eski adla verilen filtre de yeni ada çevrilir (0007).
     f = olay.kayit_adlari({"rol": args.rol, "alan": args.alan, "zorluk": args.zorluk})
     args.rol, args.alan, args.zorluk = f["rol"], f["alan"], f["zorluk"]
-    kayitlar = kayitlari_oku(tohumsuz=args.tohumsuz)
+    kayitlar, disarida = ortak_uygula(args, kayitlari_oku(tohumsuz=args.tohumsuz))
     if not kayitlar:
         print("No score records found.")
+        disarida_yaz(disarida)
         return 0
 
     filtre_var = any([args.rol is not None, args.alan is not None, args.zorluk is not None])
@@ -280,13 +368,12 @@ def cmd_oneri(argv: list[str]) -> int:
         uygun_kayitlar = [k for k in kayitlar if kayit_filtrele(k, args.rol, args.alan, args.zorluk)]
         if not uygun_kayitlar:
             print("No score records match the filter.")
-            return 0
-        istatistikler = isci_istatistik(uygun_kayitlar, simdi, args.yari_omur)
-        print(tablo_olustur_filtreli(istatistikler))
-        return 0
+        else:
+            print(tablo_olustur_filtreli(isci_istatistik(uygun_kayitlar, simdi, args.yari_omur)))
     else:
         print(tablo_olustur_filtresiz(kayitlar, simdi, args.yari_omur))
-        return 0
+    disarida_yaz(disarida)
+    return 0
 
 
 def kayit_pencerede_mi(kayit: dict, baslangic: float, simdi: float) -> bool:
@@ -355,11 +442,14 @@ def tablo_olustur_ozet(
 
         if p_ist:
             p_ist.sort(key=lambda x: (-x["duzeltilmis"], -x["n"], x["isci"]))
+            maliyet_sirasi(p_ist)
             kadro = p_ist[0]
             kadro_isci = kadro["isci"]
             puan = format_sayi(kadro["duzeltilmis"], 2)
             n = kadro["n"]
             dayanak = "window, little data" if kadro["etkin"] < AZ_VERI else "window"
+            if kadro.get("neden"):
+                dayanak += f", {kadro['neden']}"
 
             if len(p_ist) >= 2:
                 yedek = p_ist[1]
@@ -374,6 +464,7 @@ def tablo_olustur_ozet(
             if not t_ist:
                 continue
             t_ist.sort(key=lambda x: (-x["duzeltilmis"], -x["n"], x["isci"]))
+            maliyet_sirasi(t_ist)
             kadro = t_ist[0]
             kadro_isci = kadro["isci"]
             puan = format_sayi(kadro["duzeltilmis"], 2)
@@ -410,11 +501,13 @@ def cmd_ozet(argv: list[str]) -> int:
     parser.add_argument("--now", dest="simdi", type=float, default=None, help="current time (epoch seconds, for tests)")
     parser.add_argument("--half-life", dest="yari_omur", type=float, default=YARI_OMUR,
                         help="days after which a score counts half (default: 30; 0 = no fading)")
+    ortak_bayraklar(parser)
     args = parser.parse_args(argv)
 
-    kayitlar = kayitlari_oku(tohumsuz=args.tohumsuz)
+    kayitlar, disarida = ortak_uygula(args, kayitlari_oku(tohumsuz=args.tohumsuz))
     cikti = tablo_olustur_ozet(kayitlar, gun=args.gun, simdi=args.simdi, yari_omur=args.yari_omur)
     print(cikti)
+    disarida_yaz(disarida)
     return 0
 
 

@@ -27,6 +27,7 @@ Claude Code eklentisi (skill'ler, roller, hook); başkaları da kurar. Yol harit
 ## Komutlar
 - Denetim: `claude plugin validate .`, `bash -n hooks/*.sh skills/external-agent/external-agent.sh`, `python3 -m unittest discover tests`
 - İzleme sayfası: `python3 skills/watch/watch.py --port 8770` (deneme için `POLYCREW_EVENTS=<dosya>` ve başka port)
+- CI: `.github/workflows/ci.yml` aynı denetimleri her push'ta koşar (Python 3.11 ve 3.14).
 - Kurulumu güncelle: `claude plugin marketplace update polycrew && claude plugin update polycrew@polycrew`
 
 ## Bitti tanımı

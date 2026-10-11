@@ -1,8 +1,10 @@
 # Sonraki oturum
 
-Son güncelleme: **2026-10-11** (git kuralları `0006`; İngilizce yüzey `0007`; öğrenen kadro `0008`, 0.6.0).
+Son güncelleme: **2026-10-11** (git kuralları `0006`; İngilizce yüzey `0007`; öğrenen kadro `0008`; maliyet, dış işçisiz kadro ve CI `0009`, 0.7.0).
 
 ## Nerede kaldık
+
+- **0.7.0 (2026-10-11, `0009`).** Aynı işin ikinci puanı ilkinin yerine geçiyor. Yakın puanda (≤ 0,10) belirgin ucuz ya da hızlı işçi öne geçiyor (`cheaper` / `faster`, `--no-cost` kapatır). Kurulu olmayan aracın işçileri önerilmiyor (`--providers`, `POLYCREW_PROVIDERS`); `external-agent.sh` araç yoksa çıkış 4. `.github/workflows/ci.yml` eklendi. 63 test, 3,6 sn. Aşama 3'te kalanlar: 0.5.0+ gerçek oturum denemesi, kotanın otomatik ölçülmesi, takım yapısı önerisi, ofis görünümü.
 
 - **0.6.0 (2026-10-11, `0008`): öğrenen kadro.** Puanlar 30 günlük yarı ömürle soluyor (`roster.py --half-life`, 0 kapatır); tabloda `Eff. n` sayılan veri miktarı, "little data" ona bakıyor. `events.py score` Claude işçisine model sürümünü transkriptten ekliyor (`claude/developer/sonnet-5-5`); kanca biten agent'ın gerçek modelini günlüğe yazıyor. 2026-10-12 öncesi sürümsüz Claude satırları 5-5 okunuyor. Özet tablosunda `Try` sütunu. 59 test, 3,4 sn. PLAN.md'de Aşama 3 açıldı (kalanlar: yeniden puanlama, kota ve süre, takım yapısı önerisi, dış işçisiz ilk deneyim, GitHub Actions, ofis görünümü).
 
@@ -29,6 +31,8 @@ Son güncelleme: **2026-10-11** (git kuralları `0006`; İngilizce yüzey `0007`
 - Kullanıcının isteği (2026-10-02): bir sonraki koşuda **çıktı kalitesine göre** sistemi (kadro, roller, `dis-ajan`) revize et. Her işçinin çıktısını kaydet: kalite notu, süre, kota (`dis-ajan.sh kota` öncesi ve sonrası).
 
 ### 2. Açık kalanlar
+- `0009`: push'tan sonra GitHub'da CI sonucuna bak; `tests (3.11)` ya da `plugin-validate` kırmızıysa düzelt. Bitti: iki iş de yeşil.
+- Ofis görünümü (`watch`): temiz bir oturumda tek başına; önce yerleşim ve karakter kararları.
 - `0008`: gerçek bir takım koşusundan sonra `agent_bitti` olayında `model` var mı, `events.py score ... --worker claude/developer/sonnet` adı sürümlü yazdı mı bak. Bitti: gözlem `0008`'e yazıldı.
 - `0007`: kurulu 0.5.0 ile gerçek oturum denemesi: `/session-start` eski bir projede (Pixlender: `SONRAKI_OTURUM.md` tanınıyor mu, çıktı Türkçe mi), `/team` ile bir koşu (`polycrew:developer` yükleniyor mu), `external-agent.sh quota` ve bir `read` koşusu. Bitti: gözlem `0007`'ye yazıldı.
 - `0006`: kurulu sürümle gerçek bir projede `/project-setup` (yeni proje, var olan `CLAUDE.md`, `~/.claude/CLAUDE.md` önerisi). Bitti: `Git` bölümünde sabit satırlar sorulmadan var.
@@ -41,6 +45,8 @@ Son güncelleme: **2026-10-11** (git kuralları `0006`; İngilizce yüzey `0007`
 - Başka bir projede `/project-setup`.
 
 ## Senin yapman gerekenler
+
+- Push'tan sonra GitHub → Actions sekmesinde ilk CI koşusuna bak.
 
 - `claude/universal-git-rules-ff6998` dalındaki üç commit'i (`0007`) gözden geçir, `main`'e al ve push et (dalı silme).
 - Sonra kurulumu güncelle: `claude plugin marketplace update polycrew && claude plugin update polycrew@polycrew`.

@@ -13,6 +13,7 @@ external-agent.sh <codex|agy> <model> <effort|-> <read|write> <dir> <task.md> [i
 
 - `read`: changes no files (codex `-s read-only`, agy `--mode plan`). Research, review, reading images.
 - `write`: only in a **git worktree** (refuses the main working tree). Codex `-s workspace-write`, agy `--mode accept-edits`.
+- Exit code 4 means the tool (`codex` or `agy`) is not installed or not on PATH: nothing ran and no log folder was made. Use a Claude role for that job instead, or ask the user whether they want to install the tool.
 - Quota: `external-agent.sh quota`. Prints the remaining quota of Codex and agy with reset times; check before handing out work.
 - Output: the last line is the log folder (`~/.cache/polycrew/dis-ajan/...`). It holds `rapor.md` (the last message), `sure_sn` (seconds), `kullanim.json` (tokens), `cikis_kodu` (exit code) and the raw output.
 - Event log: start, end and quota show on the `watch` page. When the job is done the PM scores it: `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/events.py" score <log folder name> <1-5> "<reason>"`.

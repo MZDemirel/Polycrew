@@ -18,6 +18,8 @@ user ── PM (main session: splits, merges, asks the user)
 - **Claude quota is kept for the PM, the artist, design and H-level code;** the rest goes to external workers first (the `external-agent` skill: Codex, agy).
 - **Default is a small team:** PM → one developer (+ one helper). A lead only for truly parallel, large streams. At most 2 Claude agents; at most 2–3 developers running tests (machine).
 - **The PM hands out decision numbers;** workers do not change them.
+- **No external tools:** if `external-agent.sh quota` says `not installed` for Codex or agy, build the roster from Claude roles only. `roster.py` already leaves out workers of a tool that is not installed, and the `Backup` column of `roster.md` gives the Claude role for each row. Tell the user once that installing Codex or agy would spread the work over more quota; do not insist.
+- **Near-equal workers:** when two workers are within 0.10 of each other, `roster.py` puts the clearly cheaper or faster one first and marks it `cheaper` / `faster`. A second score for the same job replaces the first, so re-score after a review instead of adding a correction.
 - **Quota:** before building the roster run `external-agent.sh quota` (5-hour and weekly quota of Codex and agy). If the Codex window is past 60%, medium jobs go to Gemini; for Claude quota the user checks `/usage`.
 
 Visibility: when work starts, open the live page with `/watch` and give the user its address. After every job the PM writes `events.py score <id> <1-5> --worker ... --role ... --field ... --difficulty ... "<reason>"` (see the `watch` skill).

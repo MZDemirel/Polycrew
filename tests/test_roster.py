@@ -32,8 +32,9 @@ def calistir_olay(argv: list[str], gunluk: Path | None = None, defter: Path | No
     )
 
 
-def calistir_kadro(argv: list[str], defter: Path | None = None, gunluk: Path | None = None):
-    env = {**os.environ}
+def calistir_kadro(argv: list[str], defter: Path | None = None, gunluk: Path | None = None,
+                   saglayicilar: str = "claude,codex,agy"):
+    env = {**os.environ, "POLYCREW_PROVIDERS": saglayicilar}  # makinede kurulu araca bağlı olmasın
     if defter:
         env["POLYCREW_SCORES"] = str(defter)
     if gunluk:
@@ -502,6 +503,65 @@ class KadroVePuanTesti(unittest.TestCase):
         self.assertEqual(satir[("developer", "js")][-2], "usta")  # adaylardan rolde en iyisi
         self.assertNotIn("kotu", [v[-2] for v in satir.values()])  # önselin altına düşen aday olmaz
         self.assertEqual(satir[("artist", "art")][-2], "—")  # rolde başka işçi yok
+
+    # ---- 0009: yeniden puanlama, maliyet eşitlik bozucu, kurulu olmayan araç
+
+    def test_ayni_isin_sonraki_puani_oncekinin_yerine_gecer(self):
+        self._defter([
+            {"isci": "w", "rol": "developer", "alan": "py", "proje": "P", "id": "is1", "not": 2, "ts": 10},
+            {"isci": "w", "rol": "developer", "alan": "py", "proje": "P", "id": "is1", "not": 5, "ts": 20},
+            {"isci": "w", "rol": "developer", "alan": "py", "proje": "Q", "id": "is1", "not": 3, "ts": 30},  # başka proje
+            {"isci": "w", "rol": "developer", "alan": "py", "not": 4, "ts": 40},  # id yok
+            {"isci": "w", "rol": "developer", "alan": "py", "not": 4, "ts": 50},
+        ])
+        onceki = self.defter.read_text(encoding="utf-8")
+        r = calistir_kadro(["suggest", "--role", "developer", "--no-seed", "--half-life", "0"], defter=self.defter)
+        self.assertIn("| w | 4 | 4.0 | 4.0 |", r.stdout)  # 5, 3, 4, 4: eski 2 sayılmaz
+        self.assertEqual(self.defter.read_text(encoding="utf-8"), onceki)
+
+    def _maliyet(self, ust, alt, *ek):
+        self._defter(
+            [{"isci": "pahali", "rol": "developer", "alan": "py", "not": ust["not"], "ts": 1, **ust["ek"]}] * 4
+            + [{"isci": "ucuz", "rol": "developer", "alan": "py", "not": alt["not"], "ts": 1, **alt["ek"]}] * 4
+        )
+        r = calistir_kadro(["suggest", "--role", "developer", "--no-seed", "--half-life", "0", *ek], defter=self.defter)
+        return [s for s in r.stdout.splitlines() if s.startswith("| pahali") or s.startswith("| ucuz")]
+
+    def test_yakin_puanda_ucuz_olan_one_gecer(self):
+        # 4 kayıtta 4,1 ile 4,0 ortalaması düzeltilmiş puanda 0,07 fark eder (yakın).
+        hizli = self._maliyet({"not": 4.1, "ek": {"sure": 1000}}, {"not": 4.0, "ek": {"sure": 600}})
+        self.assertTrue(hizli[0].startswith("| ucuz"))
+        self.assertIn("faster", hizli[0])
+        kapali = self._maliyet({"not": 4.1, "ek": {"sure": 1000}}, {"not": 4.0, "ek": {"sure": 600}}, "--no-cost")
+        self.assertTrue(kapali[0].startswith("| pahali"))
+        uzak = self._maliyet({"not": 4.6, "ek": {"sure": 1000}}, {"not": 4.0, "ek": {"sure": 600}})
+        self.assertTrue(uzak[0].startswith("| pahali"))  # fark 0,10'dan büyük
+        az_fark = self._maliyet({"not": 4.1, "ek": {"sure": 1000}}, {"not": 4.0, "ek": {"sure": 900}})
+        self.assertTrue(az_fark[0].startswith("| pahali"))  # %20'den az kısa
+        verisiz = self._maliyet({"not": 4.1, "ek": {}}, {"not": 4.0, "ek": {"sure": 600}})
+        self.assertTrue(verisiz[0].startswith("| pahali"))
+        # Kota ikisinde de varsa süreye değil kotaya bakılır.
+        kota = self._maliyet({"not": 4.1, "ek": {"sure": 600, "kota": 30}}, {"not": 4.0, "ek": {"sure": 1000, "kota": 10}})
+        self.assertTrue(kota[0].startswith("| ucuz"))
+        self.assertIn("cheaper", kota[0])
+
+    def test_kurulu_olmayan_aracin_iscileri_onerilmez(self):
+        self._defter(
+            [{"isci": "codex/gpt/high", "rol": "developer", "alan": "py", "not": 5, "ts": 1}] * 4
+            + [{"isci": "agy/gemini", "rol": "developer", "alan": "py", "not": 5, "ts": 1}] * 4
+            + [{"isci": "claude/developer/sonnet-9", "rol": "developer", "alan": "py", "not": 4, "ts": 1}] * 4
+            + [{"isci": "oneksiz", "rol": "developer", "alan": "py", "not": 3, "ts": 1}]
+        )
+        for komut in (["suggest", "--role", "developer"], ["summary", "--now", "100"]):
+            r = calistir_kadro([*komut, "--no-seed", "--half-life", "0"], defter=self.defter, saglayicilar="claude")
+            self.assertNotIn("codex/", r.stdout)
+            self.assertNotIn("agy/", r.stdout)
+            self.assertIn("claude/developer/sonnet-9", r.stdout)
+            self.assertIn("Left out (not installed): agy, codex", r.stdout)
+        r = calistir_kadro(["suggest", "--role", "developer", "--no-seed", "--providers", "codex"], defter=self.defter)
+        self.assertIn("codex/gpt/high", r.stdout)
+        self.assertIn("oneksiz", r.stdout)
+        self.assertIn("Left out (not installed): agy", r.stdout)
 
     def test_eski_ortam_degiskeni_yedek_olarak_okunur(self):
         env = {k: v for k, v in os.environ.items() if k not in ("POLYCREW_EVENTS", "POLYCREW_SCORES")}

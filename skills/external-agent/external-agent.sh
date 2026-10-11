@@ -12,6 +12,8 @@
 #   kullanim.json (tokens), cikis_kodu. The last output line is the log folder's path.
 # EXTERNAL_AGENT_EXTRA_DIRS="a:b": extra folders codex may write to in write mode (e.g. ~/.cache/uv).
 # EXTERNAL_AGENT_TIMEOUT: seconds (default 3600).
+# Exit codes: 2 bad arguments, 3 write mode outside a worktree, 4 the tool is not installed;
+# otherwise the tool's own exit code.
 # The old variable names (DIS_AJAN_KAYIT, DIS_AJAN_EK_DIZIN, DIS_AJAN_ZAMAN_ASIMI, POLYCREW_OLAY,
 # POLYCREW_OTURUM) are still read as a fallback. Log file names and event fields stay Turkish (0007).
 set -uo pipefail
@@ -31,6 +33,8 @@ export OLAY
 # rate_limits (zamanıyla); agy: /quota.
 if [ "${1:-}" = quota ]; then
   KOTA_DOSYA=$(mktemp); export KOTA_DOSYA
+  # Kurulu olmayan araç "kayıt yok" ile karışmasın (0009).
+  CODEX_VAR=0; command -v codex > /dev/null 2>&1 && CODEX_VAR=1; export CODEX_VAR
   python3 - <<'PY'
 import glob, json, os, datetime
 fs = sorted(glob.glob(os.path.expanduser("~/.codex/sessions/*/*/*/*.jsonl")), key=os.path.getmtime)
@@ -47,6 +51,10 @@ for f in reversed(fs[-20:]):
     if son:
         break
 kovalar = []
+if os.environ.get("CODEX_VAR") != "1":
+    print("codex   not installed")
+    json.dump(kovalar, open(os.environ["KOTA_DOSYA"], "w"))
+    raise SystemExit
 ETIKET = {"5 saat": "5 hours", "hafta": "week"}  # günlüğe Türkçe ad yazılır (şema), ekrana İngilizce
 if son:
     ts, rl = son
@@ -60,6 +68,12 @@ else:
     print("codex   no record")
 json.dump(kovalar, open(os.environ["KOTA_DOSYA"], "w"))
 PY
+  if ! command -v agy > /dev/null 2>&1; then
+    echo "agy     not installed"
+    olay kota "kovalar=$(cat "$KOTA_DOSYA")"
+    rm -f "$KOTA_DOSYA"
+    exit 0
+  fi
   j=$(cd /tmp && timeout 60 agy -p "/quota" --output-format json < /dev/null 2>/dev/null)
   python3 - "$j" <<'PY'
 import json, os, sys
@@ -112,6 +126,12 @@ if [ "$kip" = yazar ]; then
     echo "write mode does not run in the main working tree; first: git worktree add .claude/worktrees/ext-<name> -b ext-<name> main" >&2
     exit 3
   fi
+fi
+
+# Araç yoksa kayıt klasörü açmadan, anlaşılır bir iletiyle dur (0009).
+if ! command -v "$arac" > /dev/null 2>&1; then
+  echo "$arac is not installed or not on PATH; install it, or use a Claude role instead (see roster.md)" >&2
+  exit 4
 fi
 
 kok=${EXTERNAL_AGENT_LOG:-${DIS_AJAN_KAYIT:-$HOME/.cache/polycrew/dis-ajan}}

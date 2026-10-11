@@ -4,6 +4,7 @@ This table is the prior; the current ranking is `roster.py suggest`. Ledger scor
 
 Difficulty **E** easy, **M** medium, **H** hard. Claude quota is kept for the PM, the artist, design and H-level code.
 External workers run through the `external-agent` skill (Codex: `codex`; Gemini, and Claude via agy: `agy`).
+Without Codex and agy the team still works: take the Claude role from the `Backup` column, and where that is "—" or an external worker, use the Claude role named after the row (`developer`, `artist`, `designer`, `lead`); for image reading use `artist`, for image generation there is no Claude role.
 
 | Role | E | M | H | Backup |
 |---|---|---|---|---|

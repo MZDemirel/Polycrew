@@ -1,5 +1,7 @@
 # polycrew
 
+[![CI](https://github.com/MZDemirel/Polycrew/actions/workflows/ci.yml/badge.svg)](https://github.com/MZDemirel/Polycrew/actions/workflows/ci.yml)
+
 **A multi-model crew for Claude Code.** Long projects keep their memory between sessions, and big tasks are split across a small team: Claude roles plus external Codex and Gemini workers, picked by measured quality and cost. You can watch all of them on one live page.
 
 [Türkçe](README.tr.md)
@@ -113,7 +115,7 @@ Under the hood:
 
 ## The roster (`roster.py`)
 
-Scores fade with age: one that is 30 days old counts half (`--half-life`), so an old impression drifts back to neutral instead of sticking forever. Claude workers are recorded with their model version (`claude/developer/sonnet-5-5`), so a new model is ranked by its own runs. The session summary also names a worker to **try** on an easy job when it has little data.
+Scores fade with age: one that is 30 days old counts half (`--half-life`), so an old impression drifts back to neutral instead of sticking forever. Claude workers are recorded with their model version (`claude/developer/sonnet-5-5`), so a new model is ranked by its own runs. The session summary also names a worker to **try** on an easy job when it has little data. A second score for the same job replaces the first. When two workers score within 0.10 of each other, the clearly cheaper or faster one goes first. Workers of a tool that is not installed are left out, so without Codex and agy you get a Claude-only roster.
 
 ```bash
 python3 skills/team/roster.py suggest                 # best worker per role and field

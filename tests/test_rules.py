@@ -97,6 +97,32 @@ class IngilizceYuzeyTesti(unittest.TestCase):
                            capture_output=True, text=True, check=False)
         self.assertEqual(r.returncode, 3)
 
+    def test_dis_isci_araci_kurulu_degilse(self):
+        """0009: araç PATH'te yoksa çıkış 4, anlaşılır ileti, kayıt klasörü açılmaz."""
+        import os
+        import shutil
+        import subprocess
+        import tempfile
+        betik = str(KOK / "skills/external-agent/external-agent.sh")
+        with tempfile.TemporaryDirectory() as d:
+            kutu = pathlib.Path(d) / "bin"
+            kutu.mkdir()
+            for ad in ("realpath", "dirname", "sed", "python3", "mktemp", "cat", "rm", "date"):
+                os.symlink(shutil.which(ad), kutu / ad)
+            kayit = pathlib.Path(d) / "kayit"
+            env = {"PATH": str(kutu), "HOME": d, "EXTERNAL_AGENT_LOG": str(kayit),
+                   "POLYCREW_EVENTS": str(pathlib.Path(d) / "olay.jsonl")}
+            for arac in ("codex", "agy"):
+                r = subprocess.run([shutil.which("bash"), betik, arac, "m", "-", "read", str(KOK), str(KOK / "README.md")],
+                                   capture_output=True, text=True, check=False, env=env)
+                self.assertEqual(r.returncode, 4, r.stderr)
+                self.assertIn(f"{arac} is not installed", r.stderr)
+            self.assertFalse(kayit.exists())
+            r = subprocess.run([shutil.which("bash"), betik, "quota"], capture_output=True, text=True, check=False, env=env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("codex   not installed", r.stdout)
+            self.assertIn("agy     not installed", r.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
