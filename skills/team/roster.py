@@ -4,7 +4,11 @@
 Usage:
   roster.py suggest [--role R] [--field F] [--difficulty E|M|H] [--half-life DAYS] [--no-seed]
   roster.py summary [--days N] [--half-life DAYS] [--no-seed] [--now TS]
+  roster.py structure [--days N] [--half-life DAYS] [--no-seed] [--now TS]
   common: [--no-cost] [--providers claude,codex,agy]
+
+`structure` prints suggestions about the shape of the team (Claude or external per role, workers to
+avoid, whether a lead is used). It changes nothing: the user decides (0011).
 
 A later score for the same job (project + id) replaces the earlier one. When two workers are within
 0.10 of each other, the clearly cheaper one (20% less quota, else 20% less time) goes first (0009).
@@ -494,6 +498,115 @@ def tablo_olustur_ozet(
     return f"{baslik}\n\n{tablo}"
 
 
+YAPI_FARK = 0.25  # iki taraf arasında bundan büyük fark "prefer" demektir (0011)
+KACIN_PUAN = 3.0  # bir rolde bunun altına düşen işçi "avoid"
+KACIN_N = 2.0  # ... yeter ki bu kadar etkin verisi olsun
+
+
+def yapi_satirlari(kayitlar: list[dict], simdi: float, yari_omur: float) -> tuple[list[dict], list[dict]]:
+    """Rol başına Claude ve dış işçi karşılaştırması ile kaçınılacak işçiler (0011)."""
+    roller: dict[str, list[dict]] = {}
+    for k in kayitlar:
+        roller.setdefault(k.get("rol") or "—", []).append(k)
+
+    def en_iyi(liste: list[dict]) -> dict | None:
+        yeterli = [i for i in liste if i["etkin"] >= AZ_VERI]
+        return (yeterli or liste or [None])[0]
+
+    satirlar, kacin = [], []
+    for rol in sorted(roller):
+        ist = isci_istatistik(roller[rol], simdi, yari_omur)
+        c = en_iyi([i for i in ist if i["isci"].split("/", 1)[0] == "claude"])
+        d = en_iyi([i for i in ist if i["isci"].split("/", 1)[0] in DIS_ARACLAR])
+        c_var = bool(c) and c["etkin"] >= AZ_VERI
+        d_var = bool(d) and d["etkin"] >= AZ_VERI
+        if c_var and d_var:
+            fark = c["duzeltilmis"] - d["duzeltilmis"]
+            if fark > YAPI_FARK:
+                oneri = "prefer Claude"
+            elif fark < -YAPI_FARK:
+                oneri = "prefer external"
+            else:
+                oneri = "equal: external first, keep Claude quota"
+        elif c_var:
+            oneri = "only Claude measured"
+        elif d_var:
+            oneri = "only external measured"
+        else:
+            oneri = "not enough data"
+        satirlar.append({"rol": rol, "claude": c, "dis": d, "oneri": oneri})
+        kacin += [{"rol": rol, **i} for i in ist if i["etkin"] >= KACIN_N and i["duzeltilmis"] < KACIN_PUAN]
+    return satirlar, kacin
+
+
+def takim_kullanimi(simdi: float, gun: int) -> dict | None:
+    """Olay günlüğünden: son ``gun`` günde başlatılan lider sayısı ve en çok eşzamanlı işçi."""
+    try:
+        sys.path.insert(0, str(KOK / "skills" / "watch"))
+        import watch  # tembel: yalnız bu komutta gerekir
+
+        isler = watch.birlestir(watch.oku(), simdi)["isler"]
+    except Exception:  # noqa: BLE001 - günlük yoksa takım satırı yazılmaz
+        return None
+    bas = simdi - gun * 86400
+    isler = [i for i in isler if i.get("baslangic") is not None and bas <= i["baslangic"] <= simdi]
+    if not isler:
+        return None
+    lider = sum(1 for i in isler if olay.rol_adi(i.get("rol"), onek=False) == "lead")
+    noktalar = []
+    for i in isler:
+        if i.get("bitis") is not None and i["bitis"] >= i["baslangic"]:
+            noktalar += [(i["baslangic"], 1), (i["bitis"], -1)]
+    acik = en_cok = 0
+    for _, adim in sorted(noktalar, key=lambda n: (n[0], n[1])):
+        acik += adim
+        en_cok = max(en_cok, acik)
+    return {"is": len(isler), "lider": lider, "eszamanli": en_cok}
+
+
+def tablo_olustur_yapi(kayitlar: list[dict], simdi: float, yari_omur: float, gun: int) -> str:
+    satirlar, kacin = yapi_satirlari(kayitlar, simdi, yari_omur)
+
+    def hucre(i: dict | None) -> str:
+        if not i:
+            return "— | —"
+        return f"{i['isci']} | {format_sayi(i['duzeltilmis'], 2)} ({format_sayi(i['etkin'], 1)})"
+
+    cikti = ["Team structure suggestions (suggestions only: the user decides)", ""]
+    if satirlar:
+        cikti += ["| Role | Best Claude | Score (eff. n) | Best external | Score (eff. n) | Suggestion |",
+                  "|---|---|---|---|---|---|"]
+        cikti += [f"| {s['rol']} | {hucre(s['claude'])} | {hucre(s['dis'])} | {s['oneri']} |" for s in satirlar]
+    else:
+        cikti.append("No score records found.")
+    for k in kacin:
+        cikti.append(f"\nAvoid: {k['isci']} as {k['rol']} "
+                     f"({format_sayi(k['duzeltilmis'], 2)}, eff. n {format_sayi(k['etkin'], 1)})")
+    kullanim = takim_kullanimi(simdi, gun)
+    if kullanim:
+        cikti.append(f"\nTeam: {kullanim['is']} jobs in the last {gun} days, at most {kullanim['eszamanli']} "
+                     f"running at once, {kullanim['lider']} lead(s) started.")
+        if kullanim["lider"] == 0:
+            cikti.append("The small team (PM → workers) is what is actually used; a lead is not needed at this size.")
+    return "\n".join(cikti)
+
+
+def cmd_yapi(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="roster.py structure", description="Team structure suggestions")
+    parser.add_argument("--days", dest="gun", type=int, default=30, help="event log window for team use (default: 30)")
+    parser.add_argument("--no-seed", dest="tohumsuz", action="store_true", help="leave out the seed data")
+    parser.add_argument("--now", dest="simdi", type=float, default=None, help="current time (epoch seconds, for tests)")
+    parser.add_argument("--half-life", dest="yari_omur", type=float, default=YARI_OMUR,
+                        help="days after which a score counts half (default: 30; 0 = no fading)")
+    ortak_bayraklar(parser)
+    args = parser.parse_args(argv)
+    simdi = args.simdi if args.simdi is not None else time.time()
+    kayitlar, disarida = ortak_uygula(args, kayitlari_oku(tohumsuz=args.tohumsuz))
+    print(tablo_olustur_yapi(kayitlar, simdi, args.yari_omur, args.gun))
+    disarida_yaz(disarida)
+    return 0
+
+
 def cmd_ozet(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="roster.py summary", description="Roster summary table")
     parser.add_argument("--days", dest="gun", type=int, default=7, help="records of the last N days (default: 7)")
@@ -519,6 +632,8 @@ def main(argv: list[str]) -> int:
     cmd = argv[0]
     if cmd == "suggest":
         return cmd_oneri(argv[1:])
+    if cmd == "structure":
+        return cmd_yapi(argv[1:])
     if cmd == "summary":
         return cmd_ozet(argv[1:])
     if cmd in ("add", "score"):

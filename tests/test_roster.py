@@ -563,6 +563,57 @@ class KadroVePuanTesti(unittest.TestCase):
         self.assertIn("oneksiz", r.stdout)
         self.assertIn("Left out (not installed): agy", r.stdout)
 
+    # ---- 0011: takım yapısı önerisi
+
+    def test_yapi_onerisi(self):
+        def k(isci, rol, puan, adet=4):
+            return [{"isci": isci, "rol": rol, "alan": "x", "not": puan, "ts": 1}] * adet
+        self._defter(
+            k("claude/developer/sonnet-9", "developer", 5) + k("codex/g/high", "developer", 3.6)
+            + k("claude/reviewer/sonnet-9", "reviewer", 4) + k("codex/g/high", "reviewer", 4.2)
+            + k("claude/artist/opus-9", "artist", 5)
+            + k("agy/gem", "researcher", 4)
+            + k("claude/designer/opus-9", "designer", 5, adet=1) + k("codex/g/high", "designer", 5, adet=1)
+            + k("agy/kotu", "developer", 1, adet=3)
+        )
+        with open(self.gunluk, "w", encoding="utf-8") as f:
+            for e in ({"tur": "agent_basladi", "ts": 100, "id": "a", "rol": "polycrew:developer", "kaynak": "claude"},
+                      {"tur": "agent_basladi", "ts": 110, "id": "b", "rol": "polycrew:reviewer", "kaynak": "claude"},
+                      {"tur": "agent_bitti", "ts": 150, "id": "a", "rol": "polycrew:developer", "kaynak": "claude"},
+                      {"tur": "agent_bitti", "ts": 160, "id": "b", "rol": "polycrew:reviewer", "kaynak": "claude"},
+                      {"tur": "agent_basladi", "ts": 200, "id": "c", "rol": "polycrew:artist", "kaynak": "claude"},
+                      {"tur": "agent_bitti", "ts": 210, "id": "c", "rol": "polycrew:artist", "kaynak": "claude"}):
+                f.write(json.dumps(e) + "\n")
+        ortak = ["structure", "--no-seed", "--half-life", "0", "--now", "1000"]
+        r = calistir_kadro(ortak, defter=self.defter, gunluk=self.gunluk)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        oneri = {s.split("|")[1].strip(): s.split("|")[-2].strip() for s in r.stdout.splitlines() if s.startswith("| ")}
+        self.assertEqual(oneri["developer"], "prefer Claude")
+        self.assertEqual(oneri["reviewer"], "equal: external first, keep Claude quota")
+        self.assertEqual(oneri["artist"], "only Claude measured")
+        self.assertEqual(oneri["researcher"], "only external measured")
+        self.assertEqual(oneri["designer"], "not enough data")
+        self.assertIn("Avoid: agy/kotu as developer", r.stdout)
+        self.assertNotIn("Avoid: codex", r.stdout)
+        self.assertIn("3 jobs in the last 30 days, at most 2 running at once, 0 lead(s) started", r.stdout)
+        self.assertIn("a lead is not needed at this size", r.stdout)
+        self.assertIn("the user decides", r.stdout)
+
+        # Lider başlatıldıysa "gerek yok" cümlesi çıkmaz (eski rol adı da sayılır).
+        with open(self.gunluk, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"tur": "agent_basladi", "ts": 300, "id": "l", "rol": "polycrew:lider", "kaynak": "claude"}) + "\n")
+            f.write(json.dumps({"tur": "agent_bitti", "ts": 310, "id": "l", "rol": "polycrew:lider", "kaynak": "claude"}) + "\n")
+        r = calistir_kadro(ortak, defter=self.defter, gunluk=self.gunluk)
+        self.assertIn("1 lead(s) started", r.stdout)
+        self.assertNotIn("not needed", r.stdout)
+
+        # Dış araç kurulu değilse yalnız Claude tarafı kalır.
+        r = calistir_kadro(ortak, defter=self.defter, gunluk=self.gunluk, saglayicilar="claude")
+        oneri = {s.split("|")[1].strip(): s.split("|")[-2].strip() for s in r.stdout.splitlines() if s.startswith("| ")}
+        self.assertEqual(oneri["developer"], "only Claude measured")
+        self.assertNotIn("researcher", oneri)
+        self.assertNotIn("Avoid", r.stdout)
+
     def test_eski_ortam_degiskeni_yedek_olarak_okunur(self):
         env = {k: v for k, v in os.environ.items() if k not in ("POLYCREW_EVENTS", "POLYCREW_SCORES")}
         env.update(POLYCREW_OLAYLAR=str(self.gunluk), POLYCREW_PUANLAR=str(self.defter))

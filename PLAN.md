@@ -52,7 +52,7 @@
 - [x] Sıralamada maliyet eşitlik bozucu: puan farkı ≤ 0,10 ise %20 az kotalı, yoksa %20 hızlı işçi öne geçer (`0009`)
 - [x] Kotanın ve sürenin otomatik ölçülmesi: dış işçi koşusundan önce ve sonra kota okunur, fark `kota.json`'a ve puana yazılır; süre Claude agent'ında da dolar (`0010`)
 - [ ] `0010`'un açık kalanı: ilk gerçek Codex ve agy koşusunda `kota.json`'a bak; veri birikince maliyeti puana katmayı yeniden değerlendir (`0009`'daki eşitlik bozucu)
-- [ ] Takım yapısı önerisi: puan ortalamalarından "bu rol için lider gereksiz", "bu alanda dış işçi yeter" gibi öneriler çıksın; yapıyı kullanıcı onaylar, kendiliğinden değişmez
+- [x] Takım yapısı önerisi: `roster.py structure` rol başına Claude ve dış işçiyi karşılaştırır, kaçınılacak işçiyi ve liderin kullanılıp kullanılmadığını yazar; yapıyı kullanıcı onaylar (`0011`)
 - [x] Codex ve agy olmadan ilk deneyim: `roster.py` kurulu olmayan aracın işçilerini önermez, `external-agent.sh` çıkış 4 ve açık iletiyle durur, `quota` "not installed" der (`0009`)
 - [x] Otomatik denetim: `.github/workflows/ci.yml` (birim testleri, `bash -n`, manifest JSON, `claude plugin validate`) (`0009`)
 - [ ] `0009`'un açık kalanı: ilk push'ta CI sonucuna bak (Python 3.11 ve `plugin-validate` işi yerelde denenemedi)

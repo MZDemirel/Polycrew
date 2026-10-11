@@ -130,7 +130,7 @@ Arka planda:
 
 ## Kadro (`roster.py`)
 
-Puanlar zamanla solar: 30 günlük bir puan yarım sayar (`--half-life`), eski bir izlenim sonsuza kadar kalmaz, nötre döner. Claude işçileri model sürümüyle kaydedilir (`claude/developer/sonnet-5-5`); yeni model kendi koşularıyla sıralanır. Oturum özeti, az verisi olan bir işçiyi kolay bir işte **denemek** için de önerir. Aynı işe verilen ikinci puan ilkinin yerine geçer. İki işçinin puanı 0,10 içinde yakınsa belirgin biçimde ucuz ya da hızlı olan öne geçer. Kurulu olmayan aracın işçileri önerilmez; Codex ve agy yoksa kadro yalnız Claude rollerinden kurulur.
+Puanlar zamanla solar: 30 günlük bir puan yarım sayar (`--half-life`), eski bir izlenim sonsuza kadar kalmaz, nötre döner. Claude işçileri model sürümüyle kaydedilir (`claude/developer/sonnet-5-5`); yeni model kendi koşularıyla sıralanır. Oturum özeti, az verisi olan bir işçiyi kolay bir işte **denemek** için de önerir. Aynı işe verilen ikinci puan ilkinin yerine geçer. İki işçinin puanı 0,10 içinde yakınsa belirgin biçimde ucuz ya da hızlı olan öne geçer. Kurulu olmayan aracın işçileri önerilmez; Codex ve agy yoksa kadro yalnız Claude rollerinden kurulur. `roster.py structure` aynı puanlardan takımın kendisi için öneri çıkarır: her rolde Claude mu dış işçi mi, kaçınılacak işçiler, liderin gerçekten kullanılıp kullanılmadığı. Yalnız önerir; kararı sen verirsin.
 
 ```bash
 python3 skills/team/roster.py suggest                 # rol ve alan başına en iyi işçi

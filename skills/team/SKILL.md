@@ -15,6 +15,7 @@ user ── PM (main session: splits, merges, asks the user)
 
 ## 0. Roster (by difficulty)
 - Give every item a difficulty: **E** easy, **M** medium, **H** hard. Before building the roster run `python3 "${CLAUDE_PLUGIN_ROOT}/skills/team/roster.py" suggest --role <role> --field <field> --difficulty <E|M|H>`. Scores fade with age (half-life 30 days, `--half-life`), so the ranking follows recent runs; `Eff. n` is how much data is still counted. `roster.md` (next to this file) stays as the prior table; when data is thin ("little data"), `roster.md` wins. Show item → difficulty → worker to the user in the plan.
+- **Structure suggestions:** in plan mode run `python3 "${CLAUDE_PLUGIN_ROOT}/skills/team/roster.py" structure`. It compares Claude and external workers per role ("prefer Claude", "prefer external", "equal: external first"), lists workers to avoid, and says whether a lead was actually used. Put what applies into the plan as a structure suggestion. **The user approves the shape of the team; never change it on your own**, and treat "not enough data" rows as no suggestion.
 - **Claude quota is kept for the PM, the artist, design and H-level code;** the rest goes to external workers first (the `external-agent` skill: Codex, agy).
 - **Default is a small team:** PM → one developer (+ one helper). A lead only for truly parallel, large streams. At most 2 Claude agents; at most 2–3 developers running tests (machine).
 - **The PM hands out decision numbers;** workers do not change them.
