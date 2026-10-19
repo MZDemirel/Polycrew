@@ -185,7 +185,7 @@ tests/            unit tests for the event log, the live page and the git rules
 
 ```bash
 claude plugin validate .
-bash -n hooks/session_start.sh skills/external-agent/external-agent.sh
+for f in hooks/*.sh skills/external-agent/external-agent.sh; do bash -n "$f"; done
 python3 -m unittest discover tests
 python3 skills/watch/watch.py --port 8771      # try the page; POLYCREW_EVENTS=<file> for a test log
 ```

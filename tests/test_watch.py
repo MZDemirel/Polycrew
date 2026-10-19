@@ -68,12 +68,16 @@ class Kanca(unittest.TestCase):
             calistir([], json.dumps(yuk), self.gunluk, proje=bos)
             self.assertFalse(self.gunluk.exists())
             calistir([], json.dumps({**yuk, "cwd": str(alt)}), self.gunluk, proje=None)
+            bag = Path(PROJE.name) / "bag"
+            if not bag.exists():
+                bag.symlink_to(bos)  # proje içinde, dışarıya giden sembolik bağ
+            calistir([], json.dumps({**yuk, "cwd": str(bag)}), self.gunluk, proje=None)
             calistir([], json.dumps(yuk), self.gunluk, proje=bos, POLYCREW_WATCH_ALL="1")
             (Path(bos) / "SONRAKI_OTURUM.md").write_text("# Sonraki oturum\n", encoding="utf-8")
             calistir([], json.dumps(yuk), self.gunluk, proje=bos)
-        self.assertEqual(len(izle.oku(self.gunluk)), 3)
-        calistir(["write", "isci_basladi", "id=k1"], gunluk=self.gunluk, proje=None)
         self.assertEqual(len(izle.oku(self.gunluk)), 4)
+        calistir(["write", "isci_basladi", "id=k1"], gunluk=self.gunluk, proje=None)
+        self.assertEqual(len(izle.oku(self.gunluk)), 5)
 
     def test_log_is_trimmed_to_the_newest_half(self):
         satir = json.dumps({"ts": 1, "tur": "x", "dolgu": "a" * 1000}) + "\n"
@@ -84,7 +88,12 @@ class Kanca(unittest.TestCase):
         self.assertGreater(len(olaylar), 400)
         self.assertEqual(olaylar[-1]["tur"], "son")
         self.assertFalse(self.gunluk.with_name(self.gunluk.name + ".kirp").exists())
+        self.assertEqual(list(self.gunluk.parent.glob("*.kirp")), [])
+        # 0 kapatır: varsayılan sınırın (10 MB) üstündeki günlük de olduğu gibi kalır.
+        self.gunluk.write_text(satir * 10600, encoding="utf-8")
+        once = self.gunluk.stat().st_size
         calistir(["write", "yine", "id=y"], gunluk=self.gunluk, POLYCREW_EVENTS_MAX_MB="0")
+        self.assertGreater(self.gunluk.stat().st_size, once)
         self.assertEqual(izle.oku(self.gunluk)[-1]["tur"], "yine")
 
     def test_hook_preserves_caller_for_nested_agent_tree(self):

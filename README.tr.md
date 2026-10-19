@@ -200,7 +200,7 @@ tests/            olay günlüğü, canlı sayfa ve git kuralları için birim t
 
 ```bash
 claude plugin validate .
-bash -n hooks/session_start.sh skills/external-agent/external-agent.sh
+for f in hooks/*.sh skills/external-agent/external-agent.sh; do bash -n "$f"; done
 python3 -m unittest discover tests
 python3 skills/watch/watch.py --port 8771      # sayfayı dene; deneme günlüğü için POLYCREW_EVENTS=<dosya>
 ```

@@ -24,7 +24,7 @@ OLAY = KOK / "hooks" / "events.py"
 SAHTE_CODEX = r'''#!/usr/bin/env python3
 import json, os, sys, time
 a = sys.argv[1:]
-sys.stdin.read()
+open(os.path.expanduser("~/codex_stdin.txt"), "w").write(sys.stdin.read())
 time.sleep(float(os.environ.get("FAKE_CODEX_SLEEP", "0")))
 open(a[a.index("-o") + 1], "w").write("codex raporu")
 d = os.path.expanduser("~/.codex/sessions/2026/10/11")
@@ -179,6 +179,9 @@ class DisIsciKosuTesti(unittest.TestCase):
         kayit = Path(r.stdout.strip().splitlines()[-1])
         self.assertEqual((kayit / "rapor.md").read_text(), "codex raporu")
         self.assertIn(str(resim), (kayit / "komut.txt").read_text())
+        gelen = (self.ev / "codex_stdin.txt").read_text(encoding="utf-8")
+        self.assertIn("Rules: do not git push", gelen)
+        self.assertIn("bir şey yap", gelen)
         kayit = self.kosu("agy", "gemini-3.8-flash-high", _POLYCREW_ZAMAN="python")
         self.assertEqual((kayit / "rapor.md").read_text(), "agy raporu")
 

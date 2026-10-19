@@ -13,8 +13,8 @@ Kullanıcı eklentiyi başkalarıyla paylaşmak istiyor ve iki şey sordu: eksik
 
 ## Kararlar
 
-1. **Günlük kapısı:** kanca yolu yalnız proje dizininde (`CLAUDE_PROJECT_DIR`, yoksa yükteki `cwd`) ya da üstünde `NEXT_SESSION.md` / `SONRAKI_OTURUM.md` varsa yazar; `session_start.sh` ile aynı ölçüt. Üst dizinlere bakılır, çünkü agent bir alt klasörde ya da `.claude/worktrees/` altında çalışabilir. `POLYCREW_WATCH_ALL=1` eski davranış. `write` ve `score` komutları kapılanmaz: onları skill'ler ve dış işçi betiği bilerek çağırır.
-2. **Kırpma:** günlük 10 MB'ı aşınca en yeni satırlardan sınırın yarısı kalır (geçici dosya ve `os.replace`). `POLYCREW_EVENTS_MAX_MB`, `0` kapatır. Kırpma ile eşzamanlı bir ekleme kaybolabilir; 5 MB'da bir olduğu için kabul. Puanlar kalıcı defterde, kırpılmaz.
+1. **Günlük kapısı:** kanca yolu yalnız proje dizinlerinden birinde (`CLAUDE_PROJECT_DIR` ya da yükteki `cwd`; agent başka bir polycrew projesine geçmiş olabilir, ikisine de bakılır) ya da üstünde `NEXT_SESSION.md` / `SONRAKI_OTURUM.md` varsa yazar; `session_start.sh` ile aynı ölçüt. Üst dizinlere bakılır, çünkü agent bir alt klasörde ya da `.claude/worktrees/` altında çalışabilir. Yolun hem yazıldığı hâline hem sembolik bağları çözülmüş hâline bakılır (proje içindeki bağ dışarıyı gösterebilir). `POLYCREW_WATCH_ALL=1` eski davranış. `write` ve `score` komutları kapılanmaz: onları skill'ler ve dış işçi betiği bilerek çağırır.
+2. **Kırpma:** günlük 10 MB'ı aşınca en yeni satırlardan sınırın yarısı kalır (benzersiz geçici dosya ve `os.replace`). `POLYCREW_EVENTS_MAX_MB`, `0` kapatır. Kırpma ile eşzamanlı bir ekleme kaybolabilir; 5 MB'da bir olduğu için kabul. Kırpmanın hatası yutulur: puanın kalıcı deftere yazılmasını durduramaz.
 3. **Kullanıcının mevcut günlüğüne dokunulmaz.** README'de 0.10.0 öncesi satırları istemeyen dosyayı silsin diye yazar.
 4. **Sayfanın açılışı:** plan onaylanınca, planda takım ya da dış işçi işi varsa `/session-start` `watch`'un "Live page" adımlarını yapar; yoksa açmaz (kullanıcının seçimi: "takım işi varsa"). `watch` skill'i sayfayı Claude masaüstü uygulamasında yerleşik tarayıcı panesinde açar, VS Code'da Simple Browser'ı söyler, yoksa adres verir; sunucu yalnız Bash'in kendi arka plan koşusuyla.
 5. **macOS:** `zaman_sinirli` önce `timeout`, sonra `gtimeout`, sonra Python (yeni süreç grubu; süre dolunca grup TERM, 5 sn sonra KILL, çıkış 124; SIGINT ve SIGTERM gruba iletilir). `date +%s.%N` yerine Python `time.time()`, `realpath`'e Python yedeği, boş dizi `${d[@]+"${d[@]}"}`. Alt sınır Python 3.9 (macOS'un Xcode araçlarındaki sürüm); testler uv ile 3.9'da yeşil. CI matrisi 3.9, 3.11, 3.14 ve `macos-latest` + 3.9; testler betiği `/usr/bin:/bin` PATH'iyle koştuğu için macOS'ta `/bin/bash` 3.2 ve `timeout`suz yol denenir.
@@ -37,6 +37,17 @@ Bu oturumda kapananlar yukarıda. Kalanlar, önem sırasıyla:
 - 80 test yeşil (76 + 4): notsuz projede yazmaz, alt dizinde ve `SONRAKI_OTURUM.md`'de yazar, `POLYCREW_WATCH_ALL` ile yazar, `write` kapılanmaz; kırpma yarıya iner ve yeni satır kalır, `0` kapatır; `timeout`suz (Python) yolda resimli codex ve agy koşusu; iki yolda süre aşımı 124 ile 15 saniyenin altında kesilir.
 - Python 3.9 (uv) ile 80 test yeşil.
 - Masaüstü uygulamasının tarayıcı panesinde örnek günlükle sayfa açıldı (ofis ve kartlar).
+
+## İnceleme (Codex `gpt-6.1-sol` high, read, 225 sn)
+
+Sekiz bulgu, hepsi düzeltildi:
+- Python süre sınırlayıcı: lider TERM ile çıkınca torunlar SIGKILL'siz kalıyordu (artık grup her durumda KILL alır); süreç doğmadan gelen sinyal kayboluyordu (işleyiciler önce kurulur, bekleyen sinyal iletilir).
+- Kırpma: iki süreç aynı `.kirp` adını kullanınca ikincisi hata verip puanı deftere yazdırmıyordu (benzersiz geçici dosya, hata yutulur).
+- Kapı: sembolik bağlı alt klasör projeyi kaybettiriyordu; yazılan karar "`CLAUDE_PROJECT_DIR`, yoksa `cwd`" diyordu, kod ikisine bakıyordu (karar düzeltildi).
+- `bash -n a b` yalnız ilk dosyayı denetler, ötekiler argüman olur: CI, CLAUDE.md ve README'lerdeki denetim komutu bu yüzden `external-agent.sh`'yi hiç denetlemiyordu (döngüye çevrildi).
+- Testler: `0` sınırı varsayılanın üstündeki günlükle denenmiyordu; sahte codex görevin stdin'den geldiğini doğrulamıyordu.
+
+Koşunun kendi gözlemi (`0010`): `kota.json` farkı yazmadı, çünkü Pixlender'daki iki Codex işçisi aynı anda koşuyordu ("overlapped"). Tasarlandığı gibi; paylaşılan araçta koşu başına fark ancak tek koşuda ölçülür.
 
 ## Açık kalan
 

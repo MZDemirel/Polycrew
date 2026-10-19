@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -238,7 +239,10 @@ def yaz(olay: dict) -> dict:
     yol.parent.mkdir(parents=True, exist_ok=True)
     with open(yol, "a", encoding="utf-8") as f:
         f.write(json.dumps(olay, ensure_ascii=False) + "\n")
-    kirp(yol)
+    try:
+        kirp(yol)
+    except OSError:
+        pass  # bakım işi; puanın deftere yazılmasını asla durdurmaz
     return olay
 
 
@@ -258,10 +262,14 @@ def kirp(yol: Path) -> None:
         if toplam > sinir / 2:
             break
         kalan.append(satir)
-    gecici = yol.with_name(yol.name + ".kirp")
-    with open(gecici, "wb") as f:
-        f.writelines(reversed(kalan))
-    os.replace(gecici, yol)
+    tutamak, gecici = tempfile.mkstemp(dir=yol.parent, prefix=yol.name + ".", suffix=".kirp")
+    try:
+        with os.fdopen(tutamak, "wb") as f:
+            f.writelines(reversed(kalan))
+        os.replace(gecici, yol)
+    finally:
+        if os.path.exists(gecici):
+            os.unlink(gecici)
 
 
 def duzen_var(yuk: dict) -> bool:
@@ -271,10 +279,12 @@ def duzen_var(yuk: dict) -> bool:
     for dizin in (os.environ.get("CLAUDE_PROJECT_DIR"), yuk.get("cwd")):
         if not dizin:
             continue
-        yol = Path(dizin).expanduser().resolve()
-        for d in (yol, *yol.parents):
-            if any((d / ad).is_file() for ad in NOT_DOSYALARI):
-                return True
+        # Sembolik bağdaki alt klasör için hem yazıldığı hem çözüldüğü yolun üstlerine bakılır.
+        ham = Path(os.path.abspath(os.path.expanduser(dizin)))
+        for yol in (ham, ham.resolve()):
+            for d in (yol, *yol.parents):
+                if any((d / ad).is_file() for ad in NOT_DOSYALARI):
+                    return True
     return False
 
 

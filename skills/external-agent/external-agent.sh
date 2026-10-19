@@ -33,14 +33,21 @@ zaman_sinirli() {
   fi
   python3 -c '
 import os, signal, subprocess, sys
-p = subprocess.Popen(sys.argv[2:], start_new_session=True)
+p = None
+bekleyen = []  # süreç doğmadan gelen sinyal kaybolmasın
 def ilet(sinyal, _):
+    if p is None:
+        bekleyen.append(sinyal)
+        return
     try:
         os.killpg(p.pid, sinyal)
     except ProcessLookupError:
         pass
 signal.signal(signal.SIGINT, ilet)
 signal.signal(signal.SIGTERM, ilet)
+p = subprocess.Popen(sys.argv[2:], start_new_session=True)
+for s in bekleyen:
+    ilet(s, None)
 try:
     kod = p.wait(timeout=float(sys.argv[1]))
 except subprocess.TimeoutExpired:
@@ -48,8 +55,9 @@ except subprocess.TimeoutExpired:
     try:
         p.wait(timeout=5)
     except subprocess.TimeoutExpired:
-        ilet(signal.SIGKILL, None)
-        p.wait()
+        pass
+    ilet(signal.SIGKILL, None)  # lider TERM ile çıksa da gruptaki torunlar kalmasın
+    p.wait()
     sys.exit(124)
 sys.exit(kod if kod >= 0 else 128 - kod)
 ' "$sn" "$@"
