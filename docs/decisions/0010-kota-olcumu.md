@@ -25,5 +25,5 @@ Maliyet sıralamaya yalnız eşitlik bozucu olarak girebildi (`0009`), çünkü 
 - `external-agent.sh quota` gerçek araçlarla, geçici günlükle çalıştırıldı: altı kova, biçim öncekiyle aynı.
 - Gerçek bir Codex ya da agy koşusu yapılmadı (kota harcar). Sahte araçlar gerçek biçimi taklit ediyor ama Codex'in koşu sonunda oturum dosyasına `rate_limits` yazdığı varsayımı yalnız `quota`'nın bugüne kadarki davranışına dayanıyor.
 - agy kalan oranı yuvarlayarak veriyorsa küçük koşularda fark 0 görünebilir.
-- Paralel koşular ölçülmüyor; takım işinde koşuların çoğu paralelse veri yine yavaş birikir.
+- Paralel koşular ölçülmüyor; takım işinde koşuların çoğu paralelse veri yine yavaş birikir. 2026-10-19 (`0014`): ilk gerçek koşularda tam bu oldu, üç paralel Codex koşusu 5 saatlik pencereyi 14 dakikada %2'den %82'ye çıkardı, hiçbirine fark yazılmadı. 0.11.0'dan beri `kota.json` ortak farkı ve çakışanları tutar (`kota_ortak`). agy'de ölçü 5 saati seçiyordu (%0), koşu haftalık sınırda düştü; artık grubun en dolu penceresi.
 - Veri birikince maliyeti puana katmak ayrı karar.

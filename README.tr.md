@@ -127,7 +127,8 @@ Arka planda:
 
 - Kancalar (Agent aracında `PreToolUse`, `SubagentStart`, `SubagentStop`) ve `external-agent.sh` tek bir günlüğe yazar.
 - PM puanı `python3 hooks/events.py score <iş id> <1-5> "<gerekçe>" --worker <işçi> --role <rol> --field <alan> --difficulty <E|M|H>` ile ekler. Puan sayfada görünür ve deftere eklenir.
-- `skills/watch/watch.py report --lang tr --out rapor.html` aynı görünümü durağan bir sayfa olarak üretir; `/session-end` onu yayımlar.
+- `skills/watch/watch.py report --lang tr --out rapor.html` aynı görünümü durağan bir sayfa olarak, yalnız bu projenin işleriyle üretir (`--project`, `--all-projects`); `/session-end` onu yayımlar.
+- Tek sunucu bütün projelere hizmet eder. Tek projeyi görmek için `http://localhost:8770/?project=<ad>`; üstteki seçici değiştirir. Parametresiz sayfa bütün projeleri gösterir.
 - Resimler örnek bir günlükten: `docs/img/ornek_gunluk.py en|tr <dosya>`.
 
 ![Canlı takım sayfasının tamamı: sayaçlar, ofis, şimdi çalışanlar, zaman çizelgesi, agent haritası, sağlayıcı başına kota kartları, işler ve puanlar](docs/img/izle-tr.png)
@@ -158,7 +159,7 @@ skills/external-agent/external-agent.sh quota                               # Co
 - **İşçiler push etmez** ve git kancasını atlatmaz.
 - **Sabit git kuralları** tek dosyada durur, [`rules/git.md`](rules/git.md): commit'te araç imzası (`Co-Authored-By`) yok, PR açıklamasında araç satırı yok, birleşen dal silinmez, işçiler push etmez. Projeye göre sorulmaz; `/project-setup` her projenin `CLAUDE.md`'sine yazar, betik dış işçilere iletir.
 - **Kayıt:** her koşu görevi, ham çıktıyı, son mesajı, süreyi, token'ı ve çıkış kodunu `~/.cache/polycrew/dis-ajan/` altına yazar.
-- **Koşu başına maliyet:** betik her koşudan önce ve sonra aracın kotasını okur; fark ve süre puana kendiliğinden yazılır. Aynı aracın paralel koşuları ölçülmez, çünkü payları ayrılamaz.
+- **Koşu başına maliyet:** betik her koşudan önce ve sonra aracın kotasını okur; fark ve süre puana kendiliğinden yazılır. Aynı aracın paralel koşularının payı ayrılamaz: `kota.json` birlikte doluşu ve çakışan koşuları tutar, puana `kota_ortak` olarak yazılır, maliyet sayılmaz.
 - **Süre sınırı:** bir koşu bir saat sonra durdurulur (`EXTERNAL_AGENT_TIMEOUT`, saniye). Durdurulan koşu son mesaj bırakmaz; yazar işçiden ara commit iste, ağır işte sınırı yükselt.
 - **Paralel koşu:** bash betiği satır satır okur; uzun paralel koşularda betiğin bir kopyasını kullan. Kopya olay günlüğünü bulamazsa `POLYCREW_EVENTS_SCRIPT=<eklenti>/hooks/events.py` ver; yoksa işçi sayfada görünmez.
 - **Kum havuzu:** Codex kum havuzunda ağa çıkamaz, soket açamaz, Blender gibi araçları başlatamaz. Worktree'yi (bağımlılıklar, git dışı varlıklar) sen hazırla, paket önbelleğini `EXTERNAL_AGENT_EXTRA_DIRS` ile ver, o denetimleri PM olarak sen koş.

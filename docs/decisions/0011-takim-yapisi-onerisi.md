@@ -38,3 +38,4 @@ Günlük: son 30 günde 71 iş, en çok 5'i aynı anda, lider 0. Kaçınılacak 
 
 - `developer` için "prefer Claude", takımın "Claude kotası Z koduna saklanır" kuralıyla çelişiyor gibi görünebilir: öneri kaliteyi söyler, kota kararı PM'de. Zorluğa göre ayrım (`--difficulty`) eklenmedi; veri rol + zorlukta çok ince.
 - Lider ve tasarımcı ölçülmedi; öneri bu rollerde veri birikene kadar boş.
+- İlk gerçek kullanım (2026-10-19, Pixlender, `0014`): "lider gerek yok" doğru çıktı; "developer: prefer Claude" kota ve kullanıcı seçimi yüzünden uygulanmadı; "reviewer: external first" ile agy denendi, kotası koşu ortasında bitti. Öneri kalan kotayı hesaba katmıyor; az verili Claude satırında "only external measured" diyor (C listesi).

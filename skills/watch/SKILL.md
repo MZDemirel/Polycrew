@@ -11,9 +11,9 @@ Events are collected in one log (`hooks/events.py`, decision `0003`): Claude sub
 
 1. Is the server up: `curl -s -o /dev/null -w '%{http_code}' http://localhost:8770/api/durum`. If it is not 200, start it with the Bash tool's own background run (`run_in_background`), not with `nohup … &` inside a command: a process started that way dies when the command returns.
    `python3 "${CLAUDE_PLUGIN_ROOT}/skills/watch/watch.py" --port 8770`
-2. Open it for the user:
-   - in the Claude desktop app, open `http://localhost:8770` in the built-in browser pane (its preview/navigate tool with the URL), so the page sits next to the chat;
-   - in VS Code: `Ctrl+Shift+P → Simple Browser: Show → http://localhost:8770`;
+2. Open it for the user, filtered to this project: `http://localhost:8770/?project=<name>`, where `<name>` is the project folder's name (in a worktree under `.claude/worktrees/`, the main project's folder). One server serves every project; without `?project=` the page shows all of them, and the selector at the top switches.
+   - in the Claude desktop app, open the address in the built-in browser pane (its preview/navigate tool with the URL), so the page sits next to the chat;
+   - in VS Code: `Ctrl+Shift+P → Simple Browser: Show` with the address;
    - otherwise give the address for a browser.
    The plugin cannot open it by itself: hooks only print text, and a server started from a hook does not outlive it.
 3. The page is in English and Turkish (by browser language; the EN/TR button or `?lang=tr`). It refreshes every 3 seconds: who is running now, the timeline (Claude orange, Codex green, Gemini blue), the agent map, quota bars (external quota once a minute via `external-agent.sh quota`), jobs and scores. Clicking a job or a map node shows its last report and task in the side panel.
@@ -66,6 +66,8 @@ At `/session-end`, if a team or an external worker was used in the session:
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/watch/watch.py" report --hours <session length in hours> --lang <project language: tr|en> --out <scratchpad>/team-report.html
 ```
+
+Run it from the project folder: the report holds only this project's jobs (`--project <name>` to choose another, `--all-projects` for every project). Its title names the project and the date.
 
 Then publish the file as an Artifact (the title is already in the page, icon `chart`) and write the link into the notes file. The report embeds the reports and tasks; before publishing, check that it holds no secrets (keys, passwords).
 

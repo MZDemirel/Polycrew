@@ -144,7 +144,8 @@ class Birlestir(unittest.TestCase):
         isler = {i["id"]: i for i in izle.birlestir(o, simdi=izle.ESKI + 100)["isler"]}
         self.assertEqual(isler["eski"]["durum"], "bilinmiyor")
         self.assertEqual((isler["k1"]["durum"], isler["k1"]["token"], isler["k1"]["saglayici"]), ("hata", 15, "codex"))
-        self.assertEqual((isler["k2"]["durum"], isler["k2"]["saglayici"]), ("calisiyor", "claude"))
+        # agy'deki Claude da dış işçi rengindedir (0014).
+        self.assertEqual((isler["k2"]["durum"], isler["k2"]["saglayici"]), ("calisiyor", "gemini"))
 
     def test_a_stop_without_a_subagent_start_closes_its_launch(self):
         o = [
@@ -180,6 +181,34 @@ class Birlestir(unittest.TestCase):
         self.assertEqual(isler["tu1"]["puan"]["not"], 4)
         self.assertEqual(isler["tu1"]["durum"], "calisiyor")
         self.assertIsNone(isler["tu2"]["puan"])
+
+    def test_project_name_and_filter(self):
+        self.assertEqual(izle.proje_adi("/a/Pixlender/.claude/worktrees/dis-yaka-22"), "Pixlender")
+        self.assertEqual(izle.proje_adi("/a/polycrew/"), "polycrew")
+        self.assertIsNone(izle.proje_adi(None))
+        o = [
+            {"tur": "agent_baslatildi", "ts": 1, "id": "a", "rol": "x", "cwd": "/p/oyun"},
+            {"tur": "isci_basladi", "ts": 2, "id": "b", "kaynak": "codex", "klasor": "/p/oyun/.claude/worktrees/b"},
+            {"tur": "isci_basladi", "ts": 3, "id": "c", "kaynak": "codex", "klasor": "/p/eklenti"},
+            {"tur": "isci_basladi", "ts": 4, "id": "d", "kaynak": "codex"},
+            {"tur": "puan", "ts": 5, "id": "yok", "not": 4, "proje": "eklenti"},
+        ]
+        v = izle.birlestir(o, simdi=10)
+        s = izle.suz(v, None, "oyun")
+        self.assertEqual([i["id"] for i in s["isler"]], ["a", "b"])
+        self.assertEqual((s["projeler"], s["proje"], s["puanlar"]), (["eklenti", "oyun"], "oyun", []))
+        self.assertEqual([i["id"] for i in s["harita"]["cocuklar"]], ["a", "b"])
+        self.assertEqual(len(izle.suz(v, None)["isler"]), 4)
+        self.assertEqual(len(izle.suz(v, None, "eklenti")["puanlar"]), 1)
+
+    def test_unknown_job_enters_the_window_by_its_start(self):
+        # Bitişi gelmemiş eski iş (bilinmiyor) 12 saatlik pencereyi günlere yaymasın (0014).
+        simdi = 10 * 86400
+        o = [{"tur": "isci_basladi", "ts": simdi - 3 * 86400, "id": "eski", "kaynak": "codex"},
+             {"tur": "isci_basladi", "ts": simdi - 60, "id": "yeni", "kaynak": "codex"}]
+        v = izle.birlestir(o, simdi=simdi)
+        self.assertEqual({i["id"]: i["durum"] for i in v["isler"]}, {"eski": "bilinmiyor", "yeni": "calisiyor"})
+        self.assertEqual([i["id"] for i in izle.suz(v, 12)["isler"]], ["yeni"])
 
     def test_window_and_last_quota(self):
         k = {"saglayici": "codex", "grup": "Codex", "pencere": "5 saat"}
@@ -347,9 +376,11 @@ class Rapor(unittest.TestCase):
             g = Path(d) / "o.jsonl"
             cikti = Path(d) / "rapor.html"
             with patch.dict(os.environ, {"POLYCREW_EVENTS": str(g)}):
-                olay.yaz({"tur": "agent_basladi", "id": "lider", "rol": "lider"})
-                olay.yaz({"tur": "agent_basladi", "id": "isci", "rol": "isci",
+                olay.yaz({"tur": "agent_basladi", "id": "lider", "rol": "lider", "cwd": "/p/oyun"})
+                olay.yaz({"tur": "agent_basladi", "id": "isci", "rol": "isci", "cwd": "/p/oyun/.claude/worktrees/w1",
                           "ham": {"parent_agent_id": "lider"}})
+                olay.yaz({"tur": "isci_basladi", "id": "gizli", "kaynak": "codex", "klasor": "/p/baska",
+                          "aciklama": "başka projenin işi"})
                 olay.yaz({"tur": "kota", "kovalar": [{"saglayici": "claude", "grup": "Claude",
                            "pencere": "hafta", "kullanilan": 70}]})
                 olay.yaz({"tur": "kota", "kovalar": [{"saglayici": "codex", "grup": "Codex",
@@ -357,6 +388,12 @@ class Rapor(unittest.TestCase):
                 once = g.read_bytes()
                 r = subprocess.run([sys.executable, str(KOK / "skills/watch/watch.py"), "report",
                                     "--hours", "5", "--lang", "tr", "--out", str(cikti)],
+                                   capture_output=True, text=True, cwd=str(Path(d)))
+                self.assertEqual(r.returncode, 0, r.stderr)
+                bos = json.loads(cikti.read_text().split("const GOMULU = ", 1)[1].split(";\nconst METIN", 1)[0])
+                self.assertEqual(bos["isler"], [])  # varsayılan proje: çalıştırılan klasör
+                r = subprocess.run([sys.executable, str(KOK / "skills/watch/watch.py"), "report",
+                                    "--hours", "5", "--lang", "tr", "--project", "oyun", "--out", str(cikti)],
                                    capture_output=True, text=True)
                 self.assertEqual(r.returncode, 0, r.stderr)
                 self.assertEqual(g.read_bytes(), once)
@@ -367,6 +404,12 @@ class Rapor(unittest.TestCase):
             self.assertEqual([k["grup"] for k in veri["kota"]["kovalar"]], ["Claude", "Codex"])
             self.assertEqual(veri["harita"]["cocuklar"][0]["cocuklar"][0]["id"], "isci")
             self.assertIn('id="harita"', html)
+            # 0014: başka projenin işi ve adı rapora girmez; başlık ve dil raporunki.
+            self.assertNotIn("başka projenin işi", html)
+            self.assertNotIn("projeler", veri)
+            self.assertEqual(veri["proje"], "oyun")
+            self.assertIn('<html lang="tr">', html)
+            self.assertRegex(html, r"<title>Polycrew · oyun · \d{4}-\d{2}-\d{2}</title>")
 
     def test_static_report_embeds_data_and_reports(self):
         with tempfile.TemporaryDirectory() as d:

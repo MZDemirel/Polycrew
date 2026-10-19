@@ -391,6 +391,13 @@ def kayit_pencerede_mi(kayit: dict, baslangic: float, simdi: float) -> bool:
         return False
 
 
+def _gelecekte(kayit: dict, simdi: float) -> bool:
+    try:
+        return float(kayit.get("ts")) > simdi
+    except (TypeError, ValueError):
+        return False
+
+
 def tablo_olustur_ozet(
     kayitlar: list[dict],
     gun: int = 7,
@@ -441,47 +448,31 @@ def tablo_olustur_ozet(
     ]
 
     for rol, alan in sirali_ciftler:
-        pencere_kayit_grubu = pencere_gruplar.get((rol, alan), [])
-        p_ist = isci_istatistik(pencere_kayit_grubu, simdi, yari_omur) if pencere_kayit_grubu else []
-
-        if p_ist:
-            p_ist.sort(key=lambda x: (-x["duzeltilmis"], -x["n"], x["isci"]))
-            maliyet_sirasi(p_ist)
-            kadro = p_ist[0]
-            kadro_isci = kadro["isci"]
-            puan = format_sayi(kadro["duzeltilmis"], 2)
-            n = kadro["n"]
+        # 0014: sıralama bütün geçmişten (yarı ömürle sönümlü); pencere yalnız dayanağı belirler.
+        # Önceden yalnız penceredeki puanlar sayılıyordu: tek bir yeni puan 11 puanlı işçiyi tablodan atıyordu.
+        tum_kayit_grubu = [k for k in tum_gruplar[(rol, alan)] if not _gelecekte(k, simdi)]
+        t_ist = isci_istatistik(tum_kayit_grubu, simdi, yari_omur)
+        if not t_ist:
+            continue
+        t_ist.sort(key=lambda x: (-x["duzeltilmis"], -x["n"], -(x["son_ts"] or 0), x["isci"]))
+        maliyet_sirasi(t_ist)
+        kadro = t_ist[0]
+        kadro_isci = kadro["isci"]
+        puan = format_sayi(kadro["duzeltilmis"], 2)
+        n = kadro["n"]
+        pencerede = {k.get("isci") for k in pencere_gruplar.get((rol, alan), [])}
+        if kadro_isci in pencerede:
             dayanak = "window, little data" if kadro["etkin"] < AZ_VERI else "window"
-            if kadro.get("neden"):
-                dayanak += f", {kadro['neden']}"
-
-            if len(p_ist) >= 2:
-                yedek = p_ist[1]
-                yedek_isci = yedek["isci"]
-                yedek_puani = format_sayi(yedek["duzeltilmis"], 2)
-            else:
-                yedek_isci = "—"
-                yedek_puani = "—"
         else:
-            tum_kayit_grubu = tum_gruplar[(rol, alan)]
-            t_ist = isci_istatistik(tum_kayit_grubu, simdi, yari_omur)
-            if not t_ist:
-                continue
-            t_ist.sort(key=lambda x: (-x["duzeltilmis"], -x["n"], x["isci"]))
-            maliyet_sirasi(t_ist)
-            kadro = t_ist[0]
-            kadro_isci = kadro["isci"]
-            puan = format_sayi(kadro["duzeltilmis"], 2)
-            n = kadro["n"]
             dayanak = "stale"
-
-            if len(t_ist) >= 2:
-                yedek = t_ist[1]
-                yedek_isci = yedek["isci"]
-                yedek_puani = format_sayi(yedek["duzeltilmis"], 2)
-            else:
-                yedek_isci = "—"
-                yedek_puani = "—"
+        if kadro.get("neden"):
+            dayanak += f", {kadro['neden']}"
+        if len(t_ist) >= 2:
+            yedek_isci = t_ist[1]["isci"]
+            yedek_puani = format_sayi(t_ist[1]["duzeltilmis"], 2)
+        else:
+            yedek_isci = "—"
+            yedek_puani = "—"
 
         dene = dene_adayi(rol, alan, {kadro_isci, yedek_isci})
         satirlar.append(

@@ -43,9 +43,10 @@ Visibility: when work starts, open the live page (the "Live page" steps of the `
 
 ## 4. Merge (PM only)
 When an item is ready (lead's report, reviewer says "no blocker", artist's approval). Every commit, merge commits included, follows the fixed git rules: `${CLAUDE_PLUGIN_ROOT}/rules/git.md`.
-1. Look at the image yourself too; verify the measurement.
+1. Look at the image yourself too; verify the measurement. Before applying a reviewer's suggestion, run the tests it touches: a suggestion can break another rule of the project (the reviewer fixes nothing and does not run every test).
 2. `git -C <worktree> rebase main` (on conflict, hand it back to the lead), then in the main checkout `git merge --ff-only <branch>`.
 3. Run the full tests, lint and type check in the background. If red, do not revert `main`; give the fix to the lead.
+   - The PM cannot edit files in a worker's worktree (the Claude Code app blocks edits to another worktree's files). For a small fix, either send it back to the worker (`SendMessage` to the same agent) or merge first and fix on your own branch.
 4. When the branch's work is done, `git worktree remove <path>`. **The branch stays;** merged branches are not deleted (only if the user asks separately and explicitly).
 
 ## 5. Close

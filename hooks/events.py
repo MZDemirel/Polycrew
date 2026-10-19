@@ -16,7 +16,8 @@ Kullanım:
   ``POLYCREW_WATCH_ALL=1`` her projeyi yazar (0013).
 - **Komut:**
   - ``events.py write <tur> anahtar=değer ...``
-  - ``events.py overlap <id> <kaynak> <başlangıç ts>``: aynı aracın çakışan koşusu varsa 1 (0010)
+  - ``events.py overlap <id> <kaynak> <başlangıç ts>``: aynı aracın çakışan koşusu varsa ``1 <kimlikler>``,
+    yoksa ``0`` (0010, kimlikler 0014)
   - ``events.py score <id> <1-5> [reason] [--worker ...] [--role ...] [--field ...] [--difficulty ...] [--quota ...] [--duration ...] [--fixes ...] [--project ...]``
 """
 
@@ -102,6 +103,11 @@ def _olaylar() -> list[dict]:
 
 def cakisan_var(is_id: str, kaynak: str, baslangic: float, simdi: float | None = None) -> bool:
     """Aynı aracın başka bir koşusu [baslangic, simdi] aralığıyla çakıştı mı (0010)?"""
+    return bool(cakisanlar(is_id, kaynak, baslangic, simdi))
+
+
+def cakisanlar(is_id: str, kaynak: str, baslangic: float, simdi: float | None = None) -> list[str]:
+    """[baslangic, simdi] aralığıyla çakışan aynı aracın koşuları (0014: ortak fark için kimlikler)."""
     simdi = time.time() if simdi is None else simdi
     basla, bitis = {}, {}
     for e in _olaylar():
@@ -111,12 +117,13 @@ def cakisan_var(is_id: str, kaynak: str, baslangic: float, simdi: float | None =
             basla[str(e.get("id"))] = float(e.get("ts") or 0)
         elif e.get("tur") == "isci_bitti":
             bitis[str(e.get("id"))] = float(e.get("ts") or 0)
+    bulunan = []
     for kimlik, b in basla.items():
         if b > simdi or b < baslangic - CAKISMA_PENCERESI:
             continue
         if bitis.get(kimlik, simdi) >= baslangic:
-            return True
-    return False
+            bulunan.append(kimlik)
+    return bulunan
 
 
 def is_bilgisi(is_id: str) -> dict:
@@ -129,6 +136,8 @@ def is_bilgisi(is_id: str) -> dict:
                 bilgi["sure"] = e["sure_sn"]
             if isinstance(e.get("kota"), (int, float)):
                 bilgi["kota"] = e["kota"]
+            if isinstance(e.get("kota_ortak"), (int, float)):
+                bilgi["kota_ortak"] = e["kota_ortak"]  # 0014: çakışan koşularla birlikte; maliyete girmez
     if "sure" not in bilgi:
         ts = {e.get("tur"): e.get("ts") for e in _olaylar()
               if str(e.get("id")) == str(is_id) and e.get("tur") in ("agent_basladi", "agent_bitti")}
@@ -463,7 +472,8 @@ def main(argv: list[str]) -> int:
         yaz(olay)
         return 0
     if argv[0] == "overlap" and len(argv) == 4:
-        print(1 if cakisan_var(argv[1], argv[2], float(argv[3])) else 0)
+        bulunan = cakisanlar(argv[1], argv[2], float(argv[3]))
+        print(f"1 {','.join(bulunan)}" if bulunan else 0)
         return 0
     if argv[0] == "score" and len(argv) >= 3:
         return puan_isle(argv[1:])

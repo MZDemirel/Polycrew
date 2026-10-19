@@ -43,12 +43,20 @@ a = sys.argv[1:]
 yol = os.path.expanduser("~/agy_durum.json")
 durum = json.load(open(yol))
 if a[a.index("-p") + 1] == "/quota":
+    claude = [{"window": "weekly", "remaining_fraction": durum["claude"], "reset_time": "2026-10-12T10:00:00Z"}]
+    if "claude_5h" in durum:
+        claude.insert(0, {"window": "5h", "remaining_fraction": durum["claude_5h"], "reset_time": "2026-10-11T22:00:00Z"})
+    if durum["claude"] <= 0:
+        claude[-1] = {"window": "weekly"}  # tükenmiş kova: alanlar yok (0014)
     print(json.dumps({"command": {"data": {"groups": [
         {"name": "Gemini Models", "buckets": [
             {"window": "5h", "remaining_fraction": durum["gemini"], "reset_time": "2026-10-11T22:00:00Z"}]},
-        {"name": "Claude and GPT models", "buckets": [
-            {"window": "weekly", "remaining_fraction": durum["claude"], "reset_time": "2026-10-12T10:00:00Z"}]},
+        {"name": "Claude and GPT models", "buckets": claude},
     ]}}}))
+elif os.environ.get("FAKE_AGY_FAIL"):
+    print(json.dumps({"response": "yarım düşünce"}))
+    sys.stderr.write("RESOURCE_EXHAUSTED (code 429): Individual quota reached\n")
+    sys.exit(3)
 else:
     model = a[a.index("--model") + 1]
     grup = "claude" if "claude" in model else "gemini"
@@ -137,6 +145,33 @@ class DisIsciKosuTesti(unittest.TestCase):
         claude = json.loads((self.kosu("agy", "claude-opus-4-6-thinking") / "kota.json").read_text())
         self.assertEqual((claude["once"], claude["sonra"], claude["fark"], claude["pencere"]), (50.0, 54.0, 4.0, "hafta"))
 
+    def test_agy_en_dolu_pencereyi_olcer(self):
+        # 0014: 5 saat boşken haftalık dolu; koşu haftalık sınıra takılır, ölçü haftalıktan.
+        (self.ev / "agy_durum.json").write_text(json.dumps({"gemini": 0.8, "claude": 0.32, "claude_5h": 1.0}),
+                                                encoding="utf-8")
+        kota = json.loads((self.kosu("agy", "claude-opus-4-6-thinking") / "kota.json").read_text())
+        self.assertEqual((kota["once"], kota["pencere"], kota["grup"], kota["fark"]),
+                         (68.0, "hafta", "agy: Claude/GPT", 4.0))
+
+    def test_tukenmis_agy_kovasi_cokmez_ve_dusen_kosu_raporda(self):
+        (self.ev / "agy_durum.json").write_text(json.dumps({"gemini": 0.8, "claude": 0.0, "claude_5h": 1.0}),
+                                                encoding="utf-8")
+        r = self.kos("quota")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("left ?%", r.stdout)
+        self.assertEqual(len(self.olaylar("kota")[-1]["kovalar"]), 5)  # codex 2, gemini 1, claude 2
+        r = self.kos("agy", "claude-opus-4-6-thinking", "-", "read", str(self.is_klasoru), str(self.gorev),
+                     FAKE_AGY_FAIL="1")
+        self.assertEqual(r.returncode, 3)
+        kayit = Path(r.stdout.strip().splitlines()[-1])
+        rapor = (kayit / "rapor.md").read_text()
+        self.assertTrue(rapor.startswith("yarım düşünce"))
+        self.assertIn("**Run failed:** exit code 3", rapor)
+        self.assertIn("RESOURCE_EXHAUSTED", rapor)
+        kota = json.loads((kayit / "kota.json").read_text())
+        self.assertEqual((kota["once"], kota["pencere"], kota["grup"]), (0.0, "5 saat", "agy: Claude/GPT"))
+
     def test_pencere_yenilenirse_fark_yazilmaz(self):
         kayit = self.kosu("codex", "gpt-x", FAKE_CODEX_USED="3")  # 40 → 3: pencere yenilendi
         kota = json.loads((kayit / "kota.json").read_text())
@@ -154,9 +189,18 @@ class DisIsciKosuTesti(unittest.TestCase):
         with open(self.gunluk, "a", encoding="utf-8") as f:
             f.write(json.dumps({"tur": "isci_basladi", "ts": time.time() - 30, "id": "baska", "kaynak": "codex"}) + "\n")
             f.write(json.dumps({"tur": "isci_basladi", "ts": time.time() - 30, "id": "agy-isi", "kaynak": "agy"}) + "\n")
-        kota = json.loads((self.kosu("codex", "gpt-x") / "kota.json").read_text())
+        kayit = self.kosu("codex", "gpt-x")
+        kota = json.loads((kayit / "kota.json").read_text())
         self.assertIsNone(kota["fark"])
         self.assertIn("overlapped", kota["neden"])
+        # 0014: pay ayrılamaz ama birlikte doluş ve çakışanlar kalır; puana kota_ortak, kota değil.
+        self.assertEqual((kota["ortak_fark"], kota["cakisanlar"]), (12.0, ["baska"]))
+        bitti = self.olaylar("isci_bitti")[-1]
+        self.assertEqual((bitti.get("kota_ortak"), "kota" in bitti), (12.0, False))
+        subprocess.run([sys.executable, str(OLAY), "score", kayit.name, "4", "--worker", "codex/gpt-x/high"],
+                       check=True, env=self.env)
+        puan = json.loads(self.defter.read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual((puan.get("kota_ortak"), "kota" in puan), (12.0, False))
         # Başka aracın koşusu çakışma sayılmaz.
         with open(self.gunluk, "w", encoding="utf-8") as f:
             f.write(json.dumps({"tur": "isci_basladi", "ts": time.time() - 30, "id": "agy-isi", "kaynak": "agy"}) + "\n")

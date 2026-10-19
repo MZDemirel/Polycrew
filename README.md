@@ -112,7 +112,8 @@ Under the hood:
 
 - Hooks (`PreToolUse` on the Agent tool, `SubagentStart`, `SubagentStop`) and `external-agent.sh` append to one log.
 - The PM adds scores with `python3 hooks/events.py score <job id> <1-5> "<reason>" --worker <worker> --role <role> --field <field> --difficulty <E|M|H>`. The score shows on the page and is appended to the ledger.
-- `skills/watch/watch.py report --lang en --out report.html` renders the same view as a static page. `/session-end` publishes it.
+- `skills/watch/watch.py report --lang en --out report.html` renders the same view as a static page with this project's jobs only (`--project`, `--all-projects`). `/session-end` publishes it.
+- One server serves every project. Open `http://localhost:8770/?project=<name>` to see one project; the selector at the top switches. Without it the page shows all projects.
 - The screenshots come from an example log: `docs/img/ornek_gunluk.py en|tr <file>`.
 
 ![The whole live team page: counters, office, running now, timeline, agent map, quota cards for each provider, jobs and scores](docs/img/izle-en.png)
@@ -143,7 +144,7 @@ skills/external-agent/external-agent.sh quota                               # cu
 - **Workers never push** and never bypass git hooks.
 - **Fixed git rules** live in one file, [`rules/git.md`](rules/git.md): no tool signature in commits (`Co-Authored-By`), no tool line in PR descriptions, merged branches are kept, workers never push. They are never asked per project; `/project-setup` writes them into each project's `CLAUDE.md`, and the script passes them to external workers.
 - **Logs:** each run writes the task, raw output, last message, duration, tokens and exit code to `~/.cache/polycrew/dis-ajan/`.
-- **Cost per run:** the script reads the tool's quota before and after each run; the difference and the duration go into the score automatically. Parallel runs of the same tool are not measured, because their shares cannot be told apart.
+- **Cost per run:** the script reads the tool's quota before and after each run; the difference and the duration go into the score automatically. Parallel runs of the same tool cannot be told apart: their `kota.json` keeps the combined change and the overlapping runs, and the score gets it as `kota_ortak`, not as cost.
 - **Time limit:** a run is stopped after an hour (`EXTERNAL_AGENT_TIMEOUT`, seconds). A stopped run leaves no last message, so ask writers for work-in-progress commits, and raise the limit for heavy jobs.
 - **Parallel runs:** bash reads the script line by line, so use a copy of it for long parallel runs. If the copy cannot find the event log, set `POLYCREW_EVENTS_SCRIPT=<plugin>/hooks/events.py`; otherwise the worker does not show on the page.
 - **Sandbox:** Codex in its sandbox has no network and cannot open sockets or start tools like Blender. Prepare the worktree (dependencies, untracked assets) yourself, pass a package cache with `EXTERNAL_AGENT_EXTRA_DIRS`, and run those checks as the PM.

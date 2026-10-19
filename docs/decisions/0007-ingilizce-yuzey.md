@@ -43,7 +43,7 @@ Kullanıcı eklentiyi başkalarının da kurmasını istiyor. README İngilizcey
 
 ## Açık kalan
 
-- Kurulu 0.5.0 ile gerçek oturum denenmedi: `/session-start`, `/project-setup`, bir takım koşusu, gerçek Codex/agy koşusu ve `external-agent.sh quota`.
+- ~~Kurulu 0.5.0 ile gerçek oturum denenmedi~~ 2026-10-19, Pixlender (`0014`): `/session-start` `SONRAKI_OTURUM.md`'yi tanıdı, Türkçe konuştu; `/team`, `/watch`, `/external-agent` yüklendi; `polycrew:artist` ve `polycrew:reviewer` rolleri doğrudan çalıştı; gerçek Codex ve agy koşuları ve `quota`. `polycrew:developer` ve `/project-setup` denenmedi.
 - Kullanıcının yapacakları: Pixlender ve Masalino'nun başlangıç promptlarında `/oturum-ac` → `/session-start`; izin listelerinde `dis-ajan.sh` ya da `kadro.py` geçen kurallar; `~/.cache/polycrew/dis-ajan-kopya.sh` eski kopya (yeni `events.py`'yi bulamaz).
 - `docs/img` ekran görüntülerinde eski rol adları görünüyor olabilir.
 - İç kod ve şemanın çevirisi ayrı iş (göç betiği gerekir); `deney/` kayıtları eski adlarla tarihsel kayıt olarak kalır.

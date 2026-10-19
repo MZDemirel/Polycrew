@@ -37,7 +37,7 @@ Bugün sıralama değişmiyor (veri taze). Üç ayda bütün işçiler "little d
 
 ## Açık kalan
 
-- Gerçek bir takım koşusunda kancanın modeli yazdığı ve `score`'un sürümü eklediği denenmedi (sentetik olay ve sahte transkriptle test edildi). Transkript biçimi Claude Code sürümüyle değişirse sürüm bulunamaz; uyarı çıkar, ad elle yazılır.
+- ~~Gerçek bir takım koşusunda kancanın modeli yazdığı ve `score`'un sürümü eklediği denenmedi~~ 2026-10-19, Pixlender (`0014`): sanatçının ve gözden geçiricinin `agent_bitti` olayında `model` (`claude-opus-5-5`, `claude-sonnet-5-5`) var; `score ... --worker claude/artist/opus` deftere `claude/artist/opus-5-5` ve süreyi yazdı. Transkript biçimi Claude Code sürümüyle değişirse sürüm bulunamaz; uyarı çıkar, ad elle yazılır.
 - Yarı ömür birkaç haftalık veri birikince yeniden değerlendirilmeli.
 - `SURUM_SINIRI` tek seferlik bir köprü; haiku satırı yoktu, eşlemede yok.
 - Aynı işin yeniden puanlanması ve sıralamada kota ile süre hâlâ açık (Aşama 3).

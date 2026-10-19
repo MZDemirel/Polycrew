@@ -141,42 +141,57 @@ except (ValueError, KeyError, TypeError):
 # agy'nin ham adları sayfada Codex'inkilerle aynı dilde görünsün.
 GRUP = {"Gemini Models": "agy: Gemini", "Claude and GPT models": "agy: Claude/GPT"}
 PENCERE = {"weekly": "hafta", "5h": "5 saat"}
-for g in gruplar:
-    grup = GRUP.get(g["name"], g["name"])
-    for b in g["buckets"]:
-        kalan = round(100 * b["remaining_fraction"])
-        pencere = PENCERE.get(b["window"], b["window"])
+# Tükenmiş kovada alanlar eksik gelebilir (0014: reset_time yoktu, betik çöktü): eksik alan "?" olur.
+for g in gruplar if isinstance(gruplar, list) else []:
+    if not isinstance(g, dict):
+        continue
+    grup = GRUP.get(g.get("name"), g.get("name") or "?")
+    for b in g.get("buckets") or []:
+        if not isinstance(b, dict):
+            continue
+        rf = b.get("remaining_fraction")
+        rf = rf if isinstance(rf, (int, float)) else None
+        pencere = PENCERE.get(b.get("window"), b.get("window") or "?")
         etiket = {"5 saat": "5 hours", "hafta": "week"}.get(pencere, pencere)
+        yenilenir = str(b.get("reset_time") or "")[5:16] or "?"
+        kalan = None if rf is None else round(100 * rf)
         if not sessiz:
-            print(f"agy     {grup[:22]:22s} {etiket:7s} left {kalan}%  resets {b['reset_time'][5:16]}")
-        kovalar.append({"saglayici": "agy", "grup": grup, "pencere": pencere, "kullanilan": 100 - kalan,
-                        "hassas": round(100 * (1 - b["remaining_fraction"]), 1),
-                        "yenilenir": b["reset_time"][5:16]})
+            print(f"agy     {grup[:22]:22s} {etiket:7s} left {'?' if kalan is None else kalan}%  resets {yenilenir}")
+        kovalar.append({"saglayici": "agy", "grup": grup, "pencere": pencere,
+                        "kullanilan": None if kalan is None else 100 - kalan,
+                        "hassas": None if rf is None else round(100 * (1 - rf), 1), "yenilenir": yenilenir})
 json.dump(kovalar, open(os.environ["KOTA_DOSYA"], "w"))
 PY
 }
 
-# kota_yuzde <araç> <model>: bu koşunun harcadığı pencerenin kullanım yüzdesi ve pencere adı;
-# okunamazsa boş. Codex: 5 saatlik pencere. agy: modele göre grup, 5 saatlik pencere, yoksa haftalık.
+# kota_yuzde <araç> <model> [pencere]: bu koşunun harcadığı pencerenin kullanım yüzdesi, pencere ve
+# grup, sekmeyle ayrılmış; okunamazsa boş. Pencere verilirse o (koşu sonrası, öncekiyle aynı pencere).
+# Codex: 5 saatlik pencere, yoksa haftalık. agy: modele göre grup, en dolu pencere (0014: Claude/GPT'nin
+# 5 saati %0 iken haftası %68'di; koşu haftalık sınırda düştü).
 kota_yuzde() {
   local f
   f=$(mktemp)
   KOTA_SESSIZ=1 "kota_$1" "$f" > /dev/null 2>&1
-  python3 - "$f" "$1" "$2" <<'PY'
+  python3 - "$f" "$1" "$2" "${3:-}" <<'PY'
 import json, sys
 try:
     kovalar = json.load(open(sys.argv[1]))
 except (ValueError, OSError):
     kovalar = []
-arac, model = sys.argv[2], sys.argv[3].lower()
+arac, model, istenen = sys.argv[2], sys.argv[3].lower(), sys.argv[4]
+grup = "Codex"
 if arac == "agy":
     grup = "agy: Claude/GPT" if ("claude" in model or "gpt" in model) else "agy: Gemini"
     kovalar = [k for k in kovalar if k.get("grup") == grup]
-for pencere in ("5 saat", "hafta"):
-    for k in kovalar:
-        if k.get("pencere") == pencere and isinstance(k.get("hassas"), (int, float)):
-            print(k["hassas"], pencere)
-            raise SystemExit
+olcu = [k for k in kovalar if isinstance(k.get("hassas"), (int, float))]
+if istenen:
+    olcu = [k for k in olcu if k.get("pencere") == istenen]
+elif arac == "agy":
+    olcu.sort(key=lambda k: -k["hassas"])
+else:
+    olcu.sort(key=lambda k: {"5 saat": 0, "hafta": 1}.get(k.get("pencere"), 2))
+if olcu:
+    print(f"{olcu[0]['hassas']}\t{olcu[0].get('pencere')}\t{grup}")
 PY
   rm -f "$f"
 }
@@ -296,40 +311,59 @@ json.dump({"usage": d.get("usage"), "status": d.get("status"),
           open(f"{k}/kullanim.json", "w"))
 EOF
 fi
+# 0014: kesilen ya da düşen koşunun raporu yarım kalabilir; sonuna neden düştüğü yazılır.
+if [ "$kod" != 0 ]; then
+  case $kod in
+    124) anlam="stopped by the time limit, EXTERNAL_AGENT_TIMEOUT=${zaman_asimi}s" ;;
+    *) anlam="the tool's own exit code" ;;
+  esac
+  { echo; echo "---"; echo "**Run failed:** exit code $kod ($anlam). Last lines of hata.txt:"
+    tail -n 5 "$kayit/hata.txt" 2> /dev/null | sed 's/^/    /'; } >> "$kayit/rapor.md"
+fi
 bitis=$(simdi)
 python3 -c "print(round($bitis - $baslangic, 1))" > "$kayit/sure_sn"
 echo "$kod" > "$kayit/cikis_kodu"
-kota_fark=""
+kota_fark="" kota_ortak=""
 if [ "${EXTERNAL_AGENT_NO_QUOTA:-}" != 1 ]; then
-  kota_sonra=$(kota_yuzde "$arac" "$model")
+  kota_sonra=$(kota_yuzde "$arac" "$model" "$(printf '%s' "$kota_once" | cut -f2)")
   cakisma=0
   [ -f "$OLAY" ] && cakisma=$(python3 "$OLAY" overlap "$(basename "$kayit")" "$arac" "$baslangic" 2>/dev/null || echo 0)
-  kota_fark=$(python3 - "$kayit/kota.json" "$kota_once" "$kota_sonra" "$cakisma" <<'KOTA'
+  kota_sonuc=$(python3 - "$kayit/kota.json" "$kota_once" "$kota_sonra" "$cakisma" <<'KOTA'
 import json, sys
 dosya, once, sonra, cakisma = sys.argv[1:5]
 def ayir(m):
-    p = m.split(None, 1)
+    p = (m.split("\t") + ["", ""])[:3]
     try:
-        return float(p[0]), (p[1] if len(p) > 1 else None)
-    except (ValueError, IndexError):
-        return None, None
-o, pencere = ayir(once)
-s, pencere2 = ayir(sonra)
-fark, neden = None, None
+        return float(p[0]), p[1] or None, p[2] or None
+    except ValueError:
+        return None, None, None
+o, pencere, grup = ayir(once)
+s, pencere2, grup2 = ayir(sonra)
+c = cakisma.split()
+cakisanlar = c[1].split(",") if len(c) > 1 else []
+fark = ortak = neden = None
 if o is None or s is None:
     neden = "quota could not be read"
 elif pencere != pencere2 or s < o:
     neden = "the quota window reset during the run"
-elif cakisma.strip() == "1":
+elif c and c[0] == "1":
+    # 0014: pay ayrılamaz ama pencerenin birlikte ne kadar dolduğu kalır (maliyete girmez).
     neden = "another run of the same tool overlapped; the share cannot be separated"
+    ortak = round(s - o, 1)
 else:
     fark = round(s - o, 1)
-json.dump({"once": o, "sonra": s, "fark": fark, "pencere": pencere2 or pencere, "neden": neden}, open(dosya, "w"))
-print("" if fark is None else fark)
+kayit = {"once": o, "sonra": s, "fark": fark, "pencere": pencere2 or pencere, "grup": grup2 or grup, "neden": neden}
+if ortak is not None:
+    kayit.update(ortak_fark=ortak, cakisanlar=cakisanlar)
+json.dump(kayit, open(dosya, "w"))
+print(("" if fark is None else str(fark)) + "\t" + ("" if ortak is None else str(ortak)))
 KOTA
 )
+  kota_fark=$(printf '%s' "$kota_sonuc" | cut -f1)
+  kota_ortak=$(printf '%s' "$kota_sonuc" | cut -f2)
 fi
 olay isci_bitti "id=$(basename "$kayit")" "kaynak=$arac" "cikis=$kod" "sure_sn=$(cat "$kayit/sure_sn")" \
-  "kullanim=$(cat "$kayit/kullanim.json" 2>/dev/null || echo null)" "kayit=$kayit" ${kota_fark:+"kota=$kota_fark"}
+  "kullanim=$(cat "$kayit/kullanim.json" 2>/dev/null || echo null)" "kayit=$kayit" ${kota_fark:+"kota=$kota_fark"} \
+  ${kota_ortak:+"kota_ortak=$kota_ortak"}
 echo "$kayit"
 exit "$kod"

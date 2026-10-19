@@ -26,7 +26,8 @@ Kullanıcı, ofis ortamını canlandıran eklentilere benzer bir görünüm iste
 
 ## Açık kalan
 
-- Gerçek bir takım oturumunda görülmedi. README'nin üst görseli ve tam sayfa görüntüsü örnek günlükle (`docs/img/ornek_gunluk.py`) alındı: canlı sayfa veriyi eşzamansız yüklediği için başsız Firefox boş sayfa çekti; görüntü, verinin sayfaya gömüldüğü geçici bir kopyadan alındı (canlı sayfayla aynı görünüm).
+- 2026-10-19, Pixlender (`0014`): gerçek oturumda okunuyor (odalar, sayılı başlık, Türkçe). Eksikler: aynı modeldeki işçiler ayırt edilmiyor, masada etiket yok; okur ve yazar aynı; başka projenin işi ofise giriyordu (0.11.0'da proje süzgeci). Ekran görüntüsü proje karışıklığını gösterdiği için README'ye alınmadı.
+- Gerçek bir takım oturumunda görülmedi (yukarıdaki maddeye kadar). README'nin üst görseli ve tam sayfa görüntüsü örnek günlükle (`docs/img/ornek_gunluk.py`) alındı: canlı sayfa veriyi eşzamansız yüklediği için başsız Firefox boş sayfa çekti; görüntü, verinin sayfaya gömüldüğü geçici bir kopyadan alındı (canlı sayfayla aynı görünüm).
 - Rapor kipinde (gömülü veri) yalnız testle doğrulandı, tarayıcıda bakılmadı: uygulamanın tarayıcısı yerel dosyayı durağan gösteriyor.
 - Karakterler odalar arası yürümüyor; konum anında değişiyor. Pixlender sprite'ları gelmedi.
 - 375 pikselde ofis küçük ama okunuyor; daha dar ekranda etiketler sıkışabilir.

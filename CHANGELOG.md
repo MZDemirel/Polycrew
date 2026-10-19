@@ -2,6 +2,18 @@
 
 Decision notes (in Turkish) are in [`docs/decisions/`](docs/decisions/); the number in brackets points to one.
 
+## 0.11.0 (2026-10-19)
+
+From the first real team run (Pixlender). [0014]
+
+- **Privacy:** the watch page and the session report are filtered by project. The page takes `?project=<name>` and has a project selector; `watch.py report` keeps only the current folder's project (`--project`, `--all-projects`). Before this, a published report could carry another project's jobs and reports. The report's title names the project and the date, and its `lang` follows `--lang`.
+- `external-agent.sh quota` no longer crashes on an exhausted agy bucket (missing `reset_time`). For agy the run is measured on the fullest window of the model's group, and `kota.json` names the group.
+- A failed or timed-out run ends its `rapor.md` with the exit code and the last lines of the tool's error output.
+- Parallel runs of the same tool: `kota.json` keeps the combined change (`ortak_fark`) and the overlapping runs; the score gets `kota_ortak`, which is not used as cost.
+- `roster.py summary` ranks each row on all scores (faded by age); the window only sets the basis. One new score no longer pushes a well-measured worker off the table.
+- Watch page: an old job that never finished no longer stretches the 12-hour timeline over days; axis labels show the day on spans over a day. agy jobs use the external worker color, Claude models on agy included.
+- `/session-start` checks how far a worktree is behind its base branch; the "Try" worker may get the lightest M job when there is no E job. `/team`: the PM cannot edit a worker's worktree; run the tests a reviewer's suggestion touches before applying it.
+
 ## 0.10.0 (2026-10-19)
 
 - **Privacy:** the event log only records projects that use the workflow (a `NEXT_SESSION.md` or `SONRAKI_OTURUM.md` in the project folder or above it). Before this, every subagent in every project was logged. `POLYCREW_WATCH_ALL=1` logs everything as before. [0013]

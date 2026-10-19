@@ -2,8 +2,12 @@
 """polycrew watch: takımın agent'larını ve dış işçilerini canlı gösteren yerel sayfa (karar 0003).
 
     watch.py [--port 8770]                      canlı sayfa: http://localhost:8770
-    watch.py report [--hours 24] [--lang en|tr] --out x.html
+    watch.py report [--hours 24] [--lang en|tr] [--project AD | --all-projects] --out x.html
                                                 durağan rapor (veri gömülü; Artifact olarak yayımlanır)
+
+Proje süzgeci (0014): sayfa ``?project=<ad>`` ile, rapor varsayılan olarak çalıştırıldığı klasörün
+projesiyle süzülür; başka projelerin işleri ve raporları görünmez. Proje adı yolun
+``/.claude/worktrees/`` öncesindeki son klasörüdür.
 
 Sayfa İngilizce ve Türkçedir: tarayıcı diline göre açılır, üstteki EN/TR ile ya da ``?lang=`` ile
 değişir.
@@ -14,7 +18,9 @@ Olaylar ``hooks/events.py``'nin yazdığı günlükten okunur. Yalnız standart 
 from __future__ import annotations
 
 import argparse
+import html
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -107,11 +113,20 @@ ESKI_PENCERE = {"weekly": "hafta", "5h": "5 saat"}
 
 
 def _saglayici(kaynak: str | None, model: str | None) -> str:
+    """Renk ailesi. agy'deki Claude modeli de dış işçidir: Claude Code agent'ı gibi turuncu görünmez (0014)."""
     if kaynak == "codex":
         return "codex"
     if kaynak == "agy":
-        return "claude" if model and "claude" in model else "gemini"
+        return "gemini"
     return "claude"
+
+
+def proje_adi(yol) -> str | None:
+    """Klasör yolundan proje adı: worktree'ler ana projelerine sayılır (0014)."""
+    if not yol:
+        return None
+    kok = str(yol).rstrip("/").split("/.claude/worktrees/")[0]
+    return os.path.basename(kok) or None
 
 
 def birlestir(olaylar: list[dict], simdi: float | None = None) -> dict:
@@ -134,6 +149,7 @@ def birlestir(olaylar: list[dict], simdi: float | None = None) -> dict:
             "puan": None,
             "ust_id": None,
             "ust_kaynak": None,
+            "proje": proje_adi(e.get("cwd") or e.get("klasor")),
             **alan,
         }
         isler[anahtar] = i
@@ -151,6 +167,8 @@ def birlestir(olaylar: list[dict], simdi: float | None = None) -> dict:
                 agent_kimligi[str(h[alan])] = i["id"]
         if not i.get("model"):
             i["model"] = e.get("model") or h.get("model")
+        if not i.get("proje"):
+            i["proje"] = proje_adi(e.get("cwd"))
 
     for e in sorted(olaylar, key=lambda e: e.get("ts", 0)):
         tur, ts = e["tur"], e.get("ts", 0)
@@ -255,7 +273,7 @@ def birlestir(olaylar: list[dict], simdi: float | None = None) -> dict:
         elif tur == "puan":
             hedef = str(e.get("id"))
             i = isler.get(hedef) or isler.get(agent_kimligi.get(hedef, ""))
-            p = {"not": e.get("not"), "gerekce": e.get("gerekce"), "ts": ts}
+            p = {"not": e.get("not"), "gerekce": e.get("gerekce"), "ts": ts, "proje": e.get("proje")}
             if i:
                 i["puan"] = p
             else:
@@ -326,14 +344,27 @@ def _token(kullanim) -> int | None:
     return toplam or None
 
 
-def suz(veri: dict, saat: float | None) -> dict:
-    if not saat:
-        return veri
-    sinir = veri["simdi"] - saat * 3600
-    isler = [
-        i for i in veri["isler"] if (veri["simdi"] if i["bitis"] is None else i["bitis"]) >= sinir
-    ]
-    return {**veri, "isler": isler, "harita": agent_haritasi(isler, veri["simdi"])}
+def suz(veri: dict, saat: float | None, proje: str | None = None) -> dict:
+    """Zaman penceresi ve proje (0014). Bitişi gelmemiş ama çalışmayan (bilinmiyor) iş pencereye
+    başlangıcıyla girer; yoksa günler önceki bir iş çizelgeyi günlere yayar. Kota süzülmez."""
+    simdi = veri["simdi"]
+    isler = veri["isler"]
+    projeler = sorted({i["proje"] for i in isler if i.get("proje")})
+    if saat:
+        sinir = simdi - saat * 3600
+
+        def son(i):
+            if i["bitis"] is not None:
+                return i["bitis"]
+            return simdi if i["durum"] == "calisiyor" else (i["baslangic"] if i["baslangic"] is not None else simdi)
+
+        isler = [i for i in isler if son(i) >= sinir]
+    puanlar = veri.get("puanlar", [])
+    if proje:
+        isler = [i for i in isler if i.get("proje") == proje]
+        puanlar = [p for p in puanlar if p.get("proje") == proje]
+    return {**veri, "isler": isler, "puanlar": puanlar, "projeler": projeler, "proje": proje or None,
+            "harita": agent_haritasi(isler, simdi)}
 
 
 def rapor_metni(i: dict) -> str:
@@ -421,7 +452,7 @@ class Sunucu(BaseHTTPRequestHandler):
             if q.get("kota") == "1":
                 KOTA.tazele()
             saat = float(q["saat"]) if q.get("saat") not in (None, "", "0") else None
-            self._json(suz(birlestir(oku()), saat))
+            self._json(suz(birlestir(oku()), saat, q.get("proje") or None))
         elif u.path == "/api/is":
             i = next((i for i in birlestir(oku())["isler"] if i["id"] == q.get("id")), None)
             if i is None:
@@ -432,9 +463,11 @@ class Sunucu(BaseHTTPRequestHandler):
             self._gonder(b"yok", "text/plain", 404)
 
 
-def rapor_html(saat: float | None, dil: str | None = None) -> str:
-    """Durağan rapor; ``dil`` (``en`` ya da ``tr``) verilmezse okuyanın tarayıcı dili."""
-    veri = suz(birlestir(oku()), saat)
+def rapor_html(saat: float | None, dil: str | None = None, proje: str | None = None) -> str:
+    """Durağan rapor; ``dil`` (``en`` ya da ``tr``) verilmezse okuyanın tarayıcı dili. ``proje``
+    verilirse yalnız o projenin işleri ve raporları gömülür (0014)."""
+    veri = suz(birlestir(oku()), saat, proje)
+    veri.pop("projeler", None)  # başka projelerin adları rapora girmez
     if dil:
         veri["dil"] = dil
     for i in veri["isler"]:
@@ -442,6 +475,11 @@ def rapor_html(saat: float | None, dil: str | None = None) -> str:
         i["_gorev"] = gorev_metni(i)
     gomulu = json.dumps(veri, ensure_ascii=False).replace("</", "<\\/")
     sayfa = SAYFA.read_text(encoding="utf-8")
+    tarih = datetime.fromtimestamp(veri["simdi"]).strftime("%Y-%m-%d")
+    baslik = " · ".join(p for p in ("Polycrew", proje, tarih) if p)
+    sayfa = sayfa.replace("<title>Polycrew Team Watch</title>", f"<title>{html.escape(baslik)}</title>", 1)
+    if dil:
+        sayfa = sayfa.replace('<html lang="en">', f'<html lang="{dil}">', 1)
     return sayfa.replace("/*VERI*/null", gomulu, 1)
 
 
@@ -452,14 +490,17 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--hours", dest="saat", type=float, default=24.0)
     ap.add_argument("--out", dest="cikti", type=Path)
     ap.add_argument("--lang", dest="dil", choices=["en", "tr"], help="report language (default: the reader's browser)")
+    ap.add_argument("--project", dest="proje", help="report: only this project (default: the current folder's project)")
+    ap.add_argument("--all-projects", dest="hepsi", action="store_true", help="report: every project in the log")
     a = ap.parse_args(argv)
     if a.komut == "report":
-        html = rapor_html(a.saat, a.dil)
+        proje = None if a.hepsi else (a.proje or proje_adi(os.getcwd()))
+        metin = rapor_html(a.saat, a.dil, proje)
         if a.cikti:
-            a.cikti.write_text(html, encoding="utf-8")
+            a.cikti.write_text(metin, encoding="utf-8")
             print(a.cikti)
         else:
-            sys.stdout.write(html)
+            sys.stdout.write(metin)
         return 0
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), Sunucu)
     print(f"polycrew watch: http://localhost:{a.port}  (log: {olay.dosya()})", flush=True)

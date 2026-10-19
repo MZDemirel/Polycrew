@@ -259,11 +259,21 @@ class KadroVePuanTesti(unittest.TestCase):
         self.assertEqual(r.returncode, 0)
         # 1970-01-12 UTC
         self.assertIn("Roster summary: last 7 days, 1 records (generated: 1970-01-12)", r.stdout)
-        self.assertIn("| developer | py | yeni-isci |", r.stdout)
-        # Pencere dışındakiler kadro ya da yedek olmaz (yalnız "Try" sütununda görünebilirler, 0008).
-        self.assertNotIn("| py | eski-isci |", r.stdout)
-        self.assertNotIn("| py | gelecek-isci |", r.stdout)
-        self.assertNotIn("| eski-isci | 3", r.stdout)
+        # 0014: sıralama bütün geçmişten; eşit puanda son puanı yeni olan önde, pencere dışı yedek olabilir.
+        self.assertIn("| developer | py | yeni-isci | 4.00 | 1 | eski-isci | 4.00 | window, little data |", r.stdout)
+        self.assertNotIn("| py | gelecek-isci |", r.stdout)  # gelecek tarihli kayıt kadroya girmez
+
+    def test_ozet_tek_yeni_puan_kadroyu_cevirmez(self):
+        # 0014 (Pixlender, 2026-10-19): 11 puanlı eski işçi, pencerede tek puan alan yeniye yer vermez.
+        kayitlar = [{"isci": "emektar", "rol": "developer", "alan": "py", "not": 4.5, "ts": 100_000 + i}
+                    for i in range(11)]
+        kayitlar.append({"isci": "yeni", "rol": "developer", "alan": "py", "not": 4, "ts": 990_000})
+        with open(self.defter, "w", encoding="utf-8") as f:
+            for k in kayitlar:
+                f.write(json.dumps(k) + "\n")
+        r = calistir_kadro(["summary", "--half-life", "0", "--now", "1000000", "--days", "7", "--no-seed"],
+                           defter=self.defter)
+        self.assertIn("| developer | py | emektar | 4.35 | 11 | yeni | 3.67 | stale |", r.stdout)
 
     def test_ozet_esitlik_kurali(self):
         # 1. Puan esitliginde n'si buyuk olan kazanir
