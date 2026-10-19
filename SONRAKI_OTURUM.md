@@ -1,8 +1,25 @@
 # Sonraki oturum
 
-Son güncelleme: **2026-10-11** (git kuralları `0006`; İngilizce yüzey `0007`; öğrenen kadro `0008`; maliyet, dış işçisiz kadro ve CI `0009`; kota ölçümü `0010`; yapı önerisi `0011`; ofis görünümü `0012`, 0.9.0).
+Son güncelleme: **2026-10-19** (paylaşıma hazırlık `0013`, 0.10.0; ilk gerçek takım koşusu ve düzeltmeleri `0014`, 0.11.0).
 
 ## Nerede kaldık
+
+- **2026-10-19 oturumu (`0013`, `0014`; 0.10.0 ve 0.11.0).** Dal `claude/polycrew-plugin-dev-6ebcae`.
+  1. **Geri bildirim:** "Paylaşıma hazır mı, eksikleri ne?" ve "`/session-start` izleme sayfasını neden açmıyor?" Cevap: skill'de adım yoktu, kanca yalnız metin basar ve kancadan başlayan sunucu ölür. Paylaşımı engelleyen asıl şey: olay günlüğü polycrew kullanmayan projelerin agent görevlerini de yazıyordu.
+  2. **0.10.0 (`0013`):** günlük yalnız not dosyası olan projelerde (klasör ya da üstü; `POLYCREW_WATCH_ALL=1`), 10 MB'da en yeni yarısı kalır; `/session-start` takım işi varsa sayfayı açar (masaüstü uygulamasında tarayıcı panesi); `external-agent.sh` macOS'ta (`timeout`/`gtimeout`/Python, `date %N`, bash 3.2); Python ≥ 3.9; CI'da macOS + 3.9 (yeşil); `CHANGELOG.md`; `v0.10.0` etiketi ve GitHub açıklaması (kullanıcı).
+  3. **Codex incelemesi** (sol, 225 sn, puan 5): 8 bulgu, hepsi düzeltildi; en önemlisi `bash -n a b` yalnız ilk dosyayı denetliyordu (CI, CLAUDE.md, README).
+  4. **İlk gerçek takım koşusu** ayrı oturumda, Pixlender 7b'nin yedinci dilimi (yaka bitti, kısa etek ertelendi). Gözlem: `~/.cache/polycrew/gozlem/2026-10-19-pixlender.md`. Tuttu: eski not dosyası, `artist` ve `reviewer` rolleri, kancada model, sürümlü puan, `/watch`, "lider gerek yok". **Marketplace yerel klasörden** (`"source": "directory"`): skill'ler yerel depodan koşuyor, `main`'i ileri sarmak çalışan oturumları da değiştiriyor.
+  5. **0.11.0 (`0014`):** proje süzgeci (sayfa `?project=`, seçici; rapor yalnız çalıştırıldığı projenin, `--project`, `--all-projects`; başlık proje ve tarih); agy tükenmiş kovada çökmez, en dolu pencereyi ölçer, `kota.json`'da grup; düşen koşunun raporuna çıkış kodu ve hata satırları; paralel koşuya `ortak_fark`, `cakisanlar`, puana `kota_ortak` (maliyet değil); kadro özeti bütün geçmişle sıralar, pencere yalnız dayanak; bilinmiyor iş çizelgeyi günlere yaymaz (eksen hep `03:00` idi); agy işleri dış işçi renginde; `session-start` taban kontrolü ve Try'a M işi; `team`: PM işçi worktree'sini düzenleyemez, öneriden önce test.
+  6. **agy incelemesi** (Gemini 3.8 Flash, kadronun Try işçisi; Codex %97, Claude %72 olduğu için; 1136 sn, puan 4): 9 bulgunun 7'si düzeltildi (worktree'de puanın projesi, Try'a sızan gelecek kayıt, rapor başlığı). İlk gerçek agy kota ölçümü doğru: Gemini haftalık fark 1,0.
+  7. **Kota:** Claude 5 saat %23 → %72 (bu oturum ve Pixlender birlikte), hafta %19 → %25; Codex 5 saat %10 → %97 (üç paralel koşu); agy Claude/GPT haftalık %0 (Pixlender'daki yarım inceleme).
+  8. **Testler:** 85 test, 11 sn; Python 3.9 (uv) ile de yeşil. Yeni bağımlılık yok.
+  9. **Takım raporu:** https://claude.ai/artifact/UV55P9dZtM21uwC59Y6dje (yalnız bu projenin iki işi).
+- **Açık kalanlar** (ayrıntı `0013` ve `0014`'te):
+  - C listesi: `score` başarıda sessiz; `roster.py --help` çıkış 1; `structure` az verili Claude'da "only external measured" diyor ve kalan kotayı saymıyor; Codex ölçümünün yaşı uyarısız; ofiste masa etiketi ve okur/yazar ayrımı; çizelgenin varsayılan penceresi.
+  - Gerçek oturumda denenmeyenler: `polycrew:developer` (ve `rules/git.md`), `/project-setup`, lider, 0.11.0 ile sayfanın `/session-start`'ta açılması.
+  - Paylaşım: tohum veri tek kişiden; katkı için Türkçe iç belgeler; Windows yalnız WSL; CLI'da Claude kotası; GitHub kaynağından kurulumun denenmesi.
+  - Pixlender'ın 0.11.0 öncesi raporu (https://claude.ai/artifact/LjJu9LQQRwaG4NHLmrxBgb) polycrew'deki Codex işini de taşıyor; paylaşılmadan önce yeniden üretilmeli.
+  - `roster.md`'deki "Codex ağır yazar ≈ %20–25" tahmini tutmadı; ölçüyle güncellenecek.
 
 - **0.9.0 (2026-10-11, `0011`, `0012`).** `roster.py structure`: rol başına Claude ve dış işçi karşılaştırması, kaçınılacak işçi, liderin kullanılıp kullanılmadığı; yalnız önerir, yapıyı kullanıcı onaylar. İzleme sayfasının en üstünde piksel ofis (`page.html`, canvas; yerleşim mantığı `OFIS-MANTIK` bloğunda, Node ile test ediliyor). 76 test, 6 sn. Aşama 3'te açık kalan: gerçek oturum denemeleri ve ofisin sprite'ları.
 
@@ -29,40 +46,68 @@ Son güncelleme: **2026-10-11** (git kuralları `0006`; İngilizce yüzey `0007`
 
 ## Sıradaki
 
-### 1. Kadroyla gerçek bir aşama
-- Pixlender 6.6'nın kalanı: A1 (dalda) ve B1 (dalda, yarım), A3, B2. Kadro `kadro.md`'den, maddelere zorluk.
-- Gözlem: kadro tuttu mu, Claude kotası ne kadar uzadı?
-- Kullanıcının isteği (2026-10-02): bir sonraki koşuda **çıktı kalitesine göre** sistemi (kadro, roller, `dis-ajan`) revize et. Her işçinin çıktısını kaydet: kalite notu, süre, kota (`dis-ajan.sh kota` öncesi ve sonrası).
+### 1. `0014`'ün C listesi
+- İş: `events.py score` başarıda bir satır onay; `roster.py --help` çıkış 0; `structure` az verili Claude satırında "Claude: little data" desin ve sağlayıcının kalan kotasını göstersin; `quota` çıktısında Codex ölçümü bir pencereden eskiyse "stale"; izleme çizelgesinin varsayılan penceresi işlerin aralığına otursun.
+- Bitti: her biri testli, 85 + yeni testler yeşil, CHANGELOG'da.
 
-### 2. Açık kalanlar
-- `0012`: ofisi gerçek bir takım oturumunda aç (`/watch`); kalabalıkta okunuyor mu, Pixlender'dan sprite sayfası isteniyor mu. README üst görseli o oturumdan.
-- `0010`: ilk gerçek dış işçi koşusundan sonra kayıt klasöründeki `kota.json`'a bak (fark makul mü, agy'de grup doğru mu). Bitti: gözlem `0010`'a yazıldı.
-- `0009`: push'tan sonra GitHub'da CI sonucuna bak; `tests (3.11)` ya da `plugin-validate` kırmızıysa düzelt. Bitti: iki iş de yeşil.
-- Ofis görünümü (`watch`): temiz bir oturumda tek başına; önce yerleşim ve karakter kararları.
-- `0008`: gerçek bir takım koşusundan sonra `agent_bitti` olayında `model` var mı, `events.py score ... --worker claude/developer/sonnet` adı sürümlü yazdı mı bak. Bitti: gözlem `0008`'e yazıldı.
-- `0007`: kurulu 0.5.0 ile gerçek oturum denemesi: `/session-start` eski bir projede (Pixlender: `SONRAKI_OTURUM.md` tanınıyor mu, çıktı Türkçe mi), `/team` ile bir koşu (`polycrew:developer` yükleniyor mu), `external-agent.sh quota` ve bir `read` koşusu. Bitti: gözlem `0007`'ye yazıldı.
-- `0006`: kurulu sürümle gerçek bir projede `/project-setup` (yeni proje, var olan `CLAUDE.md`, `~/.claude/CLAUDE.md` önerisi). Bitti: `Git` bölümünde sabit satırlar sorulmadan var.
-- `0006`: bir takım koşusunda `developer`'ın `${CLAUDE_PLUGIN_ROOT}/rules/git.md`'yi okuyabildiğini doğrula.
-- README ekran görüntülerinde eski rol adları varsa yenile.
-- Pixlender ve Masalino `CLAUDE.md`'lerine sabit git bloğunu ekle (kullanıcının onayıyla).
-- Gemini Pro ve agy Opus kodlamayı yeniden denemek (geniş izin kullanıcının kararı; Opus kotası).
-- Tasarımcı ve lider rolleri ölçülmedi.
-- Yeni model çıkınca `deney/` ile tekrar.
-- Başka bir projede `/project-setup`.
+### 2. Ofiste işçileri ayırt etmek
+- İş: aynı modeldeki dış işçiler masada kısa bir etiketle (iş başlığının ilk kelimesi ya da model kısaltması) ayrılsın; okur ve yazar farklı aksesuar. Önce yerleşim kararı (canvas 320×150).
+- Bitti: üç Codex işçisi ekran görüntüsünde üstüne gelmeden ayırt ediliyor; `0012`'ye not.
+
+### 3. Kalan gerçek oturum denemeleri
+- İş: 0.11.0 kurulu (tercihen GitHub kaynağından) bir projede `/session-start` (sayfa kendiliğinden açılıyor mu), `/team` ile bir `polycrew:developer` işi (`rules/git.md`'yi okuyor mu), yeni bir projede `/project-setup`.
+- Bitti: gözlemler `0006`, `0007`, `0013`'e yazıldı.
+
+### 4. Paylaşım kalanları (`0013`)
+- İş: tohum verinin açıklaması (README'de "seed scores come from one user's runs"), katkı rehberi (CONTRIBUTING, Türkçe iç adların açıklaması), CLI kullanıcısı için Claude kotası (`/usage` elle).
+- Bitti: README'de görünür, kullanıcı onayladı.
+
+### 5. Eski açık kalanlar
+- Gemini Pro ve agy Opus kodlamayı yeniden denemek (geniş izin kullanıcının kararı).
+- Tasarımcı ve lider rolleri ölçülmedi; yeni model çıkınca `deney/` ile tekrar.
+- Yarı ömrü birkaç haftalık veriyle yeniden değerlendir (`0008`); veri birikince maliyeti puana katmak (`0009`).
+- Ofis: Pixlender sprite sayfası, odalar arası yürüme, README üst görselinin gerçek oturumdan alınması (Pixlender'ın `ofis-2026-10-19-calisirken.png`'si proje karışıklığı gösterdiği için kullanılmadı).
+- Pixlender ve Masalino `CLAUDE.md`'lerine sabit git bloğu (kullanıcının onayıyla).
+
+## Kullanıcıya sorulacaklar
+
+- Marketplace'i GitHub kaynağıyla yeniden ekleyelim mi? (Başkalarının göreceği kurulum denenir; ama `main`'i ileri sarmak artık çalışan oturumları değiştirmez, değişiklik ancak `plugin update` ile gelir.)
+- Ofis etiketleri için tercih: iş başlığı mı, model kısaltması mı?
+- Pixlender'ın eski takım raporu silinsin mi, 0.11.0 ile yeniden mi üretilsin?
+
+## Sonraki oturumun kadrosu
+
+Roster summary: last 7 days, 36 records (generated: 2026-10-19)
+
+| Role | Field | Roster | Score | n | Backup | Backup score | Basis | Try |
+|---|---|---|---|---|---|---|---|---|
+| artist | art | claude/artist/opus-5-5 | 4.58 | 9 | — | — | window | — |
+| designer | design | codex/gpt-6-astra/high | 4.24 | 6 | codex/gpt-6.1-sol/high | 3.98 | window | claude/designer/opus-5-5 |
+| developer | js | claude/developer/opus-5-5 | 3.98 | 1 | codex/gpt-6.1-sol/high | 3.94 | window, little data | claude/developer/sonnet-5-5 |
+| developer | py | claude/developer/sonnet-5-5 | 4.32 | 11 | codex/gpt-6.1-sol/high | 3.98 | stale | codex/gpt-6-astra/xhigh |
+| developer | script | agy/gemini-3.8-flash-high | 3.39 | 6 | — | — | stale | claude/developer/sonnet-5-5 |
+| image-generation | art | codex/gpt-6.1-sol/high | 4.04 | 2 | agy/gemini-3.1-pro-high | 3.25 | stale | — |
+| image-reading | art | codex/gpt-6.1-sol/high | 4.25 | 4 | claude/image-reading/sonnet-5-5 | 3.87 | stale | codex/gpt-6-astra/xhigh |
+| researcher | research | codex/gpt-6.1-sol/high | 4.28 | 3 | codex/gpt-6-astra/xhigh | 3.87 | stale | agy/gemini-3.8-flash-high |
+| reviewer | review | codex/gpt-6.1-sol/high | 4.70 | 14 | claude/reviewer/sonnet-5-5 | 4.54 | window | agy/gemini-3.8-flash-high |
+
+`roster.py structure`: developer → prefer Claude (sonnet 4.30 / Codex sol 4.02). Avoid: agy/gemini-3.8-flash-high as designer (2.86, eff. n 4.6).
+
+Not: Codex'in 5 saatlik penceresi paralel koşuda dakikalar içinde doluyor (bu oturumda %2 → %97); kadro tablosu kotayı saymıyor, atamadan önce `external-agent.sh quota`.
 
 ## Senin yapman gerekenler
 
-- Push'tan sonra GitHub → Actions sekmesinde ilk CI koşusuna bak.
-
-- `claude/universal-git-rules-ff6998` dalındaki üç commit'i (`0007`) gözden geçir, `main`'e al ve push et (dalı silme).
-- Sonra kurulumu güncelle: `claude plugin marketplace update polycrew && claude plugin update polycrew@polycrew`.
-- Pixlender ve Masalino'nun not dosyalarındaki başlangıç promptlarında `/oturum-ac` → `/session-start`.
-- İzin listelerinde (`.claude/settings*.json`, agy `settings.json`) `dis-ajan.sh`, `kadro.py`, `olay.py`, `izle.py` geçen kuralları yeni adlara çevir.
-- `~/.cache/polycrew/dis-ajan-kopya.sh` eski betiğin kopyası; yeni `events.py`'yi bulamaz, sil ya da yenisinden kopyala.
-- `~/.claude/CLAUDE.md`'ye sabit kuralları yazmak isteyip istemediğine karar ver (blok `rules/git.md`'de).
+- Bu dalın dört commit'ini `main`'e al ve push et: `git -C ~/Belgeler/My_Project/claude-eklenti merge --ff-only claude/polycrew-plugin-dev-6ebcae`, sonra `git push origin main` ve `git tag v0.11.0 && git push origin v0.11.0`. Push'tan sonra CI'a bak.
+- Pixlender'ın `main`'i 8 commit ileride (`40ff5f4`), push edilmedi; son düzeltmeden sonra tam test yinelenmedi.
+- Takım raporlarına bak: bu oturumunki https://claude.ai/artifact/UV55P9dZtM21uwC59Y6dje; Pixlender'ın eskisi (başka projenin işini de taşıyor) https://claude.ai/artifact/LjJu9LQQRwaG4NHLmrxBgb.
+- İstersen eski olay günlüğünü sil (`~/.cache/polycrew/olaylar.jsonl`): 0.10.0 öncesinde başka projelerin agent görevlerini de tutuyor.
+- `claude/universal-git-rules-ff6998` worktree'si duruyor (eski, birleşmiş iş); istersen kaldır (dal kalır).
+- Pixlender ve Masalino'nun izin listelerinde (`.claude/settings*.json`) eski betik adları (`dis-ajan.sh`, `kadro.py`, `olay.py`, `izle.py`) geçen kurallar varsa yenile; `~/.cache/polycrew/dis-ajan-kopya.sh` eski kopya, sil.
 
 ## Başlangıç promptu
 
 ```text
 Merhaba Claude, polycrew eklentisine devam ediyoruz. /session-start
+
+<geri bildirim>
 ```

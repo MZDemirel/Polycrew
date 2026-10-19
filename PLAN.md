@@ -43,26 +43,29 @@
 ### Aşama 3: Öğrenen kadro ve dışa açılma
 **Hedef:** Kadro zamanla ve yeni modellerle kendini düzeltsin; eklentiyi ilk kez kuran biri Codex ve agy olmadan da işe yarar bir takım görsün.
 **Mod:** yapımcı
-- [ ] 0.5.0'ı gerçek oturumda dene (Pixlender): `/session-start` eski not dosyasıyla, `/team` ile bir koşu, `external-agent.sh quota` ve bir `read` koşusu; gözlem `0007`'ye (Aşama 2'deki açık kalanla aynı iş)
+- [x] 0.5.0+'ı gerçek oturumda dene (Pixlender, 2026-10-19): `/session-start` eski not dosyasıyla, `/team` ile bir koşu, Codex ve agy koşuları, `quota`; gözlem `0007`, `0014`
+- [ ] Gerçek oturumda denenmeyenler: `polycrew:developer` (ve `rules/git.md`'yi okuması, `0006`), `/project-setup`, lider
 - [x] Puanlama, zaman ağırlığı: `roster.py suggest` ve `summary` puanları 30 günlük yarı ömürle soldurur (eski puan başlangıç değerine yaklaşır, silinmez); `--half-life` (`0008`)
 - [x] Puanlama, sürümlü işçi adı: `events.py score` Claude işçisinin sürümünü transkriptten ekler (`claude/developer/sonnet-5-5`); 2026-10-12 öncesi sürümsüz satırlar 5-5 okunur (`0008`)
 - [x] Puanlama, "dene" önerisi: özet tablosunda `Try` sütunu; az verili ve rolde önselin altına düşmemiş işçi kolay bir iş için önerilir (`0008`)
-- [ ] `0008`'in açık kalanı: gerçek bir takım koşusunda kancanın modeli yazdığını ve `score`'un sürümü eklediğini doğrula; yarı ömrü birkaç haftalık veriyle yeniden değerlendir
+- [x] `0008`'in açık kalanı: gerçek koşuda kanca modeli yazdı, `score` sürümü ekledi (2026-10-19, `0014`)
+- [ ] Yarı ömrü birkaç haftalık veriyle yeniden değerlendir (`0008`)
 - [x] Aynı işin (proje + id) sonraki puanı öncekinin yerine geçer; defter eklemeli kalır (`0009`)
 - [x] Sıralamada maliyet eşitlik bozucu: puan farkı ≤ 0,10 ise %20 az kotalı, yoksa %20 hızlı işçi öne geçer (`0009`)
 - [x] Kotanın ve sürenin otomatik ölçülmesi: dış işçi koşusundan önce ve sonra kota okunur, fark `kota.json`'a ve puana yazılır; süre Claude agent'ında da dolar (`0010`)
-- [ ] `0010`'un açık kalanı: ilk gerçek Codex ve agy koşusunda `kota.json`'a bak; veri birikince maliyeti puana katmayı yeniden değerlendir (`0009`'daki eşitlik bozucu)
+- [x] `0010`'un açık kalanı: gerçek Codex (çakışma, `ortak_fark`) ve agy (Gemini haftalık fark 1,0) koşularında `kota.json` (2026-10-19, `0014`)
+- [ ] Veri birikince maliyeti puana katmayı yeniden değerlendir (`0009`'daki eşitlik bozucu); `roster.md`'deki "Codex ağır yazar ≈ %20–25" tahminini ölçüyle güncelle
 - [x] Takım yapısı önerisi: `roster.py structure` rol başına Claude ve dış işçiyi karşılaştırır, kaçınılacak işçiyi ve liderin kullanılıp kullanılmadığını yazar; yapıyı kullanıcı onaylar (`0011`)
 - [x] Codex ve agy olmadan ilk deneyim: `roster.py` kurulu olmayan aracın işçilerini önermez, `external-agent.sh` çıkış 4 ve açık iletiyle durur, `quota` "not installed" der (`0009`)
 - [x] Otomatik denetim: `.github/workflows/ci.yml` (birim testleri, `bash -n`, manifest JSON, `claude plugin validate`) (`0009`)
-- [ ] `0009`'un açık kalanı: ilk push'ta CI sonucuna bak (Python 3.11 ve `plugin-validate` işi yerelde denenemedi)
+- [x] `0009`'un açık kalanı: CI yeşil (2026-10-11'den beri; 2026-10-19'da macOS ve 3.9 da)
 - [x] `watch`: ofis görünümü. Sayfanın en üstünde canvas ile piksel ofis: PM, Claude odası, dış işçiler odası, dinlenme köşesi; kodla çizilen karakterler, balon ve tıklama (`0012`)
 - [ ] Ofis: Pixlender sprite sayfası (`OFIS_SPRITE` hazır), odalar arası yürüme, README üst görselinin gerçek bir oturumdan alınması
 - [x] Paylaşıma hazırlık: olay günlüğü yalnız polycrew projelerinde ve 10 MB'da kırpılır; `/session-start` takım işinde sayfayı açar (masaüstü panesi); `external-agent.sh` macOS'ta (`timeout`, `date %N`, bash 3.2); Python ≥ 3.9; CI'da macOS; `CHANGELOG.md`, 0.10.0 (`0013`)
 - [x] `0013`: CI'ın macOS ve 3.9 işleri yeşil (2026-10-19)
 - [ ] `0013`'ün açık kalanı: sayfanın `/session-start`'ta açılmasını kurulu 0.10.0 ile gerçek oturumda dene
 - [x] İlk gerçek takım koşusu (Pixlender, 2026-10-19) ve bulgularının A–B grubu: proje süzgeci, agy kota çöküşü, kadro özeti penceresi, zaman ekseni, ortak kota farkı, skill metinleri; 0.11.0 (`0014`)
-- [ ] `0014`'ün C listesi: `score` onay satırı, `roster.py --help` çıkış kodu, `structure`'da az verili Claude ve kalan kota, Codex ölçümünün yaşı; ofiste masa etiketi ve okur/yazar ayrımı
-- [ ] Paylaşım kalanları (`0013`): tohum verinin tek kişiden gelmesi, katkı için Türkçe iç belgeler, Windows (WSL), CLI'da Claude kotası, sürüm etiketleri
+- [ ] `0014`'ün C listesi: `score` onay satırı, `roster.py --help` çıkış kodu, `structure`'da az verili Claude ve kalan kota, Codex ölçümünün yaşı; ofiste masa etiketi ve okur/yazar ayrımı; çizelgenin varsayılan penceresi işlerin aralığına otursun
+- [ ] Paylaşım kalanları (`0013`): tohum verinin tek kişiden gelmesi, katkı için Türkçe iç belgeler, Windows (WSL), CLI'da Claude kotası; marketplace'i GitHub kaynağıyla kurup başkasının göreceği kurulumu dene (sürüm etiketi ve depo açıklaması 2026-10-19'da yapıldı)
 
 **Bitti sayılır:** yeni bir model çıktığında kadro onu eski modelin puanıyla değil kendi koşularıyla sıralıyor; eski puanlar sıralamayı tek başına belirlemiyor; Codex ve agy kurulu olmayan bir makinede `/team` çalışıyor.
