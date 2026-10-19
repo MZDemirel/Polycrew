@@ -19,6 +19,7 @@ Notes file: `NEXT_SESSION.md`. If the project has `SONRAKI_OTURUM.md` instead, u
 6. **Plan mode:** plan the user's goal in plan mode. Collect questions first and ask them together with `AskUserQuestion` (at most 4, the recommended option first and marked "(Recommended)"). Split the phase if it is large. Obey the Mode line (in teacher mode, do not hand over code).
 7. **Roster:** if the notes file has a "Next session's roster" table, build the plan's assignment table from it: find each job's role and field, assign the worker in the "Roster" column; if quota is short or the job hits a known pitfall of that worker, take the "Backup" and say why. Rows marked "little data" or "stale" are suggestions, not binding. If the "Try" column names a worker and the plan has an easy (E) job of that role and field, give it to that worker and score it afterwards: a worker that is never tried never gets a score. If there is no table, produce one with `python3 "${CLAUDE_PLUGIN_ROOT}/skills/team/roster.py" summary --days 7`.
 8. **Heavy work:** if the notes file or memory states a machine limit (for example a process count), keep to it.
+9. **Watch page:** once the plan is approved, if it hands work to a team (`/team`) or to an external worker, open the live page right away: the "Live page" steps of the `watch` skill (server in the background, then open it for the user). Without team or external work, skip it; the user can open it any time with `/watch`.
 
 ## Report format
 

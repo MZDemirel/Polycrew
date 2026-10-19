@@ -6,11 +6,16 @@ on:
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.11", "3.14"]
+        os: [ubuntu-latest]
+        python: ["3.9", "3.11", "3.14"]
+        include:
+          # macOS: /bin/bash 3.2, BSD date, no GNU timeout (the tests run the worker script with /usr/bin:/bin).
+          - os: macos-latest
+            python: "3.9"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -19,7 +24,7 @@ jobs:
       - name: Unit tests
         run: python3 -m unittest discover tests
       - name: Shell syntax
-        run: bash -n hooks/*.sh skills/external-agent/external-agent.sh
+        run: /bin/bash -n hooks/*.sh skills/external-agent/external-agent.sh
       - name: Manifests are valid JSON
         run: |
           for f in .claude-plugin/plugin.json .claude-plugin/marketplace.json hooks/hooks.json; do

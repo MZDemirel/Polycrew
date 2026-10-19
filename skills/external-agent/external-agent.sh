@@ -20,9 +20,44 @@
 # POLYCREW_OTURUM) are still read as a fallback. Log file names and event fields stay Turkish (0007).
 set -uo pipefail
 
+# macOS uyumu (0013): bash 3.2, BSD date (%N yok), GNU timeout yok, eski macOS'ta realpath yok.
+tam_yol() { realpath "$1" 2> /dev/null || python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"; }
+simdi() { python3 -c 'import time; print(time.time())'; }
+# zaman_sinirli <sn> <komut...>: timeout, yoksa gtimeout, yoksa python3 (süre dolunca süreç grubu
+# kesilir, çıkış 124 timeout gibi). _POLYCREW_ZAMAN=python python yolunu zorlar (test).
+zaman_sinirli() {
+  local sn=$1; shift
+  if [ "${_POLYCREW_ZAMAN:-}" != python ]; then
+    if command -v timeout > /dev/null 2>&1; then timeout "$sn" "$@"; return $?; fi
+    if command -v gtimeout > /dev/null 2>&1; then gtimeout "$sn" "$@"; return $?; fi
+  fi
+  python3 -c '
+import os, signal, subprocess, sys
+p = subprocess.Popen(sys.argv[2:], start_new_session=True)
+def ilet(sinyal, _):
+    try:
+        os.killpg(p.pid, sinyal)
+    except ProcessLookupError:
+        pass
+signal.signal(signal.SIGINT, ilet)
+signal.signal(signal.SIGTERM, ilet)
+try:
+    kod = p.wait(timeout=float(sys.argv[1]))
+except subprocess.TimeoutExpired:
+    ilet(signal.SIGTERM, None)
+    try:
+        p.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        ilet(signal.SIGKILL, None)
+        p.wait()
+    sys.exit(124)
+sys.exit(kod if kod >= 0 else 128 - kod)
+' "$sn" "$@"
+}
+
 # Olay günlüğü (polycrew izle, karar 0003). Betiğin kopyası eklentinin dışında çalışıyorsa
 # (paralel koşu) events.py POLYCREW_EVENTS_SCRIPT'ten, sonra kurulu eklentiden bulunur; bulunmazsa atlanır.
-OLAY="${POLYCREW_EVENTS_SCRIPT:-${POLYCREW_OLAY:-$(dirname "$(realpath "$0")")/../../hooks/events.py}}"
+OLAY="${POLYCREW_EVENTS_SCRIPT:-${POLYCREW_OLAY:-$(dirname "$(tam_yol "$0")")/../../hooks/events.py}}"
 if [ ! -f "$OLAY" ]; then
   for aday in "${CLAUDE_PLUGIN_ROOT:-/yok}/hooks/events.py" "$HOME"/.claude/plugins/cache/polycrew/polycrew/*/hooks/events.py; do
     [ -f "$aday" ] && OLAY=$aday
@@ -83,7 +118,7 @@ kota_agy() {
     return 0
   fi
   local j
-  j=$(cd /tmp && timeout 60 agy -p "/quota" --output-format json < /dev/null 2>/dev/null)
+  j=$(cd /tmp && zaman_sinirli 60 agy -p "/quota" --output-format json < /dev/null 2>/dev/null)
   KOTA_DOSYA=$1 python3 - "$j" <<'PY'
 import json, os, sys
 sessiz = os.environ.get("KOTA_SESSIZ") == "1"
@@ -152,7 +187,7 @@ if [ $# -lt 6 ]; then
   exit 2
 fi
 arac=$1 model=$2 efor=$3 kip=$4
-klasor=$(realpath "$5") gorev=$(realpath "$6")
+klasor=$(tam_yol "$5") gorev=$(tam_yol "$6")
 shift 6
 resimler=("$@")
 zaman_asimi=${EXTERNAL_AGENT_TIMEOUT:-${DIS_AJAN_ZAMAN_ASIMI:-3600}}
@@ -189,7 +224,7 @@ cp "$gorev" "$kayit/gorev.md"
 # Koşudan önce kota (0010); sonra yeniden okunur, fark kota.json'a ve isci_bitti olayına yazılır.
 kota_once=""
 [ "${EXTERNAL_AGENT_NO_QUOTA:-}" = 1 ] || kota_once=$(kota_yuzde "$arac" "$model")
-baslangic=$(date +%s.%N)
+baslangic=$(simdi)
 baslik=$(grep -m1 -E '^#' "$gorev" | sed 's/^#* *//; s/^Görev: *//; s/^Task: *//')
 olay isci_basladi "id=$(basename "$kayit")" "kaynak=$arac" "model=$model" "efor=$efor" "kip=$kip" \
   "klasor=$klasor" "aciklama=${baslik:-$(basename "$gorev")}" "kayit=$kayit" "oturum=${POLYCREW_SESSION:-${POLYCREW_OTURUM:-}}"
@@ -198,7 +233,7 @@ if [ "$arac" = codex ]; then
   [ "$kip" = yazar ] && sandbox=workspace-write
   komut=(codex exec -C "$klasor" -m "$model" -s "$sandbox" --json -o "$kayit/rapor.md")
   [ "$efor" != - ] && komut+=(-c "model_reasoning_effort=\"$efor\"")
-  for r in "${resimler[@]}"; do komut+=(-i "$(realpath "$r")"); done
+  for r in ${resimler[@]+"${resimler[@]}"}; do komut+=(-i "$(tam_yol "$r")"); done
   if [ "$kip" = yazar ]; then
     # Worktree'nin git verisi ana deponun .git'inde: commit için yalnız gereken yerler (0002).
     for e in "$gd" "$cd_/objects" "$cd_/refs/heads" "$cd_/logs"; do [ -d "$e" ] && komut+=(--add-dir "$e"); done
@@ -209,7 +244,7 @@ if [ "$arac" = codex ]; then
     for e in "${ek[@]}"; do [ -d "$e" ] && komut+=(--add-dir "$e"); done
   fi
   printf '%q ' "${komut[@]}" > "$kayit/komut.txt"; echo "< gorev.md" >> "$kayit/komut.txt"
-  { echo "$kural"; echo; cat "$gorev"; } | timeout "$zaman_asimi" "${komut[@]}" - > "$kayit/ham.jsonl" 2> "$kayit/hata.txt"
+  { echo "$kural"; echo; cat "$gorev"; } | zaman_sinirli "$zaman_asimi" "${komut[@]}" - > "$kayit/ham.jsonl" 2> "$kayit/hata.txt"
   kod=$?
   python3 - "$kayit" <<'EOF'
 import json, sys
@@ -233,12 +268,12 @@ else
   # İzin listesinde olmayan ilk komut bütün işi çıktısız bitirir (0002): izinli komutlar söylenir.
   izinli=$(python3 -c 'import json,os,re;d=json.load(open(os.path.expanduser("~/.gemini/antigravity-cli/settings.json")));print(", ".join(re.sub(r"^command\((.*)\)$",r"\1",a) for a in d.get("permissions",{}).get("allow",[]) if a.startswith("command(")))' 2>/dev/null)
   [ -n "$izinli" ] && on="$on Only these shell commands are allowed: $izinli. Any other command (find, sed, python...) and commands chained with ';', '&&' or '|' stop the whole job; run each command on its own; use 'rg --files' to find files, 'rg' or 'grep' to search, and the file reading tool to read."
-  for r in "${resimler[@]}"; do on="$on Image to look at: $(realpath "$r")."; done
+  for r in ${resimler[@]+"${resimler[@]}"}; do on="$on Image to look at: $(tam_yol "$r")."; done
   istem="$on $kural"$'\n\n'"$(cat "$gorev")"
   komut=(agy -p "$istem" --model "$model" --mode "$mode" --output-format json --print-timeout "${zaman_asimi}s")
   [ "$efor" != - ] && komut+=(--effort "$efor")
   printf '%q ' agy -p "<gorev.md + folder line>" --model "$model" --mode "$mode" --output-format json > "$kayit/komut.txt"
-  (cd "$klasor" && timeout "$((zaman_asimi + 60))" "${komut[@]}" < /dev/null > "$kayit/ham.json" 2> "$kayit/hata.txt")
+  (cd "$klasor" && zaman_sinirli "$((zaman_asimi + 60))" "${komut[@]}" < /dev/null > "$kayit/ham.json" 2> "$kayit/hata.txt")
   kod=$?
   python3 - "$kayit" <<'EOF'
 import json, sys
@@ -253,7 +288,7 @@ json.dump({"usage": d.get("usage"), "status": d.get("status"),
           open(f"{k}/kullanim.json", "w"))
 EOF
 fi
-bitis=$(date +%s.%N)
+bitis=$(simdi)
 python3 -c "print(round($bitis - $baslangic, 1))" > "$kayit/sure_sn"
 echo "$kod" > "$kayit/cikis_kodu"
 kota_fark=""

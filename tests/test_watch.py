@@ -17,8 +17,16 @@ import watch as izle  # noqa: E402
 import events as olay  # noqa: E402
 
 
-def calistir(argv, stdin=None, gunluk=None):
-    env = {**os.environ, "POLYCREW_EVENTS": str(gunluk)}
+# 0013: kanca yalnız not dosyası olan projede yazar; testlerin kancası bu sahte projeden çağrılır.
+PROJE = tempfile.TemporaryDirectory()
+(Path(PROJE.name) / "NEXT_SESSION.md").write_text("# Next session\n", encoding="utf-8")
+
+
+def calistir(argv, stdin=None, gunluk=None, proje=PROJE.name, **ekenv):
+    env = {k: v for k, v in os.environ.items() if k not in ("CLAUDE_PROJECT_DIR", "POLYCREW_WATCH_ALL")}
+    env.update({"POLYCREW_EVENTS": str(gunluk), **ekenv})
+    if proje:
+        env["CLAUDE_PROJECT_DIR"] = str(proje)
     return subprocess.run(
         [sys.executable, str(KOK / "hooks" / "events.py"), *argv],
         input=stdin, capture_output=True, text=True, env=env, check=False,
@@ -50,6 +58,34 @@ class Kanca(unittest.TestCase):
         r2 = calistir([], "bozuk", self.gunluk)
         self.assertEqual((r1.returncode, r2.returncode, r1.stdout, r2.stdout), (0, 0, "", ""))
         self.assertFalse(self.gunluk.exists())
+
+    def test_hook_writes_only_in_polycrew_projects(self):
+        yuk = {"hook_event_name": "SubagentStart", "session_id": "s", "agent_id": "a", "agent_type": "x"}
+        with tempfile.TemporaryDirectory() as bos:
+            alt = Path(PROJE.name) / "src" / "derin"
+            alt.mkdir(parents=True, exist_ok=True)
+            calistir([], json.dumps({**yuk, "cwd": bos}), self.gunluk, proje=None)
+            calistir([], json.dumps(yuk), self.gunluk, proje=bos)
+            self.assertFalse(self.gunluk.exists())
+            calistir([], json.dumps({**yuk, "cwd": str(alt)}), self.gunluk, proje=None)
+            calistir([], json.dumps(yuk), self.gunluk, proje=bos, POLYCREW_WATCH_ALL="1")
+            (Path(bos) / "SONRAKI_OTURUM.md").write_text("# Sonraki oturum\n", encoding="utf-8")
+            calistir([], json.dumps(yuk), self.gunluk, proje=bos)
+        self.assertEqual(len(izle.oku(self.gunluk)), 3)
+        calistir(["write", "isci_basladi", "id=k1"], gunluk=self.gunluk, proje=None)
+        self.assertEqual(len(izle.oku(self.gunluk)), 4)
+
+    def test_log_is_trimmed_to_the_newest_half(self):
+        satir = json.dumps({"ts": 1, "tur": "x", "dolgu": "a" * 1000}) + "\n"
+        self.gunluk.write_text(satir * 1100, encoding="utf-8")
+        calistir(["write", "son", "id=z"], gunluk=self.gunluk, POLYCREW_EVENTS_MAX_MB="1")
+        olaylar = izle.oku(self.gunluk)
+        self.assertLessEqual(self.gunluk.stat().st_size, 512 * 1024)
+        self.assertGreater(len(olaylar), 400)
+        self.assertEqual(olaylar[-1]["tur"], "son")
+        self.assertFalse(self.gunluk.with_name(self.gunluk.name + ".kirp").exists())
+        calistir(["write", "yine", "id=y"], gunluk=self.gunluk, POLYCREW_EVENTS_MAX_MB="0")
+        self.assertEqual(izle.oku(self.gunluk)[-1]["tur"], "yine")
 
     def test_hook_preserves_caller_for_nested_agent_tree(self):
         yukler = [

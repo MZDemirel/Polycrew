@@ -12,6 +12,8 @@ ortam değişkenleri (``POLYCREW_OLAYLAR``, ``POLYCREW_PUANLAR``) yedek olarak o
 
 Kullanım:
 - **Kanca** (argümansız, stdin'de Claude Code'un kanca yükü): PreToolUse, SubagentStart, SubagentStop.
+  Yalnız polycrew düzenindeki projede yazar (not dosyası proje klasöründe ya da üstünde);
+  ``POLYCREW_WATCH_ALL=1`` her projeyi yazar (0013).
 - **Komut:**
   - ``events.py write <tur> anahtar=değer ...``
   - ``events.py overlap <id> <kaynak> <başlangıç ts>``: aynı aracın çakışan koşusu varsa 1 (0010)
@@ -27,6 +29,8 @@ import time
 from pathlib import Path
 
 KISA = 400  # karakter: ham yükteki uzun metinler (istem, son mesaj) bu kadar kalır
+NOT_DOSYALARI = ("NEXT_SESSION.md", "SONRAKI_OTURUM.md")  # session_start.sh ile aynı (0007)
+EN_COK_MB = 10  # 0013: günlük bunu aşınca son yarısı kalır (POLYCREW_EVENTS_MAX_MB, 0 kapatır)
 
 # 0007: komut satırı bayrağı → günlükteki alan adı.
 BAYRAK = {"worker": "isci", "role": "rol", "field": "alan", "difficulty": "zorluk",
@@ -234,7 +238,44 @@ def yaz(olay: dict) -> dict:
     yol.parent.mkdir(parents=True, exist_ok=True)
     with open(yol, "a", encoding="utf-8") as f:
         f.write(json.dumps(olay, ensure_ascii=False) + "\n")
+    kirp(yol)
     return olay
+
+
+def kirp(yol: Path) -> None:
+    """0013: günlük sınırı aşınca en yeni satırlardan sınırın yarısı kalır (silinmez, solar)."""
+    try:
+        sinir = float(os.environ.get("POLYCREW_EVENTS_MAX_MB") or EN_COK_MB) * 1024 * 1024
+    except ValueError:
+        sinir = EN_COK_MB * 1024 * 1024
+    if sinir <= 0 or yol.stat().st_size <= sinir:
+        return
+    kalan, toplam = [], 0
+    with open(yol, "rb") as f:
+        satirlar = f.readlines()
+    for satir in reversed(satirlar):
+        toplam += len(satir)
+        if toplam > sinir / 2:
+            break
+        kalan.append(satir)
+    gecici = yol.with_name(yol.name + ".kirp")
+    with open(gecici, "wb") as f:
+        f.writelines(reversed(kalan))
+    os.replace(gecici, yol)
+
+
+def duzen_var(yuk: dict) -> bool:
+    """0013: kanca yalnız polycrew düzenini kullanan projede yazar (not dosyası klasörde ya da üstünde)."""
+    if os.environ.get("POLYCREW_WATCH_ALL") == "1":
+        return True
+    for dizin in (os.environ.get("CLAUDE_PROJECT_DIR"), yuk.get("cwd")):
+        if not dizin:
+            continue
+        yol = Path(dizin).expanduser().resolve()
+        for d in (yol, *yol.parents):
+            if any((d / ad).is_file() for ad in NOT_DOSYALARI):
+                return True
+    return False
 
 
 def defter_yaz(kayit: dict) -> None:
@@ -397,8 +438,9 @@ def puan_isle(argv: list[str]) -> int:
 def main(argv: list[str]) -> int:
     if not argv:
         try:
-            olay = kancadan(json.load(sys.stdin))
-            if olay:
+            yuk = json.load(sys.stdin)
+            olay = kancadan(yuk)
+            if olay and duzen_var(yuk):
                 yaz(olay)
         except Exception:  # noqa: BLE001 - bir kanca oturumu asla durdurmaz
             pass

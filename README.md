@@ -52,7 +52,8 @@ Call them as `/polycrew:<name>`, or just `/<name>` when the name is unique. Up t
 ## Requirements
 
 - [Claude Code](https://docs.claude.com/en/docs/claude-code) (CLI, VS Code extension or desktop app).
-- `bash`, `git` and Python 3 (standard library only).
+- Linux or macOS (on Windows, use WSL): the hooks and the worker script are bash.
+- `bash` (3.2 or newer), `git` and Python 3.9 or newer (standard library only).
 - Optional, for external workers:
   - [Codex CLI](https://github.com/openai/codex), signed in;
   - `agy` (Antigravity CLI) for Gemini.
@@ -97,7 +98,7 @@ Then run `/reload-plugins` in an open session, or start a new one.
 /watch
 ```
 
-The page runs at `http://localhost:8770`. In VS Code, open it with `Ctrl+Shift+P → Simple Browser: Show`. It is in English and Turkish: it follows your browser language, and the EN/TR buttons or `?lang=en` switch it. It refreshes every few seconds and shows:
+The page runs at `http://localhost:8770`. `/session-start` opens it by itself when the session's plan includes team or external work, and `/team` makes sure it is up. In the Claude desktop app it opens in the built-in browser pane; in VS Code, open it with `Ctrl+Shift+P → Simple Browser: Show`. A hook cannot start it for you: hooks only print text, and a server started from a hook dies with it. It is in English and Turkish: it follows your browser language, and the EN/TR buttons or `?lang=en` switch it. It refreshes every few seconds and shows:
 
 - **Office:** a small pixel office. The PM sits on the left, running Claude agents and running external workers sit at desks in their own rooms, and finished jobs stand in the break room (a failed one has a red "!"). Hover a figure to see who it is, click it for its report.
 - **Running now:** role or model, task, elapsed time.
@@ -157,6 +158,8 @@ skills/external-agent/external-agent.sh quota                               # cu
   - the event log: `~/.cache/polycrew/olaylar.jsonl`;
   - worker logs: `~/.cache/polycrew/dis-ajan/`;
   - the score ledger: `~/.local/share/polycrew/puanlar.jsonl`.
+- The event log only records projects that use the workflow (a `NEXT_SESSION.md` or `SONRAKI_OTURUM.md` in the project folder or above it). Subagents in your other projects are not logged. Set `POLYCREW_WATCH_ALL=1` to log every project.
+- The event log keeps the task text of each subagent (cut to 400 characters). It is trimmed to its newest half when it grows past 10 MB (`POLYCREW_EVENTS_MAX_MB`, `0` turns trimming off). Before 0.10.0 every project was logged; delete the file if you want those entries gone.
 - Nothing is sent anywhere except to the CLIs you run yourself.
 - The session report embeds worker reports and tasks. Look for secrets before you publish it.
 
@@ -188,6 +191,10 @@ python3 skills/watch/watch.py --port 8771      # try the page; POLYCREW_EVENTS=<
 ```
 
 The plugin follows its own workflow: [`PLAN.md`](PLAN.md), [`SONRAKI_OTURUM.md`](SONRAKI_OTURUM.md) (the notes file under its pre-0.5.0 name) and [`docs/decisions/`](docs/decisions/).
+
+## Changes
+
+See [`CHANGELOG.md`](CHANGELOG.md).
 
 ## License
 

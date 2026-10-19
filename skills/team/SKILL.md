@@ -23,7 +23,7 @@ user ── PM (main session: splits, merges, asks the user)
 - **Near-equal workers:** when two workers are within 0.10 of each other, `roster.py` puts the clearly cheaper or faster one first and marks it `cheaper` / `faster`. A second score for the same job replaces the first, so re-score after a review instead of adding a correction.
 - **Quota:** before building the roster run `external-agent.sh quota` (5-hour and weekly quota of Codex and agy). If the Codex window is past 60%, medium jobs go to Gemini; for Claude quota the user checks `/usage`.
 
-Visibility: when work starts, open the live page with `/watch` and give the user its address. After every job the PM writes `events.py score <id> <1-5> --worker ... --role ... --field ... --difficulty ... "<reason>"` (see the `watch` skill).
+Visibility: when work starts, open the live page (the "Live page" steps of the `watch` skill: server in the background, then the desktop app's browser pane, VS Code's Simple Browser or the address). `/session-start` already does this when its plan includes team work; check that the server is up. After every job the PM writes `events.py score <id> <1-5> --worker ... --role ... --field ... --difficulty ... "<reason>"` (see the `watch` skill).
 
 ## 1. Split (in plan mode)
 - Split the phase's items into streams **by file set**: two streams must not change the same file. If you cannot separate them, put them in sequence or make one stream.

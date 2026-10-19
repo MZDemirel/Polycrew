@@ -67,7 +67,8 @@ Eski projeler bozulmaz: `SONRAKI_OTURUM.md` not dosyası olarak tanınır, puan 
 ## Gereksinimler
 
 - [Claude Code](https://docs.claude.com/en/docs/claude-code) (CLI, VS Code eklentisi ya da masaüstü uygulaması).
-- `bash`, `git` ve Python 3 (yalnız standart kütüphane).
+- Linux ya da macOS (Windows'ta WSL): kancalar ve işçi betiği bash.
+- `bash` (3.2 ya da yenisi), `git` ve Python 3.9 ya da yenisi (yalnız standart kütüphane).
 - Dış işçiler için (isteğe bağlı):
   - [Codex CLI](https://github.com/openai/codex), giriş yapılmış;
   - Gemini için `agy` (Antigravity CLI).
@@ -112,7 +113,7 @@ Ardından açık oturumda `/reload-plugins` çalıştır ya da yeni bir oturum a
 /watch
 ```
 
-Sayfa `http://localhost:8770` adresinde açılır. VS Code'da `Ctrl+Shift+P → Simple Browser: Show` ile açılır. İngilizce ve Türkçedir: tarayıcının diline göre açılır, EN/TR düğmeleri ya da `?lang=tr` ile değişir. Birkaç saniyede bir yenilenir ve şunları gösterir:
+Sayfa `http://localhost:8770` adresinde açılır. Oturumun planında takım ya da dış işçi işi varsa `/session-start` onu kendisi açar, `/team` de açık olduğuna bakar. Claude masaüstü uygulamasında yerleşik tarayıcı panesinde açılır; VS Code'da `Ctrl+Shift+P → Simple Browser: Show` ile. Kanca bunu senin yerine yapamaz: kancalar yalnız metin basar, kancadan başlatılan sunucu onunla birlikte kapanır. İngilizce ve Türkçedir: tarayıcının diline göre açılır, EN/TR düğmeleri ya da `?lang=tr` ile değişir. Birkaç saniyede bir yenilenir ve şunları gösterir:
 
 - **Ofis:** küçük bir piksel ofis. PM solda oturur; çalışan Claude agent'ları ve dış işçiler kendi odalarında masalarında, işi bitenler dinlenme köşesinde durur (hata alanın başında kırmızı "!" olur). Bir figürün üstüne gelince kim olduğu görünür, tıklayınca raporu açılır.
 - **Şimdi çalışanlar:** rol ya da model, iş, geçen süre.
@@ -172,6 +173,8 @@ skills/external-agent/external-agent.sh quota                               # Co
   - olay günlüğü: `~/.cache/polycrew/olaylar.jsonl`;
   - işçi kayıtları: `~/.cache/polycrew/dis-ajan/`;
   - puan defteri: `~/.local/share/polycrew/puanlar.jsonl`.
+- Olay günlüğü yalnız bu düzeni kullanan projeleri yazar (proje klasöründe ya da üstünde `NEXT_SESSION.md` veya `SONRAKI_OTURUM.md`). Öteki projelerindeki agent'lar yazılmaz. Hepsini yazmak için `POLYCREW_WATCH_ALL=1`.
+- Olay günlüğü her agent'ın görev metnini tutar (400 karaktere kısaltılmış). 10 MB'ı aşınca en yeni yarısı kalır (`POLYCREW_EVENTS_MAX_MB`, `0` kırpmayı kapatır). 0.10.0'dan önce her proje yazılıyordu; o satırları istemiyorsan dosyayı sil.
 - Senin çalıştırdığın CLI'lar dışında hiçbir yere bir şey gönderilmez.
 - Oturum raporu işçi raporlarını ve görevleri içinde taşır; yayımlamadan önce gizli bilgi olmadığına bak.
 
@@ -203,6 +206,10 @@ python3 skills/watch/watch.py --port 8771      # sayfayı dene; deneme günlüğ
 ```
 
 Eklenti kendi düzeniyle geliştirilir: [`PLAN.md`](PLAN.md), [`SONRAKI_OTURUM.md`](SONRAKI_OTURUM.md) (not dosyasının 0.5.0 öncesi adı) ve [`docs/decisions/`](docs/decisions/).
+
+## Değişiklikler
+
+[`CHANGELOG.md`](CHANGELOG.md) (İngilizce).
 
 ## Lisans
 

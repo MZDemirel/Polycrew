@@ -25,6 +25,7 @@ SAHTE_CODEX = r'''#!/usr/bin/env python3
 import json, os, sys, time
 a = sys.argv[1:]
 sys.stdin.read()
+time.sleep(float(os.environ.get("FAKE_CODEX_SLEEP", "0")))
 open(a[a.index("-o") + 1], "w").write("codex raporu")
 d = os.path.expanduser("~/.codex/sessions/2026/10/11")
 os.makedirs(d, exist_ok=True)
@@ -167,6 +168,30 @@ class DisIsciKosuTesti(unittest.TestCase):
         self.assertFalse((kayit / "kota.json").exists())
         self.assertEqual((kayit / "rapor.md").read_text(), "codex raporu")
         self.assertNotIn("kota", self.olaylar("isci_bitti")[-1])
+
+    def test_timeout_olmadan_python_ile_kosar(self):
+        # macOS: GNU timeout yok, bash 3.2'de boş dizi set -u ile düşer (0013). Resimli ve resimsiz koşu.
+        resim = self.ev / "r.png"
+        resim.write_bytes(b"x")
+        r = self.kos("codex", "gpt-x", "-", "read", str(self.is_klasoru), str(self.gorev), str(resim),
+                     _POLYCREW_ZAMAN="python")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        kayit = Path(r.stdout.strip().splitlines()[-1])
+        self.assertEqual((kayit / "rapor.md").read_text(), "codex raporu")
+        self.assertIn(str(resim), (kayit / "komut.txt").read_text())
+        kayit = self.kosu("agy", "gemini-3.8-flash-high", _POLYCREW_ZAMAN="python")
+        self.assertEqual((kayit / "rapor.md").read_text(), "agy raporu")
+
+    def test_sure_asiminda_124_ile_kesilir(self):
+        for yol in ("", "python"):
+            with self.subTest(yol=yol or "timeout"):
+                bas = time.time()
+                r = self.kos("codex", "gpt-x", "-", "read", str(self.is_klasoru), str(self.gorev),
+                             EXTERNAL_AGENT_TIMEOUT="1", FAKE_CODEX_SLEEP="20", EXTERNAL_AGENT_NO_QUOTA="1",
+                             _POLYCREW_ZAMAN=yol)
+                self.assertLess(time.time() - bas, 15)
+                kayit = Path(r.stdout.strip().splitlines()[-1])
+                self.assertEqual((kayit / "cikis_kodu").read_text().strip(), "124")
 
     def test_quota_alt_komutu(self):
         r = self.kos("quota")

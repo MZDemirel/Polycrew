@@ -9,9 +9,13 @@ Events are collected in one log (`hooks/events.py`, decision `0003`): Claude sub
 
 ## Live page
 
-1. Is the server up: `curl -s -o /dev/null -w '%{http_code}' http://localhost:8770/api/durum`. If it is not 200, start it in the background (Bash `run_in_background`):
+1. Is the server up: `curl -s -o /dev/null -w '%{http_code}' http://localhost:8770/api/durum`. If it is not 200, start it with the Bash tool's own background run (`run_in_background`), not with `nohup … &` inside a command: a process started that way dies when the command returns.
    `python3 "${CLAUDE_PLUGIN_ROOT}/skills/watch/watch.py" --port 8770`
-2. Give the user the address: in VS Code `Ctrl+Shift+P → Simple Browser: Show → http://localhost:8770` (or a browser).
+2. Open it for the user:
+   - in the Claude desktop app, open `http://localhost:8770` in the built-in browser pane (its preview/navigate tool with the URL), so the page sits next to the chat;
+   - in VS Code: `Ctrl+Shift+P → Simple Browser: Show → http://localhost:8770`;
+   - otherwise give the address for a browser.
+   The plugin cannot open it by itself: hooks only print text, and a server started from a hook does not outlive it.
 3. The page is in English and Turkish (by browser language; the EN/TR button or `?lang=tr`). It refreshes every 3 seconds: who is running now, the timeline (Claude orange, Codex green, Gemini blue), the agent map, quota bars (external quota once a minute via `external-agent.sh quota`), jobs and scores. Clicking a job or a map node shows its last report and task in the side panel.
 
 ## Office
