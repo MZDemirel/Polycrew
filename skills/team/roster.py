@@ -409,6 +409,9 @@ def tablo_olustur_ozet(
 
     if simdi is None:
         simdi = time.time()
+    kayitlar = [k for k in kayitlar if not _gelecekte(k, simdi)]  # 0014: hiçbir sütunda sayılmaz
+    if not kayitlar:
+        return "No records."
 
     pencere_baslangic = simdi - (gun * 86400)
     pencere_kayitlari = [k for k in kayitlar if kayit_pencerede_mi(k, pencere_baslangic, simdi)]
@@ -450,7 +453,7 @@ def tablo_olustur_ozet(
     for rol, alan in sirali_ciftler:
         # 0014: sıralama bütün geçmişten (yarı ömürle sönümlü); pencere yalnız dayanağı belirler.
         # Önceden yalnız penceredeki puanlar sayılıyordu: tek bir yeni puan 11 puanlı işçiyi tablodan atıyordu.
-        tum_kayit_grubu = [k for k in tum_gruplar[(rol, alan)] if not _gelecekte(k, simdi)]
+        tum_kayit_grubu = tum_gruplar[(rol, alan)]
         t_ist = isci_istatistik(tum_kayit_grubu, simdi, yari_omur)
         if not t_ist:
             continue

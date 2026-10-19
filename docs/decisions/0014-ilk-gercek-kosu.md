@@ -34,6 +34,12 @@
 - Gerçek günlükle tarayıcı panesinde: `?project=Pixlender` yalnız Pixlender'ın 5 işini gösterdi, seçici "Tüm projeler"e geçince adres güncellendi, eksen 16:30–17:45, agy'nin düşen işi mavi ve "!".
 - Gerçek defterle `summary --days 7`: sanatçı 4,58 (n 9, window), `developer/py` yine Claude sonnet 4,32 (stale).
 
+## İnceleme (agy `gemini-3.8-flash-high`, read, 1136 sn; Codex %97, Claude %72 olduğu için kadronun "Try" işçisi)
+
+Dokuz bulgu; yedisi düzeltildi: `score` projeyi `Path.cwd().name` ile yazıyordu, worktree'de dalın adı çıkıyordu (artık `events.proje_adi`, tek kaynak; `--worker`'sız puan da proje taşır, yoksa sayfanın süzgeci onu düşürüyordu); gelecek tarihli kayıt "Try" sütununa sızıyordu (en başta süzülür, test bütün sütunlara bakar); rapor başlığını sayfanın JavaScript'i eziyordu; `printf '%s' | cut` sonunda satır sonu yok (BSD için `\n`); grubun tek kovası tükenmişse durum testsizdi. Biri yanlış alarm (`roster.py`'de `from __future__` var), biri değiştirilmedi (eksik `remaining_fraction`'ı tükenmiş saymak tahmin olurdu). Puan 4.
+
+Bu koşu ilk gerçek agy ölçümü oldu: `kota.json` → Gemini haftalık %0,3 → %1,3, fark 1,0 (`0010`'un açık kalanı: agy'de grup doğru).
+
 ## Açık kalan (C listesi, sonraki oturum)
 
 - `events.py score` başarıda sessiz; bir satır onay.

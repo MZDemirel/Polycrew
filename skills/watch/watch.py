@@ -121,12 +121,7 @@ def _saglayici(kaynak: str | None, model: str | None) -> str:
     return "claude"
 
 
-def proje_adi(yol) -> str | None:
-    """Klasör yolundan proje adı: worktree'ler ana projelerine sayılır (0014)."""
-    if not yol:
-        return None
-    kok = str(yol).rstrip("/").split("/.claude/worktrees/")[0]
-    return os.path.basename(kok) or None
+proje_adi = olay.proje_adi  # 0014: tek kaynak events.py (puan da aynı adı yazar)
 
 
 def birlestir(olaylar: list[dict], simdi: float | None = None) -> dict:

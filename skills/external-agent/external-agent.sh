@@ -325,7 +325,7 @@ python3 -c "print(round($bitis - $baslangic, 1))" > "$kayit/sure_sn"
 echo "$kod" > "$kayit/cikis_kodu"
 kota_fark="" kota_ortak=""
 if [ "${EXTERNAL_AGENT_NO_QUOTA:-}" != 1 ]; then
-  kota_sonra=$(kota_yuzde "$arac" "$model" "$(printf '%s' "$kota_once" | cut -f2)")
+  kota_sonra=$(kota_yuzde "$arac" "$model" "$(printf '%s\n' "$kota_once" | cut -f2)")
   cakisma=0
   [ -f "$OLAY" ] && cakisma=$(python3 "$OLAY" overlap "$(basename "$kayit")" "$arac" "$baslangic" 2>/dev/null || echo 0)
   kota_sonuc=$(python3 - "$kayit/kota.json" "$kota_once" "$kota_sonra" "$cakisma" <<'KOTA'
@@ -359,8 +359,8 @@ json.dump(kayit, open(dosya, "w"))
 print(("" if fark is None else str(fark)) + "\t" + ("" if ortak is None else str(ortak)))
 KOTA
 )
-  kota_fark=$(printf '%s' "$kota_sonuc" | cut -f1)
-  kota_ortak=$(printf '%s' "$kota_sonuc" | cut -f2)
+  kota_fark=$(printf '%s\n' "$kota_sonuc" | cut -f1)
+  kota_ortak=$(printf '%s\n' "$kota_sonuc" | cut -f2)
 fi
 olay isci_bitti "id=$(basename "$kayit")" "kaynak=$arac" "cikis=$kod" "sure_sn=$(cat "$kayit/sure_sn")" \
   "kullanim=$(cat "$kayit/kullanim.json" 2>/dev/null || echo null)" "kayit=$kayit" ${kota_fark:+"kota=$kota_fark"} \

@@ -261,7 +261,7 @@ class KadroVePuanTesti(unittest.TestCase):
         self.assertIn("Roster summary: last 7 days, 1 records (generated: 1970-01-12)", r.stdout)
         # 0014: sıralama bütün geçmişten; eşit puanda son puanı yeni olan önde, pencere dışı yedek olabilir.
         self.assertIn("| developer | py | yeni-isci | 4.00 | 1 | eski-isci | 4.00 | window, little data |", r.stdout)
-        self.assertNotIn("| py | gelecek-isci |", r.stdout)  # gelecek tarihli kayıt kadroya girmez
+        self.assertNotIn("gelecek-isci", r.stdout)  # gelecek tarihli kayıt hiçbir sütunda yok
 
     def test_ozet_tek_yeni_puan_kadroyu_cevirmez(self):
         # 0014 (Pixlender, 2026-10-19): 11 puanlı eski işçi, pencerede tek puan alan yeniye yer vermez.

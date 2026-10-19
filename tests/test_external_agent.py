@@ -171,6 +171,10 @@ class DisIsciKosuTesti(unittest.TestCase):
         self.assertIn("RESOURCE_EXHAUSTED", rapor)
         kota = json.loads((kayit / "kota.json").read_text())
         self.assertEqual((kota["once"], kota["pencere"], kota["grup"]), (0.0, "5 saat", "agy: Claude/GPT"))
+        # Grubun tek kovası tükenmişse ölçü yok ama koşu ve kayıt çökmez.
+        (self.ev / "agy_durum.json").write_text(json.dumps({"gemini": 0.8, "claude": 0.0}), encoding="utf-8")
+        kota = json.loads((self.kosu("agy", "claude-opus-4-6-thinking") / "kota.json").read_text())
+        self.assertEqual((kota["once"], kota["fark"], kota["neden"]), (None, None, "quota could not be read"))
 
     def test_pencere_yenilenirse_fark_yazilmaz(self):
         kayit = self.kosu("codex", "gpt-x", FAKE_CODEX_USED="3")  # 40 → 3: pencere yenilendi

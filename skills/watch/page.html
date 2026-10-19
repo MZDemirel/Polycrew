@@ -419,7 +419,8 @@ function sabitler() {
 }
 
 function baslikYaz() {
-  const p = GOMULU ? GOMULU.proje : proje;
+  if (GOMULU) return;  // rapor başlığını watch.py yazar (proje ve tarih)
+  const p = proje;
   document.title = ["Polycrew " + t("baslik"), p, GOMULU && veri ? gunStr(veri.simdi) : ""].filter(Boolean).join(" · ");
 }
 function projeSecici() {

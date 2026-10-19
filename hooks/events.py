@@ -281,6 +281,14 @@ def kirp(yol: Path) -> None:
             os.unlink(gecici)
 
 
+def proje_adi(yol) -> str | None:
+    """Klasör yolundan proje adı: worktree'ler ana projelerine sayılır (0014)."""
+    if not yol:
+        return None
+    kok = str(yol).rstrip("/").split("/.claude/worktrees/")[0]
+    return os.path.basename(kok) or None
+
+
 def duzen_var(yuk: dict) -> bool:
     """0013: kanca yalnız polycrew düzenini kullanan projede yazar (not dosyası klasörde ya da üstünde)."""
     if os.environ.get("POLYCREW_WATCH_ALL") == "1":
@@ -437,8 +445,8 @@ def puan_ayristir(argv: list[str]) -> tuple[dict, bool]:
             print(f"model version not found for {is_id}; write it in --worker (e.g. claude/developer/sonnet-5-5)",
                   file=sys.stderr)
         olay["isci"] = surumlu
-    if deftere_yazilsin and "proje" not in olay:
-        olay["proje"] = Path.cwd().name
+    if "proje" not in olay:
+        olay["proje"] = proje_adi(os.getcwd())  # 0014: worktree'de ana proje; sayfanın süzgeci de bunu bekler
 
     return olay, deftere_yazilsin
 

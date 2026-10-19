@@ -120,6 +120,12 @@ class Kanca(unittest.TestCase):
         e1, e2 = izle.oku(self.gunluk)
         self.assertEqual((e1["kaynak"], e1["cikis"]), ("codex", 0))
         self.assertEqual((e2["tur"], e2["not"], e2["gerekce"]), ("puan", 4, "iyi iş"))
+        # 0014: --worker'sız puan da projeyi taşır; worktree'de ana projenin adı.
+        agac = Path(self.d.name) / "oyun" / ".claude" / "worktrees" / "w1"
+        agac.mkdir(parents=True)
+        subprocess.run([sys.executable, str(KOK / "hooks" / "events.py"), "score", "k1", "5"], cwd=str(agac),
+                       env={**os.environ, "POLYCREW_EVENTS": str(self.gunluk)}, check=True)
+        self.assertEqual(izle.oku(self.gunluk)[-1]["proje"], "oyun")
 
 
 class Birlestir(unittest.TestCase):
