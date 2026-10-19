@@ -30,7 +30,7 @@
 
 ## Denemeler
 
-- 86 test yeşil (80 + 6): proje adı ve süzgeç, rapor başlığı ve dili, başka projenin işinin rapora girmemesi; bilinmiyor işin pencere dışında kalması; agy'nin en dolu penceresi ve grup; tükenmiş kovada `quota` ve düşen koşunun raporu (sahte agy 429 ile); çakışmada `ortak_fark`, `cakisanlar` ve puandaki `kota_ortak`; özette tek yeni puanın kadroyu çevirmemesi.
+- 85 test yeşil (80 + 5): proje adı ve süzgeç, rapor başlığı ve dili, başka projenin işinin rapora girmemesi; bilinmiyor işin pencere dışında kalması; agy'nin en dolu penceresi ve grup; tükenmiş kovada `quota` ve düşen koşunun raporu (sahte agy 429 ile); çakışmada `ortak_fark`, `cakisanlar` ve puandaki `kota_ortak`; özette tek yeni puanın kadroyu çevirmemesi.
 - Gerçek günlükle tarayıcı panesinde: `?project=Pixlender` yalnız Pixlender'ın 5 işini gösterdi, seçici "Tüm projeler"e geçince adres güncellendi, eksen 16:30–17:45, agy'nin düşen işi mavi ve "!".
 - Gerçek defterle `summary --days 7`: sanatçı 4,58 (n 9, window), `developer/py` yine Claude sonnet 4,32 (stale).
 
@@ -41,5 +41,8 @@
 - `structure`: az verili Claude satırında "only external measured" diyor; kalan kotayı hesaba katmıyor.
 - Codex ölçümü iki günlükken "eski" uyarısı yok.
 - Ofis: aynı modeldeki işçiler ayırt edilmiyor (masada etiket yok), okur ve yazar aynı görünüyor.
+- Zaman çizelgesi varsayılan 12 saatte; bir saatlik oturumun çubukları sağ kenarda çizgi. Varsayılan pencere işlerin aralığına otursun ya da "oturum" düğmesi.
+- Kota verisi: bu oturumda Claude 5 saat %29 → %56 (PM ≈ 290 bin bağlam, sanatçı opus 29 bin, gözden geçirici sonnet 76 bin token); Codex %2 → %97 (bir astra xhigh ve bir sol high yazar, artı bir sol okur); agy Claude/GPT haftalık %32 → %0 tek bir yarım incelemeyle. `roster.md`'deki "Codex ağır yazar ≈ %20–25" tahmini tutmadı; tek tek ölçülemediği için güncellenmedi, ortak farkla veri birikince bakılacak.
+- Pixlender'ın yayımladığı rapor (https://claude.ai/artifact/LjJu9LQQRwaG4NHLmrxBgb) 0.11.0 öncesinden: polycrew'deki Codex incelemesini de taşıyor. Özel, ama paylaşılmadan önce yeniden üretilmeli.
 - `polycrew:developer`'ın `rules/git.md`'yi okuması ve `/project-setup` gerçek oturumda denenmedi.
 - Marketplace'i GitHub kaynağıyla yeniden eklemek (paylaşılan kurulumu denemek için) kullanıcının kararı.
