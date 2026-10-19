@@ -59,7 +59,8 @@
 - [x] `watch`: ofis görünümü. Sayfanın en üstünde canvas ile piksel ofis: PM, Claude odası, dış işçiler odası, dinlenme köşesi; kodla çizilen karakterler, balon ve tıklama (`0012`)
 - [ ] Ofis: Pixlender sprite sayfası (`OFIS_SPRITE` hazır), odalar arası yürüme, README üst görselinin gerçek bir oturumdan alınması
 - [x] Paylaşıma hazırlık: olay günlüğü yalnız polycrew projelerinde ve 10 MB'da kırpılır; `/session-start` takım işinde sayfayı açar (masaüstü panesi); `external-agent.sh` macOS'ta (`timeout`, `date %N`, bash 3.2); Python ≥ 3.9; CI'da macOS; `CHANGELOG.md`, 0.10.0 (`0013`)
-- [ ] `0013`'ün açık kalanı: ilk push'ta CI'ın macOS ve 3.9 işleri; sayfanın `/session-start`'ta açılmasını kurulu 0.10.0 ile gerçek oturumda dene
+- [x] `0013`: CI'ın macOS ve 3.9 işleri yeşil (2026-10-19)
+- [ ] `0013`'ün açık kalanı: sayfanın `/session-start`'ta açılmasını kurulu 0.10.0 ile gerçek oturumda dene
 - [ ] Paylaşım kalanları (`0013`): tohum verinin tek kişiden gelmesi, katkı için Türkçe iç belgeler, Windows (WSL), CLI'da Claude kotası, sürüm etiketleri
 
 **Bitti sayılır:** yeni bir model çıktığında kadro onu eski modelin puanıyla değil kendi koşularıyla sıralıyor; eski puanlar sıralamayı tek başına belirlemiyor; Codex ve agy kurulu olmayan bir makinede `/team` çalışıyor.

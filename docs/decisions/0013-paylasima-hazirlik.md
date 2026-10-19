@@ -51,5 +51,5 @@ Koşunun kendi gözlemi (`0010`): `kota.json` farkı yazmadı, çünkü Pixlende
 
 ## Açık kalan
 
-- CI'ın macOS ve 3.9 işleri ilk push'ta görülecek (`setup-python` 3.9'u macOS arm64'te bulamazsa sürüm yükseltilir).
+- ~~CI'ın macOS ve 3.9 işleri~~ Bitti (2026-10-19, koşu 39260672957): beş iş de yeşil, `macos-latest` + 3.9 dahil; Mac'teki `/bin/bash` 3.2 ve `timeout`suz yol testlerden geçti.
 - Sayfanın `/session-start`'ta kendiliğinden açılması gerçek oturumda denenmedi (kurulu 0.9.0'da yok).
