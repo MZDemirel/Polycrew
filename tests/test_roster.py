@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -17,10 +19,14 @@ import roster as kadro  # noqa: E402
 import events as olay  # noqa: E402
 
 
+# Günlük verilmeyen çağrı makinenin gerçek olay günlüğünü (kota okumaları dahil) okumasın.
+BOS_KLASOR = tempfile.mkdtemp(prefix="polycrew-test-")
+atexit.register(shutil.rmtree, BOS_KLASOR, ignore_errors=True)
+BOS_GUNLUK = Path(BOS_KLASOR) / "olaylar.jsonl"
+
+
 def calistir_olay(argv: list[str], gunluk: Path | None = None, defter: Path | None = None):
-    env = {**os.environ}
-    if gunluk:
-        env["POLYCREW_EVENTS"] = str(gunluk)
+    env = {**os.environ, "POLYCREW_EVENTS": str(gunluk or BOS_GUNLUK)}
     if defter:
         env["POLYCREW_SCORES"] = str(defter)
     return subprocess.run(
@@ -34,11 +40,10 @@ def calistir_olay(argv: list[str], gunluk: Path | None = None, defter: Path | No
 
 def calistir_kadro(argv: list[str], defter: Path | None = None, gunluk: Path | None = None,
                    saglayicilar: str = "claude,codex,agy"):
-    env = {**os.environ, "POLYCREW_PROVIDERS": saglayicilar}  # makinede kurulu araca bağlı olmasın
+    env = {**os.environ, "POLYCREW_PROVIDERS": saglayicilar,  # makinede kurulu araca bağlı olmasın
+           "POLYCREW_EVENTS": str(gunluk or BOS_GUNLUK)}
     if defter:
         env["POLYCREW_SCORES"] = str(defter)
-    if gunluk:
-        env["POLYCREW_EVENTS"] = str(gunluk)
     return subprocess.run(
         [sys.executable, str(KOK / "skills" / "team" / "roster.py"), *argv],
         capture_output=True,
@@ -623,6 +628,56 @@ class KadroVePuanTesti(unittest.TestCase):
         self.assertEqual(oneri["developer"], "only Claude measured")
         self.assertNotIn("researcher", oneri)
         self.assertNotIn("Avoid", r.stdout)
+
+    # ---- 0014 C listesi
+
+    def test_puan_tek_satir_onay_yazar(self):
+        r = calistir_olay(["score", "k7", "4", "iyi", "--worker", "codex/g/high"], gunluk=self.gunluk, defter=self.defter)
+        self.assertEqual((r.returncode, r.stdout), (0, "Scored k7: 4 (worker codex/g/high)\n"))
+        r = calistir_olay(["score", "k8", "3"], gunluk=self.gunluk, defter=self.defter)
+        self.assertEqual(r.stdout, "Scored k8: 3 (worker -)\n")
+
+    def test_yardim_cikis_kodu_sifir(self):
+        for bayrak in ("--help", "-h"):
+            r = calistir_kadro([bayrak])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("Usage:", r.stdout)
+        self.assertEqual(calistir_kadro([]).returncode, 2)  # argümansız hâlâ hata
+        self.assertEqual(calistir_kadro(["yok"]).returncode, 2)
+
+    def _kota_olayi(self, ts, *kovalar):
+        with open(self.gunluk, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"tur": "kota", "ts": ts, "kovalar": list(kovalar)}) + "\n")
+
+    def test_yapi_az_veri_claude_ve_kalan_kota(self):
+        def k(isci, rol, puan, adet):
+            return [{"isci": isci, "rol": rol, "alan": "x", "not": puan, "ts": 1}] * adet
+        self._defter(k("claude/developer/sonnet-9", "developer", 5, 1) + k("codex/g/high", "developer", 4, 4)
+                     + k("codex/g/high", "reviewer", 4, 4))
+        simdi = 100000
+        self._kota_olayi(simdi - 1000,
+                         {"saglayici": "codex", "grup": "Codex", "pencere": "5 saat", "kullanilan": 81.0},
+                         {"saglayici": "codex", "grup": "Codex", "pencere": "hafta", "kullanilan": 23.0},
+                         {"saglayici": "agy", "grup": "agy: Gemini", "pencere": "5 saat", "kullanilan": 0})
+        self._kota_olayi(simdi - 6 * 3600,
+                         {"saglayici": "claude", "grup": "Claude", "pencere": "5 saat", "kullanilan": 60.0},
+                         {"saglayici": "claude", "grup": "Claude", "pencere": "bağlam", "kullanilan": 90.0, "token": 1})
+        ortak = ["structure", "--no-seed", "--half-life", "0", "--now", str(simdi)]
+        r = calistir_kadro(ortak, defter=self.defter, gunluk=self.gunluk)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        oneri = {s.split("|")[1].strip(): s.split("|")[-2].strip() for s in r.stdout.splitlines() if s.startswith("| ")}
+        self.assertEqual(oneri["developer"], "Claude: little data")
+        self.assertEqual(oneri["reviewer"], "only external measured")  # Claude hiç yok
+        self.assertIn("- codex: 5 hours 19% left (low), week 77% left", r.stdout)
+        self.assertIn("- agy: Gemini: 5 hours 100% left", r.stdout)
+        self.assertIn("- claude: 5 hours 40% left (stale: older than 5 hours)", r.stdout)
+        self.assertNotIn("bağlam", r.stdout)  # bağlam doluluğu kota değildir
+        # Okuması olmayan sağlayıcı ve kapatma.
+        r = calistir_kadro(ortak, defter=self.defter, gunluk=self.gunluk, saglayicilar="claude,agy")
+        self.assertNotIn("- codex", r.stdout)
+        self.assertIn("- agy: Gemini", r.stdout)
+        r = calistir_kadro([*ortak, "--no-quota"], defter=self.defter, gunluk=self.gunluk)
+        self.assertNotIn("Quota left", r.stdout)
 
     def test_eski_ortam_degiskeni_yedek_olarak_okunur(self):
         env = {k: v for k, v in os.environ.items() if k not in ("POLYCREW_EVENTS", "POLYCREW_SCORES")}

@@ -13,6 +13,7 @@ import sys
 import tempfile
 import time
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 KOK = Path(__file__).resolve().parent.parent
@@ -131,9 +132,10 @@ class DisIsciKosuTesti(unittest.TestCase):
 
         # Puan: kota ve süre elle verilmeden deftere yazılır; elle verilen ezer.
         subprocess.run([sys.executable, str(OLAY), "score", kayit.name, "4", "--worker", "codex/gpt-x/high"],
-                       check=True, env=self.env)
+                       check=True, env=self.env, stdout=subprocess.DEVNULL)
         subprocess.run([sys.executable, str(OLAY), "score", kayit.name, "4", "--worker", "codex/gpt-x/high",
-                        "--quota", "30", "--duration", "99"], check=True, env=self.env)
+                        "--quota", "30", "--duration", "99"], check=True, env=self.env,
+                       stdout=subprocess.DEVNULL)
         ilk, ikinci = map(json.loads, self.defter.read_text(encoding="utf-8").splitlines())
         self.assertEqual(ilk["kota"], 12.0)
         self.assertEqual(ilk["sure"], bitti["sure_sn"])
@@ -202,7 +204,7 @@ class DisIsciKosuTesti(unittest.TestCase):
         bitti = self.olaylar("isci_bitti")[-1]
         self.assertEqual((bitti.get("kota_ortak"), "kota" in bitti), (12.0, False))
         subprocess.run([sys.executable, str(OLAY), "score", kayit.name, "4", "--worker", "codex/gpt-x/high"],
-                       check=True, env=self.env)
+                       check=True, env=self.env, stdout=subprocess.DEVNULL)
         puan = json.loads(self.defter.read_text(encoding="utf-8").splitlines()[-1])
         self.assertEqual((puan.get("kota_ortak"), "kota" in puan), (12.0, False))
         # Başka aracın koşusu çakışma sayılmaz.
@@ -256,6 +258,41 @@ class DisIsciKosuTesti(unittest.TestCase):
         self.assertEqual({k["pencere"] for k in kovalar}, {"5 saat", "hafta"})
         self.assertNotIn("hassas", kovalar[0])  # şemaya yeni alan girmez
 
+    def _codex_kaydi(self, yas_saat, birinci_yenilenir, ikinci_yenilenir):
+        """Codex'in son oturum kaydını verilen yaşta (ISO zamanla) ve sıfırlanma zamanlarıyla yazar."""
+        olcum = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - yas_saat * 3600))
+        f = self.ev / ".codex" / "sessions" / "2026" / "10" / "10" / "eski.jsonl"
+        f.write_text(json.dumps({"timestamp": olcum, "payload": {"rate_limits": {
+            "primary": {"used_percent": 81, "resets_at": birinci_yenilenir},
+            "secondary": {"used_percent": 23, "resets_at": ikinci_yenilenir}}}}) + "\n", encoding="utf-8")
+
+    def _codex_satirlari(self):
+        r = self.kos("quota")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return {s.split()[1]: s for s in r.stdout.splitlines() if s.startswith("codex")}
+
+    def test_quota_bayat_codex_okumasi_stale_yazilir(self):
+        simdi, gun = time.time(), 86400
+        self._codex_kaydi(1, simdi + 3600, simdi + 3 * gun)  # taze
+        satir = self._codex_satirlari()
+        self.assertNotIn("stale", satir["5"] + satir["week"])
+        self._codex_kaydi(6, simdi + 3600, simdi + 3 * gun)  # 5 saatlik pencereden eski, haftalık değil
+        satir = self._codex_satirlari()
+        self.assertIn("stale (older than 5 hours)", satir["5"])
+        self.assertNotIn("stale", satir["week"])
+        self._codex_kaydi(30, simdi + 3600, simdi + 3 * gun)  # bir günden eski
+        self.assertIn("stale (older than a day)", self._codex_satirlari()["week"])
+        self._codex_kaydi(1, simdi - 60, simdi + 3 * gun)  # sıfırlanma geçti
+        satir = self._codex_satirlari()
+        self.assertIn("stale (reset passed)", satir["5"])
+        self.assertNotIn("stale", satir["week"])
+        # Kesin sıfırlanma zamanı olaya yazılır (roster.py bayatlığı bundan karar verir); model koşusu başlamaz.
+        kova = [k for k in self.olaylar("kota")[-1]["kovalar"] if k["saglayici"] == "codex"][0]
+        self.assertAlmostEqual(kova["yenilenir_epoch"], simdi - 60, delta=1)
+        self.assertFalse((self.ev / "codex_stdin.txt").exists())
+        agy = [k for k in self.olaylar("kota")[-1]["kovalar"] if k["saglayici"] == "agy"][0]
+        self.assertEqual(agy["yenilenir_epoch"], datetime(2026, 10, 11, 22, tzinfo=timezone.utc).timestamp())
+
 
 class ClaudeSuresiTesti(unittest.TestCase):
     def test_claude_agentinda_sure_dolar_kota_bos_kalir(self):
@@ -268,7 +305,7 @@ class ClaudeSuresiTesti(unittest.TestCase):
             env = {**os.environ, "POLYCREW_EVENTS": str(gunluk), "POLYCREW_SCORES": str(defter)}
             for kimlik in ("ag1", "bilinmeyen"):
                 subprocess.run([sys.executable, str(OLAY), "score", kimlik, "4", "--worker", "claude/developer/sonnet-9"],
-                               check=True, env=env)
+                               check=True, env=env, stdout=subprocess.DEVNULL)
             bulunan, bilinmeyen = map(json.loads, defter.read_text(encoding="utf-8").splitlines())
             self.assertEqual(bulunan["sure"], 60)
             self.assertNotIn("kota", bulunan)

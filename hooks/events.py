@@ -459,6 +459,7 @@ def puan_isle(argv: list[str]) -> int:
     olay_kaydi = yaz(olay)
     if deftere_yaz:
         defter_yaz(olay_kaydi)
+    print(f"Scored {olay_kaydi['id']}: {olay_kaydi['not']} (worker {olay_kaydi.get('isci') or '-'})")  # 0014
     return 0
 
 
