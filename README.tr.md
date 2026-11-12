@@ -52,6 +52,7 @@ Eski projeler bozulmaz: `SONRAKI_OTURUM.md` not dosyası olarak tanınır, puan 
 | `/team` | Bir aşamayı takımla yapar: PM böler, işi zorluğa göre dağıtır, gözden geçirtir, birleştirir. |
 | `/external-agent` | Bir görevi Codex'e ya da Gemini/agy'ye yaptırır (model, efor, okur ya da yazar) ve her şeyi kaydeder. |
 | `/watch` | Canlı takım sayfasını açar, oturum raporunu üretir. |
+| `/doctor` | Kurulumu denetler (PATH'teki araçlar, proje dosyaları, olay günlüğü, kota ölçümleri, agy izinleri, betik sözdizimi); hiçbir şeyi değiştirmez. |
 
 ### Roller (`agents/`)
 
@@ -189,7 +190,7 @@ skills/external-agent/external-agent.sh quota                               # Co
 ```text
 .claude-plugin/   eklenti ve marketplace tanımları
 agents/           roller (model, efor, araçlar)
-skills/           session-start, session-end, decision, project-setup, team (+ roster.md, roster.py), external-agent (+ external-agent.sh), watch (+ watch.py, claude-quota.py, page.html)
+skills/           session-start, session-end, decision, project-setup, team (+ roster.md, roster.py), external-agent (+ external-agent.sh), watch (+ watch.py, claude-quota.py, page.html), doctor (+ doctor.py)
 rules/            sabit git kuralları (tek kaynak; skill'ler ve roller buraya işaret eder)
 hooks/            SessionStart "nerede kaldık", events.py (olay günlüğü ve puan defteri)
 docs/decisions/   neden böyle olduğu

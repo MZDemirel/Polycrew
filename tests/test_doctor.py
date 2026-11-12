@@ -123,7 +123,9 @@ class DoktorTesti(unittest.TestCase):
                 self.assertEqual(kod, 0)
                 for ad in doktor.SAGLAYICILAR:
                     self.assertEqual(sonuclar[f"Quota ({ad})"]["status"], "warn")
-                    self.assertIn("external-agent.sh quota", sonuclar[f"Quota ({ad})"]["detail"])
+                    self.assertIn("claude-quota.py" if ad == "claude" else "external-agent.sh quota",
+                                  sonuclar[f"Quota ({ad})"]["detail"])
+                self.assertNotIn("claude-quota.py", sonuclar["Quota (codex)"]["detail"])
 
     def test_kota_olcum_zamani_ve_saglayicilar_bagimsiz(self):
         eski = datetime.fromtimestamp(self.simdi - 6 * 3600, timezone.utc).isoformat()
@@ -162,12 +164,55 @@ class DoktorTesti(unittest.TestCase):
     def test_gunluk_klasoru_yok_veya_yazilamaz(self):
         with patch.dict(os.environ, {"POLYCREW_EVENTS": str(self.klasor / "missing" / "events.jsonl")}):
             _, sonuclar = self.sonuclar()
-            self.assertEqual(sonuclar["Event log folder"]["status"], "warn")
+            # Yeni kurulum: klasör henüz yok ama üstü yazılabilir; kanca ilk olayda açar, uyarı değil.
+            self.assertEqual(sonuclar["Event log folder"]["status"], "ok")
+            self.assertIn("first event", sonuclar["Event log folder"]["detail"])
             self.assertEqual(sonuclar["Event log"]["status"], "ok")
             self.assertIn("no events yet", sonuclar["Event log"]["detail"])
             self.assertFalse((self.klasor / "missing").exists())
         with patch.object(doktor.os, "access", return_value=False):
             self.assertEqual(self.sonuclar()[1]["Event log folder"]["status"], "warn")
+
+    def test_gunluk_salt_okunur_ya_da_klasor(self):
+        self.gunluk.chmod(0o444)
+        self.addCleanup(self.gunluk.chmod, 0o644)
+        if not os.access(self.gunluk, os.W_OK):  # root her dosyaya yazabilir
+            self.assertEqual(self.sonuclar()[1]["Event log"]["status"], "warn")
+        self.gunluk.unlink()
+        self.gunluk.mkdir()
+        kod, sonuclar = self.sonuclar()
+        self.assertEqual(kod, 1)
+        self.assertEqual(sonuclar["Event log"]["status"], "fail")
+        self.assertIn("no quota reading", sonuclar["Quota (codex)"]["detail"])  # iz değil, anlaşılır satır
+
+    def test_bozuk_kota_satiri_ve_gelecek_tarih_eski_olcumu_gizlemez(self):
+        self.kota_yaz(self.simdi - 6 * 3600)
+        with self.gunluk.open("a", encoding="utf-8") as dosya:
+            dosya.write(json.dumps({"tur": "kota", "ts": self.simdi, "kovalar": 5}) + "\n")
+            dosya.write(json.dumps({"tur": "kota", "ts": self.simdi + 30 * 86400,
+                                   "kovalar": [{"saglayici": "codex"}]}) + "\n")
+        _, sonuclar = self.sonuclar()
+        for ad in doktor.SAGLAYICILAR:
+            self.assertEqual(sonuclar[f"Quota ({ad})"]["status"], "warn")
+            self.assertIn("hours old", sonuclar[f"Quota ({ad})"]["detail"])
+
+    def test_kurulu_olmayan_aracin_kotasi_sorulmaz_ve_eksik_betik(self):
+        self.araclar.pop("codex")
+        self.betikler.append(self.klasor / "yok.sh")
+        kod, sonuclar = self.sonuclar()
+        self.assertEqual(kod, 1)
+        self.assertNotIn("Quota (codex)", sonuclar)
+        self.assertIn("Quota (claude)", sonuclar)
+        eksik = next(s for s in sonuclar.values() if s["name"].endswith("yok.sh"))
+        self.assertEqual(eksik["status"], "fail")
+        self.assertIn("missing", eksik["detail"])
+
+    def test_olmayan_proje_klasoru(self):
+        cikti = io.StringIO()
+        with contextlib.redirect_stdout(cikti):
+            doktor.ana(["--project", str(self.klasor / "yanlis-yol"), "--json"], betikler=self.betikler)
+        satir = next(s for s in json.loads(cikti.getvalue()) if s["name"] == "Project notes")
+        self.assertIn("does not exist", satir["detail"])
 
     def test_varsayilan_gunluk_yolu(self):
         del os.environ["POLYCREW_EVENTS"]

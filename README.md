@@ -37,6 +37,7 @@ Call them as `/polycrew:<name>`, or just `/<name>` when the name is unique. Up t
 | `/team` | Runs a stage with a team: the PM splits it, assigns workers by difficulty, reviews and merges. |
 | `/external-agent` | Runs a task on Codex or Gemini/agy (model, effort, read-only or writer) and logs everything. |
 | `/watch` | Opens the live team page and produces the session report. |
+| `/doctor` | Checks the setup (tools on PATH, project files, event log, quota readings, agy permissions, script syntax) and changes nothing. |
 
 ### Roles (`agents/`)
 
@@ -174,7 +175,7 @@ skills/external-agent/external-agent.sh quota                               # cu
 ```text
 .claude-plugin/   plugin and marketplace manifests
 agents/           roles (model, effort, tools)
-skills/           session-start, session-end, decision, project-setup, team (+ roster.md, roster.py), external-agent (+ external-agent.sh), watch (+ watch.py, claude-quota.py, page.html)
+skills/           session-start, session-end, decision, project-setup, team (+ roster.md, roster.py), external-agent (+ external-agent.sh), watch (+ watch.py, claude-quota.py, page.html), doctor (+ doctor.py)
 rules/            fixed git rules (single source; skills and roles point here)
 hooks/            SessionStart "where we left off", events.py (event log and score ledger)
 docs/decisions/   why things are the way they are

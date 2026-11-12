@@ -21,6 +21,7 @@ from pathlib import Path
 
 KOK = Path(__file__).resolve().parent.parent.parent
 KOTA_YASI = 5 * 3600
+GELECEK_PAYI = 300  # saat kayması payı (sn)
 SAGLAYICILAR = ("claude", "codex", "agy")
 
 
@@ -79,6 +80,8 @@ def not_dosyasi(proje):
 
 
 def proje_dosyasi(proje, ad=None):
+    if not Path(os.path.expanduser(str(proje))).is_dir():
+        return "warn", f"project folder does not exist: {proje}; check the --project path"
     notlar = not_dosyasi(proje)
     if notlar is None:
         return "warn", "notes file not found in project or parents; run /project-setup (hooks ignore projects without notes)"
@@ -90,10 +93,14 @@ def proje_dosyasi(proje, ad=None):
 
 def gunluk_klasoru():
     yol = olay_modulu().dosya()
-    if not yol.parent.is_dir():
-        return "warn", f"{yol}: log folder is missing; create the folder or set POLYCREW_EVENTS to an existing writable folder"
-    if not os.access(yol.parent, os.W_OK):
-        return "warn", f"{yol}: log folder is not writable; adjust folder permissions or POLYCREW_EVENTS"
+    # Kanca klasörü ilk olayda kendisi açar (events.yaz): eksik klasör hata değil, yazılabilir en yakın üst yeter.
+    ust = yol.parent
+    while not ust.exists() and ust != ust.parent:
+        ust = ust.parent
+    if not ust.is_dir() or not os.access(ust, os.W_OK):
+        return "warn", f"{ust} is not writable, so the event log cannot be written; adjust its permissions or set POLYCREW_EVENTS"
+    if ust != yol.parent:
+        return "ok", f"{yol.parent}: not there yet; the hook creates it at the first event"
     return "ok", f"{yol.parent}: folder exists and is writable"
 
 
@@ -102,6 +109,10 @@ def gunluk():
     yol = olay.dosya()
     if not yol.exists():
         return "ok", f"{yol}: no events yet"
+    if not yol.is_file():
+        return "fail", f"{yol} is not a file; remove it or point POLYCREW_EVENTS at a file"
+    if not os.access(yol, os.W_OK):
+        return "warn", f"{yol} is read-only; new events will be lost; adjust its permissions"
     boyut = yol.stat().st_size
     try:
         sinir = float(os.environ.get("POLYCREW_EVENTS_MAX_MB") or olay.EN_COK_MB) * 1024 * 1024
@@ -122,33 +133,49 @@ def zaman(deger):
         return None
 
 
-def kota(saglayici):
+def kota_olcumleri():
+    """Günlüğü bir kez oku: sağlayıcı başına en yeni kota olayının ölçüm zamanı. Bozuk satır atlanır."""
     yol = olay_modulu().dosya()
-    son_olay, son_olcum = None, None
-    if yol.exists():
-        with yol.open(encoding="utf-8", errors="replace") as dosya:
-            for satir in dosya:
-                try:
-                    kayit = json.loads(satir)
-                except ValueError:
+    son = {}  # sağlayıcı -> (olay zamanı, ölçüm zamanı)
+    if not yol.is_file():
+        return son
+    simdi = time.time()
+    with yol.open(encoding="utf-8", errors="replace") as dosya:
+        for satir in dosya:
+            try:
+                kayit = json.loads(satir)
+            except ValueError:
+                continue
+            if not isinstance(kayit, dict) or kayit.get("tur") != "kota" or not isinstance(kayit.get("kovalar"), list):
+                continue
+            ts = zaman(kayit.get("ts"))
+            if ts is None or ts > simdi + GELECEK_PAYI:  # gelecek tarihli kayıt eski ölçümü gizlemesin
+                continue
+            olcumler = {}
+            for kova in kayit["kovalar"]:
+                if not isinstance(kova, dict) or kova.get("saglayici") not in SAGLAYICILAR:
                     continue
-                if not isinstance(kayit, dict) or kayit.get("tur") != "kota":
-                    continue
-                ts = zaman(kayit.get("ts"))
-                if ts is None or (son_olay is not None and ts < son_olay):
-                    continue
-                olcumler = []
-                for kova in kayit.get("kovalar") or []:
-                    if isinstance(kova, dict) and kova.get("saglayici") == saglayici:
-                        olcum = zaman(kova.get("olcum"))
-                        olcumler.append(ts if olcum is None else olcum)
-                if olcumler:
-                    son_olay, son_olcum = ts, max(olcumler)
+                olcum = zaman(kova.get("olcum"))
+                if olcum is None or olcum > simdi + GELECEK_PAYI:
+                    olcum = ts
+                ad = kova["saglayici"]
+                olcumler[ad] = max(olcum, olcumler.get(ad, olcum))
+            for ad, olcum in olcumler.items():
+                if ad not in son or ts >= son[ad][0]:
+                    son[ad] = (ts, olcum)
+    return {ad: olcum for ad, (_, olcum) in son.items()}
+
+
+def kota(saglayici, olcumler):
+    # Claude'un kullanımı CLI'dan okunmaz; onu PM yazar. Codex ve agy'yi betik ölçer.
+    nasil = ("the PM records it with skills/watch/claude-quota.py (from /usage)" if saglayici == "claude"
+             else "run external-agent.sh quota")
+    son_olcum = olcumler.get(saglayici)
     if son_olcum is None:
-        return "warn", "no quota reading; run external-agent.sh quota (record Claude usage with claude-quota.py)"
+        return "warn", f"no quota reading; {nasil}"
     yas = max(0, time.time() - son_olcum)
     if yas > KOTA_YASI:
-        return "warn", f"last reading is {yas / 3600:.1f} hours old; run external-agent.sh quota (record Claude usage with claude-quota.py)"
+        return "warn", f"last reading is {yas / 3600:.1f} hours old; {nasil}"
     return "ok", f"last reading is {yas / 3600:.1f} hours old"
 
 
@@ -169,6 +196,8 @@ def agy_izinleri():
 
 
 def kabuk_betigi(yol):
+    if not Path(yol).is_file():
+        return "fail", f"{Path(yol).name} is missing from the plugin; update or reinstall polycrew"
     bash = shutil.which("bash")
     if not bash:
         return "warn", "bash is not on PATH; install bash to check shell syntax"
@@ -196,8 +225,19 @@ def raporla(proje, betikler=None):
         sonuclar.append(denetle(ad or "Project notes", lambda ad=ad: proje_dosyasi(proje, ad)))
     sonuclar.append(denetle("Event log folder", gunluk_klasoru))
     sonuclar.append(denetle("Event log", gunluk))
+    try:
+        olcumler, okuma_hatasi = kota_olcumleri(), None
+    except Exception as hata:  # tek satır: üç sağlayıcı için aynı hatayı yinelemeyelim
+        olcumler, okuma_hatasi = {}, type(hata).__name__
     for saglayici in SAGLAYICILAR:
-        sonuclar.append(denetle(f"Quota ({saglayici})", lambda saglayici=saglayici: kota(saglayici)))
+        # Kurulu olmayan aracın kotası sorulmaz: eksik araç yukarıda zaten uyarıldı.
+        if saglayici in arac_sonuclari and arac_sonuclari[saglayici]["status"] != "ok":
+            continue
+        if okuma_hatasi:
+            sonuclar.append({"status": "warn", "name": f"Quota ({saglayici})",
+                             "detail": f"event log could not be read ({okuma_hatasi}); see the Event log line"})
+            continue
+        sonuclar.append(denetle(f"Quota ({saglayici})", lambda saglayici=saglayici: kota(saglayici, olcumler)))
     if arac_sonuclari["agy"]["status"] == "ok":
         sonuclar.append(denetle("agy permissions", agy_izinleri))
 
