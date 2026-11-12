@@ -254,6 +254,11 @@ class Birlestir(unittest.TestCase):
                 k["olcum"] = datetime.fromtimestamp(reset).astimezone().isoformat()
                 self.assertFalse(izle.kota_kovasi(k, 0, reset + 1)["eski"])
         self.assertFalse(izle.kota_kovasi({"yenilenir": "bozuk"}, reset, reset + 1)["eski"])
+        # 0017: kesin sıfırlanma anı varsa metin (agy'de UTC) çözülmez.
+        k = izle.kota_kovasi({"yenilenir": "01-01T00:00", "yenilenir_epoch": reset + 7200}, reset, reset + 3600)
+        self.assertEqual(k["yenilenir_ts"], reset + 7200)
+        self.assertFalse(k["eski"])
+        self.assertTrue(izle.kota_kovasi({"yenilenir_epoch": reset + 7200}, reset, reset + 7201)["eski"])
         self.assertFalse(izle.kota_kovasi({"pencere": "bağlam"}, reset, reset + 1)["eski"])
         self.assertEqual(izle.kota_kovasi({}, reset, reset)["olcum_ts"], reset)
 

@@ -61,7 +61,11 @@ def kota_kovasi(kova: dict, ts: float, simdi: float) -> dict:
     k["olcum_ts"] = olcum_ts
     k["yenilenir_ts"] = None
     yenilenir = k.get("yenilenir")
-    if yenilenir:
+    # 0017: yeni ölçümler kesin sıfırlanma anını taşır; agy'nin kısaltması UTC olduğu için metinden çözmek 3 saat kayıyordu.
+    kesin = k.get("yenilenir_epoch")
+    if isinstance(kesin, (int, float)) and not isinstance(kesin, bool) and kesin > 0:
+        k["yenilenir_ts"] = float(kesin)
+    elif yenilenir:
         try:
             # Codex ve agy kısaltmaları yerel takvimde; yıl ölçümden gelir.
             yil = datetime.fromtimestamp(olcum_ts).year
