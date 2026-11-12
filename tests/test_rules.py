@@ -67,7 +67,7 @@ class IngilizceYuzeyTesti(unittest.TestCase):
 
     def test_skill_ve_rol_adlari(self):
         skiller = sorted(p.parent.name for p in KOK.glob("skills/*/SKILL.md"))
-        self.assertEqual(skiller, ["decision", "external-agent", "project-setup", "session-end",
+        self.assertEqual(skiller, ["decision", "doctor", "external-agent", "project-setup", "session-end",
                                    "session-start", "team", "watch"])
         roller = sorted(p.stem for p in KOK.glob("agents/*.md"))
         self.assertEqual(roller, ["artist", "designer", "developer", "lead", "researcher", "reviewer"])
