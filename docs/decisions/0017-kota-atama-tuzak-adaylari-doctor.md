@@ -52,7 +52,7 @@ Yazan model kendi işini incelemedi. İki incelemede de yanlış alarm çıkmad�
 
 ## Ölçümler
 
-- 141 test yeşil (85'ten): izleme sayfası 6 + 1, doctor 24, kadro ve puan 18 + 4 inceleme düzeltmesi, kalanlar birleşimden.
+- 137 test yeşil (85'ten): izleme sayfası 6, doctor 24, kadro ve puan 18, inceleme düzeltmeleri 4.
 - Gerçek kurulumda `doctor.py`: 14 ok, 1 uyarı (Claude kota ölçümü 70 saatlik). Boş `HOME` ile: klasör satırı ok ("ilk olayda açılır"), üç kota satırı uyarı.
 - Gerçek günlükle `roster.py structure`: "codex: 5 hours 97% left, week 77% left", "claude: … (stale: reset passed)".
 - Codex 5 saatlik kotası iki koşuda %0 → %9.
