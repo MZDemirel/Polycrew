@@ -19,6 +19,9 @@ Kullanım:
   - ``events.py overlap <id> <kaynak> <başlangıç ts>``: aynı aracın çakışan koşusu varsa ``1 <kimlikler>``,
     yoksa ``0`` (0010, kimlikler 0014)
   - ``events.py score <id> <1-5> [reason] [--worker ...] [--role ...] [--field ...] [--difficulty ...] [--quota ...] [--duration ...] [--fixes ...] [--project ...]``
+    Başarıda tek satır onay yazar. 3'ün altındaki puan, olay günlüğünün yanındaki
+    ``<günlük>-tuzak-adaylari.jsonl`` dosyasına da bir satır yazar (aynı işin yeni puanı eskisinin yerine
+    geçer); ``roster.py summary`` bunları öneri olarak listeler.
 """
 
 from __future__ import annotations
@@ -305,6 +308,52 @@ def duzen_var(yuk: dict) -> bool:
     return False
 
 
+TUZAK_ESIGI = 3  # bundan düşük puan "tuzak adayı" olur
+TUZAK_ALANLARI = ("ts", "proje", "isci", "rol", "alan", "zorluk", "not", "gerekce", "id")
+
+
+def adaylar_dosyasi() -> Path:
+    """Tuzak adayları dosyası: olay günlüğünün yanında (POLYCREW_EVENTS'i izler, testler ayrı kalır)."""
+    yol = dosya()
+    return yol.with_name(f"{yol.stem}-tuzak-adaylari.jsonl")
+
+
+def aday_guncelle(kayit: dict) -> None:
+    """Düşük puanı tuzak adayları dosyasına yazar; aynı işin (proje + id) yeni puanı eskisinin yerine geçer,
+    yeni puan eşik ve üstüyse eski aday silinir. Yalnız öneridir: hiçbir şey bunu kural diye okumaz."""
+    try:
+        yol = adaylar_dosyasi()
+        anahtar = (kayit.get("proje"), str(kayit.get("id")))
+        puan = kayit.get("not")
+        dusuk = isinstance(puan, (int, float)) and not isinstance(puan, bool) and puan < TUZAK_ESIGI
+        kalan, eskisi_vardi = [], False
+        if yol.exists():
+            for satir in yol.read_text(encoding="utf-8", errors="ignore").splitlines():
+                try:
+                    a = json.loads(satir)
+                except ValueError:
+                    a = None
+                if isinstance(a, dict) and (a.get("proje"), str(a.get("id"))) == anahtar:
+                    eskisi_vardi = True
+                elif satir.strip():
+                    kalan.append(satir)
+        if not dusuk and not eskisi_vardi:
+            return
+        if dusuk:
+            kalan.append(json.dumps({k: kayit.get(k) for k in TUZAK_ALANLARI}, ensure_ascii=False))
+        yol.parent.mkdir(parents=True, exist_ok=True)
+        tutamak, gecici = tempfile.mkstemp(dir=yol.parent, prefix=yol.name + ".", suffix=".tmp")
+        try:
+            with os.fdopen(tutamak, "w", encoding="utf-8") as f:
+                f.write("".join(satir + "\n" for satir in kalan))
+            os.replace(gecici, yol)
+        finally:
+            if os.path.exists(gecici):
+                os.unlink(gecici)
+    except OSError:
+        pass  # öneri dosyası puanın yazılmasını asla durdurmaz
+
+
 def defter_yaz(kayit: dict) -> None:
     yol = defter_dosyasi()
     yol.parent.mkdir(parents=True, exist_ok=True)
@@ -459,6 +508,7 @@ def puan_isle(argv: list[str]) -> int:
     olay_kaydi = yaz(olay)
     if deftere_yaz:
         defter_yaz(olay_kaydi)
+    aday_guncelle(olay_kaydi)
     print(f"Scored {olay_kaydi['id']}: {olay_kaydi['not']} (worker {olay_kaydi.get('isci') or '-'})")  # 0014
     return 0
 

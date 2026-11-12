@@ -11,6 +11,16 @@ Usage:
 avoid, whether a lead is used) and the remaining quota of each provider (newest reading in the event
 log). It changes nothing: the user decides (0011).
 
+`summary` also lists, under the table, pitfall candidates: scores below 3 of the workers in the table
+(newest first, at most 5, last 30 days; written by `events.py score` next to the event log). They are
+suggestions only: nothing reads them as rules and no ranking changes because of them.
+
+Quota (suggest, summary, structure): the newest quota reading per provider in the event log. A worker
+with under 20% left in the 5-hour window or under 10% left in the week (`--quota-low-5h`,
+`--quota-low-week`) drops below the others in its row and is marked "low quota". A missing or stale
+reading (its reset time has passed, or it is older than 5 hours / one day for the 5-hour / weekly
+window) changes nothing; a note says so. `--no-quota` turns it all off.
+
 A later score for the same job (project + id) replaces the earlier one. When two workers are within
 0.10 of each other, the clearly cheaper one (20% less quota, else 20% less time) goes first (0009).
 Workers of an external tool that is not installed (codex, agy) are left out.
@@ -286,6 +296,54 @@ class KotaBilgisi:
             return []
         return [f"Quota: {'; '.join(parcalar)}; the order is not adjusted for them "
                 "(run external-agent.sh quota to refresh)."]
+
+
+ADAY_GUN = 30  # gün: bundan eski tuzak adayı özette görünmez
+ADAY_SATIR = 5  # özette en çok bu kadar aday satırı
+ADAY_GEREKCE = 110  # karakter: gerekçe bu kadar kısaltılır
+
+
+def adaylari_oku() -> list[dict]:
+    """Tuzak adayları (events.py score, 3'ün altı); dosya yoksa ya da bozuksa boş. Yalnız öneridir."""
+    adaylar: dict[tuple, dict] = {}
+    try:
+        satirlar = olay.adaylar_dosyasi().read_text(encoding="utf-8", errors="ignore").splitlines()
+    except OSError:
+        return []
+    for satir in satirlar:
+        try:
+            a = json.loads(satir)
+        except ValueError:
+            continue
+        if isinstance(a, dict) and a.get("isci"):
+            adaylar[(a.get("proje"), str(a.get("id")))] = olay.kayit_adlari(a)  # aynı işin sonraki puanı geçerli
+    return list(adaylar.values())
+
+
+def aday_satirlari(adaylar: list[dict], isciler, simdi: float) -> list[str]:
+    """Tabloda geçen işçilerin son ``ADAY_GUN`` gündeki tuzak adayları, en yeni önde, en çok ``ADAY_SATIR``."""
+    uygun = []
+    for a in adaylar:
+        try:
+            ts = float(a.get("ts"))
+        except (TypeError, ValueError):
+            continue
+        if a.get("isci") in isciler and simdi - ADAY_GUN * 86400 <= ts <= simdi:
+            uygun.append((ts, a))
+    uygun.sort(key=lambda x: -x[0])
+    satirlar = []
+    for ts, a in uygun[:ADAY_SATIR]:
+        gerekce = " ".join(str(a.get("gerekce") or "").split())
+        if len(gerekce) > ADAY_GEREKCE:
+            gerekce = gerekce[:ADAY_GEREKCE - 1].rstrip() + "…"
+        yer = "/".join(str(a[k]) for k in ("rol", "alan") if a.get(k))
+        puan = a.get("not")
+        puan = int(puan) if isinstance(puan, float) and puan.is_integer() else puan
+        satirlar.append(f"- {format_ts(ts)} {a['isci']}" + (f" {yer}" if yer else "") + f" score {puan}"
+                        + (f": {gerekce}" if gerekce else ""))
+    if not satirlar:
+        return []
+    return ["Pitfall candidates (suggestions only, newest first; nothing reads them as rules):", *satirlar]
 
 
 def kota_siralama(liste: list[dict], kota: KotaBilgisi | None) -> list[dict]:
@@ -586,6 +644,7 @@ def tablo_olustur_ozet(
     simdi: float | None = None,
     yari_omur: float = YARI_OMUR,
     kota: KotaBilgisi | None = None,
+    adaylar: list[dict] | None = None,
 ) -> str:
     if not kayitlar:
         return "No records."
@@ -680,7 +739,8 @@ def tablo_olustur_ozet(
     baslik = f"Roster summary: last {gun} days, {k_sayisi} records (generated: {tarih_str})"
     tablo = "\n".join(satirlar)
     alt = kota.notlar(gorunen) if kota else []
-    return "\n\n".join([baslik, tablo, *alt])
+    adaylar_metni = "\n".join(aday_satirlari(adaylar or [], gorunen, simdi))
+    return "\n\n".join([baslik, tablo, *alt, *([adaylar_metni] if adaylar_metni else [])])
 
 
 YAPI_FARK = 0.25  # iki taraf arasında bundan büyük fark "prefer" demektir (0011)
@@ -837,7 +897,7 @@ def cmd_ozet(argv: list[str]) -> int:
 
     kayitlar, disarida = ortak_uygula(args, kayitlari_oku(tohumsuz=args.tohumsuz))
     cikti = tablo_olustur_ozet(kayitlar, gun=args.gun, simdi=simdi, yari_omur=args.yari_omur,
-                               kota=kota_kur(args, simdi))
+                               kota=kota_kur(args, simdi), adaylar=adaylari_oku())
     print(cikti)
     disarida_yaz(disarida)
     return 0

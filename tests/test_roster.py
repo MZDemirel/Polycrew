@@ -854,5 +854,100 @@ class KotaSiralamaTesti(unittest.TestCase):
         self.assertEqual(ocak, datetime(2027, 1, 2, 10, 0, tzinfo=timezone.utc).timestamp())
 
 
+class TuzakAdayiTesti(unittest.TestCase):
+    """3'ün altındaki puan tuzak adayı dosyasına da yazılır; özet bunları öneri olarak listeler, sıraya dokunmaz."""
+
+    def setUp(self):
+        self.d = tempfile.TemporaryDirectory()
+        self.gunluk = Path(self.d.name) / "olaylar.jsonl"
+        self.defter = Path(self.d.name) / "puanlar.jsonl"
+        self.adaylar = Path(self.d.name) / "olaylar-tuzak-adaylari.jsonl"
+
+    def tearDown(self):
+        self.d.cleanup()
+
+    def puan(self, kimlik, puan, gerekce="", *ek):
+        r = calistir_olay(["score", kimlik, str(puan), gerekce, "--worker", "codex/gpt-x/high", "--role", "developer",
+                           "--field", "py", "--difficulty", "M", "--project", "P", *ek],
+                          gunluk=self.gunluk, defter=self.defter)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def satirlar(self):
+        if not self.adaylar.exists():
+            return []
+        return [json.loads(s) for s in self.adaylar.read_text(encoding="utf-8").splitlines()]
+
+    def test_dusuk_puan_aday_yazar_yeterli_puan_yazmaz(self):
+        self.puan("a1", 4, "iyi")
+        self.puan("a2", 3, "orta")
+        self.assertEqual(self.satirlar(), [])
+        self.puan("a3", 2, "testsiz çıktı")
+        (aday,) = self.satirlar()
+        self.assertEqual({k: aday[k] for k in ("proje", "isci", "rol", "alan", "zorluk", "not", "gerekce", "id")},
+                         {"proje": "P", "isci": "codex/gpt-x/high", "rol": "developer", "alan": "py", "zorluk": "M",
+                          "not": 2, "gerekce": "testsiz çıktı", "id": "a3"})
+        self.assertIsInstance(aday["ts"], float)
+        # Dosya olay günlüğünün yanındadır ve POLYCREW_EVENTS'i izler.
+        self.assertEqual(self.adaylar.parent, self.gunluk.parent)
+
+    def test_ayni_isin_yeni_puani_adayin_yerine_gecer(self):
+        self.puan("a1", 1, "ilk")
+        self.puan("a2", 2, "başka iş")
+        self.puan("a1", 2, "ikinci", "ek")
+        self.assertEqual([(a["id"], a["not"], a["gerekce"]) for a in self.satirlar()],
+                         [("a2", 2, "başka iş"), ("a1", 2, "ikinci ek")])
+        self.puan("a1", 4, "düzeldi")  # 3 ve üstü: aday silinir
+        self.assertEqual([a["id"] for a in self.satirlar()], ["a2"])
+        # Başka projenin aynı kimliği ayrı iştir.
+        calistir_olay(["score", "a2", "1", "x", "--worker", "w/x", "--project", "Q"], gunluk=self.gunluk, defter=self.defter)
+        self.assertEqual(sorted((a["proje"], a["id"]) for a in self.satirlar()), [("P", "a2"), ("Q", "a2")])
+
+    def test_gunluk_degisince_dosya_degisir(self):
+        diger = Path(self.d.name) / "baska.jsonl"
+        calistir_olay(["score", "z1", "1", "x", "--worker", "w/x"], gunluk=diger, defter=self.defter)
+        self.assertTrue((Path(self.d.name) / "baska-tuzak-adaylari.jsonl").exists())
+        self.assertFalse(self.adaylar.exists())
+
+    def test_ozet_tablodaki_iscilerin_adaylarini_listeler(self):
+        simdi = 100 * 86400
+        with open(self.defter, "w", encoding="utf-8") as f:
+            for isci, puan in (("codex/gpt-x/high", 5), ("claude/developer/sonnet-9", 4), ("agy/hic-gorunmeyen", 1)):
+                for _ in range(4):
+                    f.write(json.dumps({"isci": isci, "rol": "developer", "alan": "py", "not": puan, "ts": simdi - 100}) + "\n")
+        # Tabloda: codex (kadro) ve claude (yedek). agy tabloda yok ("Try" için de aday olamaz: puanı önselin altında).
+        def aday(ts_gun_once, isci, puan, gerekce, kimlik, rol="developer", alan="py"):
+            return json.dumps({"ts": simdi - ts_gun_once * 86400, "proje": "P", "isci": isci, "rol": rol, "alan": alan,
+                               "zorluk": "M", "not": puan, "gerekce": gerekce, "id": kimlik}, ensure_ascii=False)
+        satirlar = [aday(1, "codex/gpt-x/high", 2, "testleri atladı", "n1"),
+                    aday(40, "codex/gpt-x/high", 1, "çok eski", "n2"),  # 30 günden eski
+                    aday(2, "agy/hic-gorunmeyen", 1, "tabloda yok", "n3"),
+                    aday(3, "claude/developer/sonnet-9", 2, "uzun " + "x" * 300, "n4"),
+                    aday(0.5, "codex/gpt-x/high", 1, "en yeni", "n5", rol="gelistirici")]  # eski rol adı
+        satirlar += [aday(4 + i, "codex/gpt-x/high", 2, f"sıradan {i}", f"m{i}") for i in range(6)]
+        self.adaylar.write_text("\n".join(satirlar) + "\n", encoding="utf-8")
+        argv = ["summary", "--no-seed", "--half-life", "0", "--now", str(simdi), "--days", "7"]
+        r = calistir_kadro(argv, defter=self.defter, gunluk=self.gunluk)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        blok = r.stdout.split("Pitfall candidates")[1].splitlines()
+        self.assertIn("suggestions only", blok[0])
+        satirlar_ = blok[1:]
+        self.assertEqual(len(satirlar_), 5)  # en çok 5 satır
+        self.assertIn("codex/gpt-x/high developer/py score 1: en yeni", satirlar_[0])  # eski rol adı çevrilir, en yeni önde
+        self.assertIn("score 2: testleri atladı", satirlar_[1])
+        self.assertIn("claude/developer/sonnet-9", satirlar_[2])
+        self.assertIn("…", satirlar_[2])  # uzun gerekçe kısalır
+        self.assertNotIn("çok eski", r.stdout)
+        self.assertNotIn("tabloda yok", r.stdout)
+        # Aday dosyası tabloyu ve sırayı etkilemez.
+        self.adaylar.unlink()
+        r2 = calistir_kadro(argv, defter=self.defter, gunluk=self.gunluk)
+        self.assertNotIn("Pitfall", r2.stdout)
+        self.assertEqual(r.stdout.split("\n\nPitfall")[0], r2.stdout.strip())
+        # Bozuk satır ve eksik dosya özeti bozmaz.
+        self.adaylar.write_text("bozuk\n[1]\n", encoding="utf-8")
+        r3 = calistir_kadro(argv, defter=self.defter, gunluk=self.gunluk)
+        self.assertEqual((r3.returncode, r3.stdout), (0, r2.stdout))
+
+
 if __name__ == "__main__":
     unittest.main()
