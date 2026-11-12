@@ -16,11 +16,11 @@ Events are collected in one log (`hooks/events.py`, decision `0003`): Claude sub
    - in VS Code: `Ctrl+Shift+P → Simple Browser: Show` with the address;
    - otherwise give the address for a browser.
    The plugin cannot open it by itself: hooks only print text, and a server started from a hook does not outlive it.
-3. The page is in English and Turkish (by browser language; the EN/TR button or `?lang=tr`). It refreshes every 3 seconds: who is running now, the timeline (Claude orange, Codex green, Gemini blue), the agent map, quota bars (external quota once a minute via `external-agent.sh quota`), jobs and scores. Clicking a job or a map node shows its last report and task in the side panel.
+3. The page is in English and Turkish (by browser language; the EN/TR button or `?lang=tr`). It refreshes every 3 seconds: a status line, the office, who is running now, quota bars (external quota once a minute via `external-agent.sh quota`), the timeline (one lane per worker; Claude orange, Codex green, Gemini blue), jobs and scores, the agent map. Clicking a bar, a job or a map node shows its last report and task in the side panel. The layout follows the page's own width, so it reads in the half-width browser pane next to the chat.
 
 ## Office
 
-The first section of the page is a small pixel office. The PM sits on the left; every running Claude agent sits at a desk in the Claude room and every running external worker (Codex, agy) in the external workers' room, typing, with the monitor in the provider's color. Finished jobs stand in the break room, dimmed: the last 8, the rest as "+N done". A failed job has a red "!" over its head, an unknown one a "?". Each role has a small accessory (developer headphones, reviewer magnifier, artist beret, designer ruler, researcher book, lead tie). Hovering shows who it is and what it is doing; a click opens the same side panel as everywhere else. It is a picture of the same data: the cards, the map and the table below remain the accessible, complete view.
+The first section of the page is a small pixel office. The PM sits on the left; every running Claude agent sits at a desk in the Claude room and every running external worker (Codex, agy) in the external workers' room, typing, with the monitor in the provider's color. Finished jobs stand in the break room, dimmed: the last 8, the rest as "+N done". A failed job has a red "!" over its head, an unknown one a "?". Each role has a small accessory (developer headphones, reviewer magnifier, artist beret, designer ruler, researcher book, lead tie; an external worker wears glasses when read-only and holds a pencil when it writes). A worker at a desk has a short label from its model name (`sol`, `flash`), numbered when several share it (`sol1`, `sol2`). Hovering shows who it is and what it is doing; a click opens the same side panel as everywhere else. It is a picture of the same data: the timeline, the job list and the map below remain the accessible, complete view.
 
 ## Claude quota
 
@@ -39,7 +39,7 @@ The Claude card comes first; context is a separate thin row. With no Claude meas
 
 ## Agent map
 
-The jobs in the selected time window appear as a PM → lead → worker tree. External workers (Codex, agy) sit directly under the PM. Nodes show role, model (if known), provider color, state, duration and score if any; a click or Enter/space opens the side panel. The same tree is embedded in the session report.
+The jobs in the selected time window appear as an indented PM → lead → worker tree, folded until the tree has depth (a lead, or an agent that started agents). External workers (Codex, agy) sit directly under the PM. Nodes show role, model (if known), provider color, state, duration and score if any; a click or Enter/space opens the side panel. The same tree is embedded in the session report.
 
 The parent link comes from the hook's `ham.parent_agent_id`, `ham.parent_session_id`, the launch payload's `ham.agent_id`, or a `ham.transcript_path` that belongs to the parent agent. `ham.session_id` counts as a parent only if it matches a known agent or agent session id; the shared PM session id alone is no proof of a link. If no link is found, the parent is outside the selected window, or there is a cycle, the node attaches to the PM (decision `0005`). The real log's current samples carry no explicit parent field; those jobs stay under the PM.
 

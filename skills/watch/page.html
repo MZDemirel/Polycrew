@@ -269,7 +269,8 @@ function kim(i) {
 // A timeline lane: the role for a Claude agent, the model and effort for an external worker.
 function seritAdi(i) {
   if (i.kaynak === "claude") return String(i.rol || "agent").replace(/^polycrew:/, "");
-  return (i.model || i.kaynak) + (i.efor && i.efor !== "-" ? " " + i.efor : "");
+  const model = i.model || i.kaynak, efor = i.efor && i.efor !== "-" ? String(i.efor) : "";
+  return model + (efor && !String(model).endsWith("-" + efor) ? " " + efor : "");  // agy model names already end in the effort
 }
 function token(n) { return n == null ? "—" : n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n); }
 

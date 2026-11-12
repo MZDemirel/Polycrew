@@ -100,13 +100,13 @@ Then run `/reload-plugins` in an open session, or start a new one.
 
 The page runs at `http://localhost:8770`. `/session-start` opens it by itself when the session's plan includes team or external work, and `/team` makes sure it is up. In the Claude desktop app it opens in the built-in browser pane; in VS Code, open it with `Ctrl+Shift+P → Simple Browser: Show`. A hook cannot start it for you: hooks only print text, and a server started from a hook dies with it. It is in English and Turkish: it follows your browser language, and the EN/TR buttons or `?lang=en` switch it. It refreshes every few seconds and shows:
 
-- **Office:** a small pixel office. The PM sits on the left, running Claude agents and running external workers sit at desks in their own rooms, and finished jobs stand in the break room (a failed one has a red "!"). Hover a figure to see who it is, click it for its report.
+- **Office:** a small pixel office. The PM sits on the left, running Claude agents and running external workers sit at desks in their own rooms, and finished jobs stand in the break room (a failed one has a red "!"). A worker at a desk carries a short label from its model (`sol`, `flash`; `sol1`, `sol2` when several share one), a read-only worker wears glasses and a writer holds a pencil. Hover a figure to see who it is, click it for its report.
 - **Running now:** role or model, task, elapsed time.
-- **Agent map:** a left-to-right tree with the PM at the root and the workers it started (Claude roles, Codex, Gemini) as branches. Running workers are green and pulse, finished ones fade, and a count sits on top. It answers "who is doing what, and who started whom" at a glance.
-- **Timeline:** Claude in orange, Codex in green, Gemini in blue. Click a bar to see the worker's last report and its task.
+- **Timeline:** one lane per worker (the role for a Claude agent, the model for an external worker) with its jobs as bars; jobs that ran at the same time stack inside the lane. Claude in orange, Codex in green, Gemini in blue. The axis fits the width of the page, so it stays readable in a half-width pane. Click a bar to see the worker's last report and its task.
 - **Quotas:** one card per provider with its latest measurement: Codex 5-hour and weekly windows, Gemini, Claude through agy, and Claude Code itself. A measurement older than the window's reset time is dimmed and marked as stale.
   - Claude's own usage cannot be read from the CLI. The PM reads it (the desktop app's usage tool, or `/usage`) and records it with `skills/watch/claude-quota.py --five-hour <%> --week <%> ...`; without arguments the script prints the last measurement, and it warns at 80% of the 5-hour window or 70% of the week. It does not update by itself.
-- **Jobs and scores:** duration, tokens, status and the PM's 1–5 score with a reason.
+- **Jobs and scores:** duration, tokens, status and the PM's 1–5 score with a reason; the newest 40, with a button for the rest.
+- **Agent map:** an indented tree with the PM at the root and the workers it started (Claude roles, Codex, Gemini) under it. Running workers pulse green, finished ones fade, and a count sits in the heading. It is folded until a lead or a nested agent gives the tree some depth.
 
 Under the hood:
 
@@ -116,7 +116,7 @@ Under the hood:
 - One server serves every project. Open `http://localhost:8770/?project=<name>` to see one project; the selector at the top switches. Without it the page shows all projects.
 - The screenshots come from an example log: `docs/img/ornek_gunluk.py en|tr <file>`.
 
-![The whole live team page: counters, office, running now, timeline, agent map, quota cards for each provider, jobs and scores](docs/img/izle-en.png)
+![The whole live team page: status line, office, running now, quotas for each provider, timeline with one lane per worker, jobs and scores, agent map](docs/img/izle-en.png)
 
 ## The roster (`roster.py`)
 

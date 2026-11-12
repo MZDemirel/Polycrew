@@ -115,13 +115,13 @@ Ardından açık oturumda `/reload-plugins` çalıştır ya da yeni bir oturum a
 
 Sayfa `http://localhost:8770` adresinde açılır. Oturumun planında takım ya da dış işçi işi varsa `/session-start` onu kendisi açar, `/team` de açık olduğuna bakar. Claude masaüstü uygulamasında yerleşik tarayıcı panesinde açılır; VS Code'da `Ctrl+Shift+P → Simple Browser: Show` ile. Kanca bunu senin yerine yapamaz: kancalar yalnız metin basar, kancadan başlatılan sunucu onunla birlikte kapanır. İngilizce ve Türkçedir: tarayıcının diline göre açılır, EN/TR düğmeleri ya da `?lang=tr` ile değişir. Birkaç saniyede bir yenilenir ve şunları gösterir:
 
-- **Ofis:** küçük bir piksel ofis. PM solda oturur; çalışan Claude agent'ları ve dış işçiler kendi odalarında masalarında, işi bitenler dinlenme köşesinde durur (hata alanın başında kırmızı "!" olur). Bir figürün üstüne gelince kim olduğu görünür, tıklayınca raporu açılır.
+- **Ofis:** küçük bir piksel ofis. PM solda oturur; çalışan Claude agent'ları ve dış işçiler kendi odalarında masalarında, işi bitenler dinlenme köşesinde durur (hata alanın başında kırmızı "!" olur). Masadaki işçinin üstünde modelinden kısa bir etiket vardır (`sol`, `flash`; aynısı birden çoksa `sol1`, `sol2`), okur gözlüklü, yazar kalemlidir. Bir figürün üstüne gelince kim olduğu görünür, tıklayınca raporu açılır.
 - **Şimdi çalışanlar:** rol ya da model, iş, geçen süre.
-- **Agent haritası:** soldan sağa bir ağaç; kökte PM, dallarında başlattığı işçiler (Claude rolleri, Codex, Gemini). Çalışan işçi yeşildir ve nabız gibi atar, biten solar, üstte sayım durur. "Kim ne yapıyor, kimi kim başlattı" sorusunu tek bakışta yanıtlar.
-- **Zaman çizelgesi:** Claude turuncu, Codex yeşil, Gemini mavi. Bir şeride tıklayınca işçinin son raporu ve görevi açılır.
+- **Zaman çizelgesi:** işçi başına bir şerit (Claude agent'ında rol, dış işçide model), işleri çubuk olarak; aynı anda koşan işler şeridin içinde alt alta durur. Claude turuncu, Codex yeşil, Gemini mavi. Eksen sayfanın genişliğine göre kurulur, yarım panelde de okunur. Bir çubuğa tıklayınca işçinin son raporu ve görevi açılır.
 - **Kota:** sağlayıcı başına bir kart, son ölçümüyle: Codex'in 5 saatlik ve haftalık penceresi, Gemini, agy üzerinden Claude ve Claude Code'un kendisi. Pencerenin yenilenme saatinden eski ölçüm soluk ve "eski ölçüm" etiketiyle görünür.
   - Claude'un kendi kullanımı CLI'dan okunmuyor. PM onu okur (masaüstü uygulamasının kullanım aracı ya da `/usage`) ve `skills/watch/claude-quota.py --five-hour <%> --week <%> ...` ile yazar; betik argümansız son ölçümü yazdırır, 5 saatlik pencerenin %80'inde ya da haftanın %70'inde uyarır. Kendiliğinden güncellenmez.
-- **İşler ve puanlar:** süre, token, durum ve PM'in gerekçeli 1–5 puanı.
+- **İşler ve puanlar:** süre, token, durum ve PM'in gerekçeli 1–5 puanı; en yeni 40 iş, gerisi düğmeyle.
+- **Agent haritası:** girintili bir ağaç; kökte PM, altında başlattığı işçiler (Claude rolleri, Codex, Gemini). Çalışan işçi yeşil ve nabız gibi atar, biten solar, başlıkta sayım durur. Lider ya da iç içe agent ağaca derinlik verene kadar katlı gelir.
 
 Arka planda:
 
@@ -131,7 +131,7 @@ Arka planda:
 - Tek sunucu bütün projelere hizmet eder. Tek projeyi görmek için `http://localhost:8770/?project=<ad>`; üstteki seçici değiştirir. Parametresiz sayfa bütün projeleri gösterir.
 - Resimler örnek bir günlükten: `docs/img/ornek_gunluk.py en|tr <dosya>`.
 
-![Canlı takım sayfasının tamamı: sayaçlar, ofis, şimdi çalışanlar, zaman çizelgesi, agent haritası, sağlayıcı başına kota kartları, işler ve puanlar](docs/img/izle-tr.png)
+![Canlı takım sayfasının tamamı: durum satırı, ofis, şimdi çalışanlar, sağlayıcı başına kota, işçi başına şeritli zaman çizelgesi, işler ve puanlar, agent haritası](docs/img/izle-tr.png)
 
 ## Kadro (`roster.py`)
 
