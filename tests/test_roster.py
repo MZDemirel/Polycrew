@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 KOK = Path(__file__).resolve().parent.parent
@@ -17,10 +20,14 @@ import roster as kadro  # noqa: E402
 import events as olay  # noqa: E402
 
 
+# Günlük verilmeyen çağrı makinenin gerçek olay günlüğünü (kota okumaları dahil) okumasın.
+BOS_KLASOR = tempfile.mkdtemp(prefix="polycrew-test-")
+atexit.register(shutil.rmtree, BOS_KLASOR, ignore_errors=True)
+BOS_GUNLUK = Path(BOS_KLASOR) / "olaylar.jsonl"
+
+
 def calistir_olay(argv: list[str], gunluk: Path | None = None, defter: Path | None = None):
-    env = {**os.environ}
-    if gunluk:
-        env["POLYCREW_EVENTS"] = str(gunluk)
+    env = {**os.environ, "POLYCREW_EVENTS": str(gunluk or BOS_GUNLUK)}
     if defter:
         env["POLYCREW_SCORES"] = str(defter)
     return subprocess.run(
@@ -34,11 +41,10 @@ def calistir_olay(argv: list[str], gunluk: Path | None = None, defter: Path | No
 
 def calistir_kadro(argv: list[str], defter: Path | None = None, gunluk: Path | None = None,
                    saglayicilar: str = "claude,codex,agy"):
-    env = {**os.environ, "POLYCREW_PROVIDERS": saglayicilar}  # makinede kurulu araca bağlı olmasın
+    env = {**os.environ, "POLYCREW_PROVIDERS": saglayicilar,  # makinede kurulu araca bağlı olmasın
+           "POLYCREW_EVENTS": str(gunluk or BOS_GUNLUK)}
     if defter:
         env["POLYCREW_SCORES"] = str(defter)
-    if gunluk:
-        env["POLYCREW_EVENTS"] = str(gunluk)
     return subprocess.run(
         [sys.executable, str(KOK / "skills" / "team" / "roster.py"), *argv],
         capture_output=True,
@@ -624,6 +630,56 @@ class KadroVePuanTesti(unittest.TestCase):
         self.assertNotIn("researcher", oneri)
         self.assertNotIn("Avoid", r.stdout)
 
+    # ---- 0014 C listesi
+
+    def test_puan_tek_satir_onay_yazar(self):
+        r = calistir_olay(["score", "k7", "4", "iyi", "--worker", "codex/g/high"], gunluk=self.gunluk, defter=self.defter)
+        self.assertEqual((r.returncode, r.stdout), (0, "Scored k7: 4 (worker codex/g/high)\n"))
+        r = calistir_olay(["score", "k8", "3"], gunluk=self.gunluk, defter=self.defter)
+        self.assertEqual(r.stdout, "Scored k8: 3 (worker -)\n")
+
+    def test_yardim_cikis_kodu_sifir(self):
+        for bayrak in ("--help", "-h"):
+            r = calistir_kadro([bayrak])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("Usage:", r.stdout)
+        self.assertEqual(calistir_kadro([]).returncode, 2)  # argümansız hâlâ hata
+        self.assertEqual(calistir_kadro(["yok"]).returncode, 2)
+
+    def _kota_olayi(self, ts, *kovalar):
+        with open(self.gunluk, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"tur": "kota", "ts": ts, "kovalar": list(kovalar)}) + "\n")
+
+    def test_yapi_az_veri_claude_ve_kalan_kota(self):
+        def k(isci, rol, puan, adet):
+            return [{"isci": isci, "rol": rol, "alan": "x", "not": puan, "ts": 1}] * adet
+        self._defter(k("claude/developer/sonnet-9", "developer", 5, 1) + k("codex/g/high", "developer", 4, 4)
+                     + k("codex/g/high", "reviewer", 4, 4))
+        simdi = 100000
+        self._kota_olayi(simdi - 1000,
+                         {"saglayici": "codex", "grup": "Codex", "pencere": "5 saat", "kullanilan": 81.0},
+                         {"saglayici": "codex", "grup": "Codex", "pencere": "hafta", "kullanilan": 23.0},
+                         {"saglayici": "agy", "grup": "agy: Gemini", "pencere": "5 saat", "kullanilan": 0})
+        self._kota_olayi(simdi - 6 * 3600,
+                         {"saglayici": "claude", "grup": "Claude", "pencere": "5 saat", "kullanilan": 60.0},
+                         {"saglayici": "claude", "grup": "Claude", "pencere": "bağlam", "kullanilan": 90.0, "token": 1})
+        ortak = ["structure", "--no-seed", "--half-life", "0", "--now", str(simdi)]
+        r = calistir_kadro(ortak, defter=self.defter, gunluk=self.gunluk)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        oneri = {s.split("|")[1].strip(): s.split("|")[-2].strip() for s in r.stdout.splitlines() if s.startswith("| ")}
+        self.assertEqual(oneri["developer"], "Claude: little data")
+        self.assertEqual(oneri["reviewer"], "only external measured")  # Claude hiç yok
+        self.assertIn("- codex: 5 hours 19% left (low), week 77% left", r.stdout)
+        self.assertIn("- agy: Gemini: 5 hours 100% left", r.stdout)
+        self.assertIn("- claude: 5 hours 40% left (stale: older than 5 hours)", r.stdout)
+        self.assertNotIn("bağlam", r.stdout)  # bağlam doluluğu kota değildir
+        # Okuması olmayan sağlayıcı ve kapatma.
+        r = calistir_kadro(ortak, defter=self.defter, gunluk=self.gunluk, saglayicilar="claude,agy")
+        self.assertNotIn("- codex", r.stdout)
+        self.assertIn("- agy: Gemini", r.stdout)
+        r = calistir_kadro([*ortak, "--no-quota"], defter=self.defter, gunluk=self.gunluk)
+        self.assertNotIn("Quota left", r.stdout)
+
     def test_eski_ortam_degiskeni_yedek_olarak_okunur(self):
         env = {k: v for k, v in os.environ.items() if k not in ("POLYCREW_EVENTS", "POLYCREW_SCORES")}
         env.update(POLYCREW_OLAYLAR=str(self.gunluk), POLYCREW_PUANLAR=str(self.defter))
@@ -631,6 +687,266 @@ class KadroVePuanTesti(unittest.TestCase):
                            capture_output=True, text=True, env=env, check=False)
         self.assertEqual(r.returncode, 0)
         self.assertTrue(self.gunluk.exists() and self.defter.exists())
+
+
+SIMDI = 100000  # kota testlerinde --now; okumalar bundan 1000 sn önce (taze) ya da saatler önce (bayat)
+
+
+def codex_kovalari(bes_saat_kullanilan, hafta_kullanilan, **ek):
+    return [{"saglayici": "codex", "grup": "Codex", "pencere": "5 saat", "kullanilan": bes_saat_kullanilan, **ek},
+            {"saglayici": "codex", "grup": "Codex", "pencere": "hafta", "kullanilan": hafta_kullanilan, **ek}]
+
+
+class KotaSiralamaTesti(unittest.TestCase):
+    """Az kotası kalan işçi satırda alta iner ve "low quota" yazılır; okuma yok ya da bayatsa sıra aynı kalır."""
+
+    def setUp(self):
+        self.d = tempfile.TemporaryDirectory()
+        self.gunluk = Path(self.d.name) / "olaylar.jsonl"
+        self.defter = Path(self.d.name) / "puanlar.jsonl"
+        self.defter_yaz(("codex/gpt-x/high", 5), ("claude/developer/sonnet-9", 4),
+                        ("agy/gemini-x-high", 3.2), ("agy/claude-opus-x", 3))
+
+    def tearDown(self):
+        self.d.cleanup()
+
+    def defter_yaz(self, *isciler):
+        with open(self.defter, "w", encoding="utf-8") as f:
+            for isci, puan in isciler:
+                for _ in range(4):
+                    f.write(json.dumps({"isci": isci, "rol": "developer", "alan": "py", "not": puan,
+                                        "ts": SIMDI - 100}) + "\n")
+
+    def kota(self, ts, kovalar):
+        with open(self.gunluk, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"tur": "kota", "ts": ts, "kovalar": kovalar}) + "\n")
+
+    def kos(self, *argv):
+        r = calistir_kadro([*argv, "--no-seed", "--half-life", "0", "--now", str(SIMDI)],
+                           defter=self.defter, gunluk=self.gunluk)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+    def siralama(self, *ek):
+        """suggest tablosunun (işçi, durum) sırası ve bütün çıktı."""
+        cikti = self.kos("suggest", "--role", "developer", *ek)
+        satirlar = [[h.strip() for h in s.split("|")[1:-1]] for s in cikti.splitlines()
+                    if s.startswith("| ") and not s.startswith("| Worker")]
+        return [(s[0], s[-1]) for s in satirlar], cikti
+
+    def ozet_satiri(self):
+        satir = [s for s in self.kos("summary", "--days", "7").splitlines() if s.startswith("| developer | py")][0]
+        return [h.strip() for h in satir.split("|")[1:-1]]  # rol, alan, kadro, puan, n, yedek, yedek puanı, dayanak, dene
+
+    def test_az_kalan_isci_alta_iner_ve_isaretlenir(self):
+        self.kota(SIMDI - 1000, codex_kovalari(85, 30))  # 5 saatte %15 kaldı
+        sira, _ = self.siralama()
+        self.assertEqual([i for i, _ in sira][:2], ["claude/developer/sonnet-9", "agy/gemini-x-high"])
+        self.assertEqual(sira[-1], ("codex/gpt-x/high", "low quota"))
+        # Eşik kesin "altı": tam %20 kalan düşmez; haftalıkta %10'dan az kalan düşer.
+        self.kota(SIMDI - 900, codex_kovalari(80, 30))
+        self.assertEqual(self.siralama()[0][0], ("codex/gpt-x/high", ""))
+        self.kota(SIMDI - 800, codex_kovalari(10, 91))
+        self.assertEqual(self.siralama()[0][-1], ("codex/gpt-x/high", "low quota"))
+
+    def test_esik_bayragi(self):
+        self.kota(SIMDI - 1000, codex_kovalari(85, 30))
+        self.assertEqual(self.siralama("--quota-low-5h", "10")[0][0][0], "codex/gpt-x/high")
+        self.assertEqual(self.siralama("--quota-low-5h", "16")[0][-1][0], "codex/gpt-x/high")
+        self.kota(SIMDI - 900, codex_kovalari(10, 91))
+        self.assertEqual(self.siralama("--quota-low-week", "5")[0][0][0], "codex/gpt-x/high")
+
+    def test_no_quota_sirayi_degistirmez(self):
+        self.kota(SIMDI - 1000, codex_kovalari(99, 99))
+        sira, cikti = self.siralama("--no-quota")
+        self.assertEqual(sira[0], ("codex/gpt-x/high", ""))
+        self.assertNotIn("Quota:", cikti)
+
+    def test_okuma_yoksa_ya_da_bayatsa_sira_ayni_not_var(self):
+        sira, cikti = self.siralama()  # günlük boş
+        self.assertEqual(sira[0], ("codex/gpt-x/high", ""))
+        self.assertIn("Quota: no quota reading for agy, codex;", cikti)
+        # 6 saat önceki okumada 5 saatlik kova bayat, haftalık taze ve yeterli: sıra aynı, Codex için not yok.
+        self.kota(SIMDI - 6 * 3600, codex_kovalari(99, 30))
+        sira, cikti = self.siralama()
+        self.assertEqual(sira[0], ("codex/gpt-x/high", ""))
+        self.assertNotIn("codex", cikti.split("Quota:")[1])
+        # Bir günden eski haftalık da bayat: Codex'in iki kovası da bayatsa not "stale" der.
+        self.gunluk.unlink()
+        self.kota(SIMDI - 30 * 3600, codex_kovalari(99, 99))
+        sira, cikti = self.siralama()
+        self.assertEqual(sira[0], ("codex/gpt-x/high", ""))
+        self.assertIn("stale quota reading for codex", cikti)
+
+    def test_sifirlanma_gecmisse_bayat(self):
+        # Ölçümden sonra penceresi yenilenmiş: %99 dolu görünse de sayılmaz.
+        self.kota(SIMDI - 1000, codex_kovalari(99, 99, yenilenir_epoch=SIMDI - 500))
+        sira, cikti = self.siralama()
+        self.assertEqual(sira[0], ("codex/gpt-x/high", ""))
+        self.assertIn("stale quota reading for codex", cikti)
+        # Sıfırlanma gelecekteyse sayılır.
+        self.kota(SIMDI - 400, codex_kovalari(99, 99, yenilenir_epoch=SIMDI + 500))
+        self.assertEqual(self.siralama()[0][-1], ("codex/gpt-x/high", "low quota"))
+
+    def test_agy_modelin_grubuna_bakar(self):
+        self.kota(SIMDI - 1000, [
+            {"saglayici": "agy", "grup": "agy: Claude/GPT", "pencere": "5 saat", "kullanilan": 100},
+            {"saglayici": "agy", "grup": "agy: Gemini", "pencere": "5 saat", "kullanilan": 0}])
+        durum = dict(self.siralama()[0])
+        self.assertEqual((durum["agy/claude-opus-x"], durum["agy/gemini-x-high"]), ("low quota", ""))
+        self.kota(SIMDI - 900, [{"saglayici": "agy", "grup": "agy: Gemini", "pencere": "5 saat", "kullanilan": 100}])
+        self.assertEqual(dict(self.siralama()[0])["agy/gemini-x-high"], "low quota")
+        self.assertEqual(kadro.isci_kota_grubu("agy/gemini-4-argon-high/-"), ("agy", "Gemini 4 Argon"))
+        self.assertEqual(kadro.isci_kota_grubu("agy/gpt-oss-120b"), ("agy", "agy: Claude/GPT"))
+        self.assertEqual(kadro.isci_kota_grubu("codex/gpt-x/high"), ("codex", "Codex"))
+        self.assertIsNone(kadro.isci_kota_grubu("pahali"))
+
+    def test_claude_okumasi_varsa_kullanilir_yoksa_dokunulmaz(self):
+        sira, cikti = self.siralama()
+        self.assertEqual(dict(sira)["claude/developer/sonnet-9"], "")
+        self.assertNotIn("claude", cikti.split("Quota:")[1])  # Claude için "okuma yok" notu yazılmaz
+        self.kota(SIMDI - 1000, [
+            {"saglayici": "claude", "grup": "Claude", "pencere": "5 saat", "kullanilan": 95},
+            {"saglayici": "claude", "grup": "Claude", "pencere": "bağlam", "kullanilan": 5, "token": 1}])
+        self.assertEqual(dict(self.siralama()[0])["claude/developer/sonnet-9"], "low quota")
+
+    def test_ozet_kadro_sonrakine_gecer_dusen_yedege_iner(self):
+        self.kota(SIMDI - 1000, codex_kovalari(85, 30) + [
+            {"saglayici": "agy", "grup": "agy: Gemini", "pencere": "5 saat", "kullanilan": 0}])
+        hucre = self.ozet_satiri()
+        self.assertEqual((hucre[2], hucre[5]), ("claude/developer/sonnet-9", "agy/gemini-x-high"))
+        # Düşen işçi kadrodan gider ama tablodan silinmez: yedeğe iner (iki işçi kalınca).
+        self.defter_yaz(("codex/gpt-x/high", 5), ("claude/developer/sonnet-9", 4))
+        hucre = self.ozet_satiri()
+        self.assertEqual((hucre[2], hucre[5], hucre[7]),
+                         ("claude/developer/sonnet-9", "codex/gpt-x/high", "window, backup low quota"))
+        # İkisi de az: sıra puana göre kalır, kadro işçisi işaretlenir.
+        self.kota(SIMDI - 500, [{"saglayici": "claude", "grup": "Claude", "pencere": "5 saat", "kullanilan": 95}])
+        hucre = self.ozet_satiri()
+        self.assertEqual((hucre[2], hucre[5], hucre[7]),
+                         ("codex/gpt-x/high", "claude/developer/sonnet-9", "window, low quota"))
+        # --no-quota hepsini kapatır.
+        satir = [s for s in self.kos("summary", "--days", "7", "--no-quota").splitlines() if s.startswith("| developer | py")][0]
+        self.assertIn("| codex/gpt-x/high | 4.50 | 4 | claude/developer/sonnet-9 |", satir)
+        self.assertNotIn("low quota", satir)
+
+    def test_ucuz_ve_az_kotali_isaretleri_birlikte(self):
+        with open(self.defter, "w", encoding="utf-8") as f:
+            for isci, puan, sure in (("pahali/x/high", 4.1, 1000), ("codex/ucuz/high", 4.0, 600)):
+                for _ in range(4):
+                    f.write(json.dumps({"isci": isci, "rol": "developer", "alan": "py", "not": puan, "sure": sure,
+                                        "ts": SIMDI - 100}) + "\n")
+        self.assertEqual(self.siralama()[0][0], ("codex/ucuz/high", "faster"))
+        self.kota(SIMDI - 1000, codex_kovalari(95, 10))
+        self.assertEqual(self.siralama()[0], [("pahali/x/high", ""), ("codex/ucuz/high", "faster, low quota")])
+
+    def test_yenilenme_metni_eski_olaylarda_cozulur(self):
+        olcum = 1794400000.0  # 2026-11-12 UTC
+        agy = kadro._kota_yenilenme({"saglayici": "agy", "yenilenir": "11-12T16:07"}, olcum)
+        self.assertEqual(agy, datetime(2026, 11, 12, 16, 7, tzinfo=timezone.utc).timestamp())
+        codex = kadro._kota_yenilenme({"saglayici": "codex", "yenilenir": "11-16 15:43"}, olcum)
+        self.assertEqual(codex, datetime(2026, 11, 16, 15, 43).timestamp())  # yerel saat
+        self.assertEqual(kadro._kota_yenilenme({"yenilenir_epoch": 5.0, "yenilenir": "11-16 15:43"}, olcum), 5.0)
+        self.assertIsNone(kadro._kota_yenilenme({"yenilenir": "?"}, olcum))
+        # Yıl dönümü: aralıkta ölçülen, ocakta sıfırlanan.
+        aralik = datetime(2026, 12, 31, 22, 0, tzinfo=timezone.utc).timestamp()
+        ocak = kadro._kota_yenilenme({"saglayici": "agy", "yenilenir": "01-02T10:00"}, aralik)
+        self.assertEqual(ocak, datetime(2027, 1, 2, 10, 0, tzinfo=timezone.utc).timestamp())
+
+
+class TuzakAdayiTesti(unittest.TestCase):
+    """3'ün altındaki puan tuzak adayı dosyasına da yazılır; özet bunları öneri olarak listeler, sıraya dokunmaz."""
+
+    def setUp(self):
+        self.d = tempfile.TemporaryDirectory()
+        self.gunluk = Path(self.d.name) / "olaylar.jsonl"
+        self.defter = Path(self.d.name) / "puanlar.jsonl"
+        self.adaylar = Path(self.d.name) / "olaylar-tuzak-adaylari.jsonl"
+
+    def tearDown(self):
+        self.d.cleanup()
+
+    def puan(self, kimlik, puan, gerekce="", *ek):
+        r = calistir_olay(["score", kimlik, str(puan), gerekce, "--worker", "codex/gpt-x/high", "--role", "developer",
+                           "--field", "py", "--difficulty", "M", "--project", "P", *ek],
+                          gunluk=self.gunluk, defter=self.defter)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def satirlar(self):
+        if not self.adaylar.exists():
+            return []
+        return [json.loads(s) for s in self.adaylar.read_text(encoding="utf-8").splitlines()]
+
+    def test_dusuk_puan_aday_yazar_yeterli_puan_yazmaz(self):
+        self.puan("a1", 4, "iyi")
+        self.puan("a2", 3, "orta")
+        self.assertEqual(self.satirlar(), [])
+        self.puan("a3", 2, "testsiz çıktı")
+        (aday,) = self.satirlar()
+        self.assertEqual({k: aday[k] for k in ("proje", "isci", "rol", "alan", "zorluk", "not", "gerekce", "id")},
+                         {"proje": "P", "isci": "codex/gpt-x/high", "rol": "developer", "alan": "py", "zorluk": "M",
+                          "not": 2, "gerekce": "testsiz çıktı", "id": "a3"})
+        self.assertIsInstance(aday["ts"], float)
+        # Dosya olay günlüğünün yanındadır ve POLYCREW_EVENTS'i izler.
+        self.assertEqual(self.adaylar.parent, self.gunluk.parent)
+
+    def test_ayni_isin_yeni_puani_adayin_yerine_gecer(self):
+        self.puan("a1", 1, "ilk")
+        self.puan("a2", 2, "başka iş")
+        self.puan("a1", 2, "ikinci", "ek")
+        self.assertEqual([(a["id"], a["not"], a["gerekce"]) for a in self.satirlar()],
+                         [("a2", 2, "başka iş"), ("a1", 2, "ikinci ek")])
+        self.puan("a1", 4, "düzeldi")  # 3 ve üstü: aday silinir
+        self.assertEqual([a["id"] for a in self.satirlar()], ["a2"])
+        # Başka projenin aynı kimliği ayrı iştir.
+        calistir_olay(["score", "a2", "1", "x", "--worker", "w/x", "--project", "Q"], gunluk=self.gunluk, defter=self.defter)
+        self.assertEqual(sorted((a["proje"], a["id"]) for a in self.satirlar()), [("P", "a2"), ("Q", "a2")])
+
+    def test_gunluk_degisince_dosya_degisir(self):
+        diger = Path(self.d.name) / "baska.jsonl"
+        calistir_olay(["score", "z1", "1", "x", "--worker", "w/x"], gunluk=diger, defter=self.defter)
+        self.assertTrue((Path(self.d.name) / "baska-tuzak-adaylari.jsonl").exists())
+        self.assertFalse(self.adaylar.exists())
+
+    def test_ozet_tablodaki_iscilerin_adaylarini_listeler(self):
+        simdi = 100 * 86400
+        with open(self.defter, "w", encoding="utf-8") as f:
+            for isci, puan in (("codex/gpt-x/high", 5), ("claude/developer/sonnet-9", 4), ("agy/hic-gorunmeyen", 1)):
+                for _ in range(4):
+                    f.write(json.dumps({"isci": isci, "rol": "developer", "alan": "py", "not": puan, "ts": simdi - 100}) + "\n")
+        # Tabloda: codex (kadro) ve claude (yedek). agy tabloda yok ("Try" için de aday olamaz: puanı önselin altında).
+        def aday(ts_gun_once, isci, puan, gerekce, kimlik, rol="developer", alan="py"):
+            return json.dumps({"ts": simdi - ts_gun_once * 86400, "proje": "P", "isci": isci, "rol": rol, "alan": alan,
+                               "zorluk": "M", "not": puan, "gerekce": gerekce, "id": kimlik}, ensure_ascii=False)
+        satirlar = [aday(1, "codex/gpt-x/high", 2, "testleri atladı", "n1"),
+                    aday(40, "codex/gpt-x/high", 1, "çok eski", "n2"),  # 30 günden eski
+                    aday(2, "agy/hic-gorunmeyen", 1, "tabloda yok", "n3"),
+                    aday(3, "claude/developer/sonnet-9", 2, "uzun " + "x" * 300, "n4"),
+                    aday(0.5, "codex/gpt-x/high", 1, "en yeni", "n5", rol="gelistirici")]  # eski rol adı
+        satirlar += [aday(4 + i, "codex/gpt-x/high", 2, f"sıradan {i}", f"m{i}") for i in range(6)]
+        self.adaylar.write_text("\n".join(satirlar) + "\n", encoding="utf-8")
+        argv = ["summary", "--no-seed", "--half-life", "0", "--now", str(simdi), "--days", "7"]
+        r = calistir_kadro(argv, defter=self.defter, gunluk=self.gunluk)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        blok = r.stdout.split("Pitfall candidates")[1].splitlines()
+        self.assertIn("suggestions only", blok[0])
+        satirlar_ = blok[1:]
+        self.assertEqual(len(satirlar_), 5)  # en çok 5 satır
+        self.assertIn("codex/gpt-x/high developer/py score 1: en yeni", satirlar_[0])  # eski rol adı çevrilir, en yeni önde
+        self.assertIn("score 2: testleri atladı", satirlar_[1])
+        self.assertIn("claude/developer/sonnet-9", satirlar_[2])
+        self.assertIn("…", satirlar_[2])  # uzun gerekçe kısalır
+        self.assertNotIn("çok eski", r.stdout)
+        self.assertNotIn("tabloda yok", r.stdout)
+        # Aday dosyası tabloyu ve sırayı etkilemez.
+        self.adaylar.unlink()
+        r2 = calistir_kadro(argv, defter=self.defter, gunluk=self.gunluk)
+        self.assertNotIn("Pitfall", r2.stdout)
+        self.assertEqual(r.stdout.split("\n\nPitfall")[0], r2.stdout.strip())
+        # Bozuk satır ve eksik dosya özeti bozmaz.
+        self.adaylar.write_text("bozuk\n[1]\n", encoding="utf-8")
+        r3 = calistir_kadro(argv, defter=self.defter, gunluk=self.gunluk)
+        self.assertEqual((r3.returncode, r3.stdout), (0, r2.stdout))
 
 
 if __name__ == "__main__":

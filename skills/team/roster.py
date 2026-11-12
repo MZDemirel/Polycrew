@@ -5,10 +5,21 @@ Usage:
   roster.py suggest [--role R] [--field F] [--difficulty E|M|H] [--half-life DAYS] [--no-seed]
   roster.py summary [--days N] [--half-life DAYS] [--no-seed] [--now TS]
   roster.py structure [--days N] [--half-life DAYS] [--no-seed] [--now TS]
-  common: [--no-cost] [--providers claude,codex,agy]
+  common: [--no-cost] [--providers claude,codex,agy] [--no-quota] [--quota-low-5h PCT] [--quota-low-week PCT]
 
 `structure` prints suggestions about the shape of the team (Claude or external per role, workers to
-avoid, whether a lead is used). It changes nothing: the user decides (0011).
+avoid, whether a lead is used) and the remaining quota of each provider (newest reading in the event
+log). It changes nothing: the user decides (0011).
+
+`summary` also lists, under the table, pitfall candidates: scores below 3 of the workers in the table
+(newest first, at most 5, last 30 days; written by `events.py score` next to the event log). They are
+suggestions only: nothing reads them as rules and no ranking changes because of them.
+
+Quota (suggest, summary, structure): the newest quota reading per provider in the event log. A worker
+with under 20% left in the 5-hour window or under 10% left in the week (`--quota-low-5h`,
+`--quota-low-week`) drops below the others in its row and is marked "low quota". A missing or stale
+reading (its reset time has passed, or it is older than 5 hours / one day for the 5-hour / weekly
+window) changes nothing; a note says so. `--no-quota` turns it all off.
 
 A later score for the same job (project + id) replaces the earlier one. When two workers are within
 0.10 of each other, the clearly cheaper one (20% less quota, else 20% less time) goes first (0009).
@@ -143,6 +154,211 @@ def maliyet_sirasi(liste: list[dict]) -> list[dict]:
     return liste
 
 
+# Kota: olay günlüğündeki en yeni kota okuması. Az kotası kalan işçi satırında alta iner.
+KOTA_AZ_5SA = 20.0  # yüzde: 5 saatlik pencerede bundan az kalan işçi "low quota"
+KOTA_AZ_HAFTA = 10.0  # yüzde: haftalıkta bundan az kalan işçi "low quota"
+KOTA_ESKI = {"5 saat": 5 * 3600.0, "hafta": 24 * 3600.0}  # saniye: okuma pencerenin bunca ötesinde eski sayılır
+KOTA_ESKI_AD = {"5 saat": "5 hours", "hafta": "a day"}
+KOTA_PENCERE_AD = {"5 saat": "5 hours", "hafta": "week"}
+KOTA_SAGLAYICILAR = ("claude", "codex", "agy")
+# external-agent.sh'nin eski sürümü agy'nin ham adlarını yazıyordu; aynı kova (watch.py ile aynı).
+KOTA_ESKI_GRUP = {"Gemini Models": "agy: Gemini", "Claude and GPT models": "agy: Claude/GPT"}
+KOTA_ESKI_PENCERE = {"weekly": "hafta", "5h": "5 saat"}
+
+
+def _kota_zamani(deger) -> float | None:
+    """ISO ölçüm zamanı ya da Unix saniyesi → Unix saniyesi; çözülemezse None."""
+    try:
+        if isinstance(deger, (int, float)) and not isinstance(deger, bool):
+            return float(deger)
+        return datetime.fromisoformat(deger.replace("Z", "+00:00")).timestamp()
+    except (ValueError, TypeError, AttributeError, OverflowError):
+        return None
+
+
+def _kota_yenilenme(kova: dict, olcum: float) -> float | None:
+    """Kovanın sıfırlanma zamanı: yeni olaylarda ``yenilenir_epoch``; eskilerde kısaltılmış metinden.
+
+    Eski metin ``11-12 16:07`` (Codex, yerel saat) ya da ``11-12T16:07`` (agy, UTC) biçimindedir; yıl ölçümden gelir.
+    """
+    epoch = kova.get("yenilenir_epoch")
+    if isinstance(epoch, (int, float)) and not isinstance(epoch, bool):
+        return float(epoch)
+    metin = kova.get("yenilenir")
+    if not metin:
+        return None
+    try:
+        yil = datetime.fromtimestamp(olcum, tz=timezone.utc).year
+        for ek in (0, 1):  # yıl dönümünde sıfırlanma ertesi yıla düşer
+            gun = datetime.strptime(f"{yil + ek}-{str(metin).replace('T', ' ')}", "%Y-%m-%d %H:%M")
+            if kova.get("saglayici") == "agy":
+                gun = gun.replace(tzinfo=timezone.utc)
+            if gun.timestamp() >= olcum - 86400:
+                return gun.timestamp()
+    except (ValueError, TypeError, OverflowError, OSError):
+        pass
+    return None
+
+
+def kota_okumalari() -> dict[tuple, dict]:
+    """Olay günlüğündeki en yeni kota okuması, (sağlayıcı, grup, pencere) başına."""
+    son: dict[tuple, dict] = {}
+    for e in olay._olaylar():
+        ts = _kota_zamani(e.get("ts"))
+        if e.get("tur") != "kota" or ts is None:
+            continue
+        for k in e.get("kovalar") or []:
+            if not isinstance(k, dict):
+                continue
+            kullanilan = k.get("kullanilan")
+            if not isinstance(kullanilan, (int, float)) or isinstance(kullanilan, bool):
+                continue  # okunamayan kova (agy "?") kalan sayılmaz
+            grup = KOTA_ESKI_GRUP.get(k.get("grup"), k.get("grup"))
+            pencere = KOTA_ESKI_PENCERE.get(k.get("pencere"), k.get("pencere"))
+            if pencere not in KOTA_ESKI:
+                continue  # Claude'un "bağlam" kovası bağlam doluluğudur, kota değil
+            olcum = _kota_zamani(k.get("olcum"))
+            olcum = ts if olcum is None else olcum
+            anahtar = (k.get("saglayici"), grup, pencere)
+            if anahtar not in son or olcum >= son[anahtar]["olcum"]:
+                son[anahtar] = {"kullanilan": float(kullanilan), "olcum": olcum,
+                                "yenilenir": _kota_yenilenme(k, olcum)}
+    return son
+
+
+def isci_kota_grubu(isci: str) -> tuple[str, str | None] | None:
+    """İşçinin kotasının sağlayıcısı ve grubu; external-agent.sh'nin model → grup eşlemesi gibi.
+
+    Claude işçisinde grup None: o sağlayıcının her kovası sayılır. Tanınmayan araçta None.
+    """
+    parcalar = str(isci or "").split("/")
+    if parcalar[0] == "codex":
+        return "codex", "Codex"
+    if parcalar[0] == "agy":
+        model = parcalar[1].lower() if len(parcalar) > 1 else ""
+        if "argon" in model:
+            return "agy", "Gemini 4 Argon"  # agy'nin kendi ayrı haftalık kovası
+        return "agy", "agy: Claude/GPT" if ("claude" in model or "gpt" in model) else "agy: Gemini"
+    if parcalar[0] == "claude":
+        return "claude", None
+    return None
+
+
+class KotaBilgisi:
+    """Kota okumaları ve eşikler; ``durum(işçi)`` low / ok / stale / none döner (tanınmayan araçta None)."""
+
+    def __init__(self, okumalar: dict[tuple, dict], simdi: float,
+                 az_5sa: float = KOTA_AZ_5SA, az_hafta: float = KOTA_AZ_HAFTA):
+        self.okumalar, self.simdi, self.az_5sa, self.az_hafta = okumalar, simdi, az_5sa, az_hafta
+
+    def eski_neden(self, pencere: str, kova: dict) -> str | None:
+        """Okuma pencereden eskiyse nedeni: sıfırlanma geçti, ya da yaşı pencereyi aştı."""
+        if kova["yenilenir"] is not None and kova["olcum"] < kova["yenilenir"] <= self.simdi:
+            return "reset passed"
+        sinir = KOTA_ESKI.get(pencere, KOTA_ESKI["5 saat"])
+        if self.simdi - kova["olcum"] > sinir:
+            return f"older than {KOTA_ESKI_AD.get(pencere, '5 hours')}"
+        return None
+
+    def kovalar(self, saglayici: str, grup: str | None) -> list[tuple[str, dict]]:
+        return [(p, v) for (s, g, p), v in sorted(self.okumalar.items(), key=lambda x: tuple(map(str, x[0])))
+                if s == saglayici and (grup is None or g == grup)]
+
+    def durum(self, isci: str) -> str | None:
+        hedef = isci_kota_grubu(isci)
+        if hedef is None:
+            return None
+        kovalar = self.kovalar(*hedef)
+        if not kovalar:
+            return "none"
+        taze = [(p, v) for p, v in kovalar if not self.eski_neden(p, v)]
+        if not taze:
+            return "stale"
+        for pencere, v in taze:
+            kalan = 100.0 - v["kullanilan"]
+            if (pencere == "5 saat" and kalan < self.az_5sa) or (pencere == "hafta" and kalan < self.az_hafta):
+                return "low"
+        return "ok"
+
+    def notlar(self, isciler) -> list[str]:
+        """Sıra ayarlanamayan sağlayıcılar için tek satırlık not (okuma yok ya da eski); Claude için yazılmaz."""
+        yok, eski = set(), set()
+        for isci in isciler:
+            d, hedef = self.durum(isci), isci_kota_grubu(isci)
+            if hedef and hedef[0] != "claude":
+                (yok if d == "none" else eski if d == "stale" else set()).add(hedef[0])
+        parcalar = []
+        if yok:
+            parcalar.append(f"no quota reading for {', '.join(sorted(yok))}")
+        if eski:
+            parcalar.append(f"stale quota reading for {', '.join(sorted(eski))}")
+        if not parcalar:
+            return []
+        return [f"Quota: {'; '.join(parcalar)}; the order is not adjusted for them "
+                "(run external-agent.sh quota to refresh)."]
+
+
+ADAY_GUN = 30  # gün: bundan eski tuzak adayı özette görünmez
+ADAY_SATIR = 5  # özette en çok bu kadar aday satırı
+ADAY_GEREKCE = 110  # karakter: gerekçe bu kadar kısaltılır
+
+
+def adaylari_oku() -> list[dict]:
+    """Tuzak adayları (events.py score, 3'ün altı); dosya yoksa ya da bozuksa boş. Yalnız öneridir."""
+    adaylar: dict[tuple, dict] = {}
+    try:
+        satirlar = olay.adaylar_dosyasi().read_text(encoding="utf-8", errors="ignore").splitlines()
+    except OSError:
+        return []
+    for satir in satirlar:
+        try:
+            a = json.loads(satir)
+        except ValueError:
+            continue
+        if isinstance(a, dict) and a.get("isci"):
+            adaylar[(a.get("proje"), str(a.get("id")))] = olay.kayit_adlari(a)  # aynı işin sonraki puanı geçerli
+    return list(adaylar.values())
+
+
+def aday_satirlari(adaylar: list[dict], isciler, simdi: float) -> list[str]:
+    """Tabloda geçen işçilerin son ``ADAY_GUN`` gündeki tuzak adayları, en yeni önde, en çok ``ADAY_SATIR``."""
+    uygun = []
+    for a in adaylar:
+        try:
+            ts = float(a.get("ts"))
+        except (TypeError, ValueError):
+            continue
+        if a.get("isci") in isciler and simdi - ADAY_GUN * 86400 <= ts <= simdi:
+            uygun.append((ts, a))
+    uygun.sort(key=lambda x: -x[0])
+    satirlar = []
+    for ts, a in uygun[:ADAY_SATIR]:
+        gerekce = " ".join(str(a.get("gerekce") or "").split())
+        if len(gerekce) > ADAY_GEREKCE:
+            gerekce = gerekce[:ADAY_GEREKCE - 1].rstrip() + "…"
+        yer = "/".join(str(a[k]) for k in ("rol", "alan") if a.get(k))
+        puan = a.get("not")
+        puan = int(puan) if isinstance(puan, float) and puan.is_integer() else puan
+        satirlar.append(f"- {format_ts(ts)} {a['isci']}" + (f" {yer}" if yer else "") + f" score {puan}"
+                        + (f": {gerekce}" if gerekce else ""))
+    if not satirlar:
+        return []
+    return ["Pitfall candidates (suggestions only, newest first; nothing reads them as rules):", *satirlar]
+
+
+def kota_siralama(liste: list[dict], kota: KotaBilgisi | None) -> list[dict]:
+    """Az kotası kalan işçileri satırın sonuna alır (kendi aralarındaki sıra kalır) ve "low quota" yazar."""
+    if kota is None:
+        return liste
+    az = [i for i in liste if kota.durum(i["isci"]) == "low"]
+    if not az:
+        return liste
+    for i in az:
+        i["kota_az"] = True
+        i["durum"] = f"{i['durum']}, low quota" if i["durum"] else "low quota"
+    return [i for i in liste if not i.get("kota_az")] + az
+
+
 YARI_OMUR = 30.0  # gün: bu yaştaki puan yarım sayar (0008)
 AZ_VERI = 3.0  # etkin n bunun altındaysa "little data"
 
@@ -178,7 +394,7 @@ def kayit_filtrele(kayit: dict, rol: str | None, alan: str | None, zorluk: str |
 
 
 def isci_istatistik(kayitlar: list[dict], simdi: float | None = None,
-                    yari_omur: float = YARI_OMUR) -> list[dict]:
+                    yari_omur: float = YARI_OMUR, kota_bilgi: KotaBilgisi | None = None) -> list[dict]:
     gruplar: dict[str, dict] = {}
     for k in kayitlar:
         isci = k.get("isci")
@@ -246,7 +462,7 @@ def isci_istatistik(kayitlar: list[dict], simdi: float | None = None,
         })
 
     sonuclar.sort(key=lambda x: (x["duzeltilmis"], x["n"], x["ortalama"]), reverse=True)
-    return maliyet_sirasi(sonuclar)
+    return kota_siralama(maliyet_sirasi(sonuclar), kota_bilgi)
 
 
 def format_ts(ts: float | None) -> str:
@@ -292,7 +508,7 @@ def tablo_olustur_filtreli(istatistikler: list[dict]) -> str:
 
 
 def tablo_olustur_filtresiz(kayitlar: list[dict], simdi: float | None = None,
-                            yari_omur: float = YARI_OMUR) -> str:
+                            yari_omur: float = YARI_OMUR, kota: KotaBilgisi | None = None) -> str:
     gruplar: dict[tuple[str, str], list[dict]] = {}
     for k in kayitlar:
         rol = k.get("rol") or "—"
@@ -304,7 +520,7 @@ def tablo_olustur_filtresiz(kayitlar: list[dict], simdi: float | None = None,
 
     grup_listesi = []
     for (rol, alan), grup_kayitlari in gruplar.items():
-        istatistikler = isci_istatistik(grup_kayitlari, simdi, yari_omur)
+        istatistikler = isci_istatistik(grup_kayitlari, simdi, yari_omur, kota)
         if istatistikler:
             en_iyi = istatistikler[0]
             grup_listesi.append((rol, alan, en_iyi))
@@ -332,12 +548,33 @@ def ortak_bayraklar(parser: argparse.ArgumentParser) -> None:
                         help="do not let the cheaper of two near-equal workers go first")
     parser.add_argument("--providers", dest="saglayicilar", type=str, default=None,
                         help="installed external tools, comma separated (default: detect codex and agy on PATH)")
+    parser.add_argument("--no-quota", dest="kotasiz", action="store_true",
+                        help="do not read the quota readings of the event log")
+    parser.add_argument("--quota-low-5h", dest="kota_az_5sa", type=float, default=KOTA_AZ_5SA,
+                        help=f"a worker with less than this percent left in the 5-hour window counts as low (default: {KOTA_AZ_5SA:g})")
+    parser.add_argument("--quota-low-week", dest="kota_az_hafta", type=float, default=KOTA_AZ_HAFTA,
+                        help=f"a worker with less than this percent left in the week counts as low (default: {KOTA_AZ_HAFTA:g})")
 
 
 def ortak_uygula(args, kayitlar: list[dict]) -> tuple[list[dict], list[str]]:
     global MALIYET
     MALIYET = not args.maliyetsiz
     return saglayici_suz(kayitlar, kurulu_saglayicilar(args.saglayicilar))
+
+
+def kota_kur(args, simdi: float) -> KotaBilgisi | None:
+    """``--no-quota`` yoksa olay günlüğündeki okumalardan kota bilgisi; günlük okunamazsa None."""
+    if args.kotasiz:
+        return None
+    try:
+        return KotaBilgisi(kota_okumalari(), simdi, args.kota_az_5sa, args.kota_az_hafta)
+    except Exception:  # noqa: BLE001 - kota yalnız bir ipucudur; sıralama onsuz da çalışır
+        return None
+
+
+def notlari_yaz(kota: KotaBilgisi | None, isciler) -> None:
+    for satir in kota.notlar(isciler) if kota else []:
+        print(f"\n{satir}")
 
 
 def disarida_yaz(disarida: list[str]) -> None:
@@ -366,6 +603,7 @@ def cmd_oneri(argv: list[str]) -> int:
         print("No score records found.")
         disarida_yaz(disarida)
         return 0
+    kota = kota_kur(args, simdi)
 
     filtre_var = any([args.rol is not None, args.alan is not None, args.zorluk is not None])
     if filtre_var:
@@ -373,9 +611,11 @@ def cmd_oneri(argv: list[str]) -> int:
         if not uygun_kayitlar:
             print("No score records match the filter.")
         else:
-            print(tablo_olustur_filtreli(isci_istatistik(uygun_kayitlar, simdi, args.yari_omur)))
+            print(tablo_olustur_filtreli(isci_istatistik(uygun_kayitlar, simdi, args.yari_omur, kota)))
+            notlari_yaz(kota, {k["isci"] for k in uygun_kayitlar})
     else:
-        print(tablo_olustur_filtresiz(kayitlar, simdi, args.yari_omur))
+        print(tablo_olustur_filtresiz(kayitlar, simdi, args.yari_omur, kota))
+        notlari_yaz(kota, {k["isci"] for k in kayitlar})
     disarida_yaz(disarida)
     return 0
 
@@ -403,6 +643,8 @@ def tablo_olustur_ozet(
     gun: int = 7,
     simdi: float | None = None,
     yari_omur: float = YARI_OMUR,
+    kota: KotaBilgisi | None = None,
+    adaylar: list[dict] | None = None,
 ) -> str:
     if not kayitlar:
         return "No records."
@@ -450,6 +692,7 @@ def tablo_olustur_ozet(
         "|---|---|---|---|---|---|---|---|---|",
     ]
 
+    gorunen: set[str] = set()  # tabloda geçen işçiler: kota notu ve tuzak adayları bunlara bakar
     for rol, alan in sirali_ciftler:
         # 0014: sıralama bütün geçmişten (yarı ömürle sönümlü); pencere yalnız dayanağı belirler.
         # Önceden yalnız penceredeki puanlar sayılıyordu: tek bir yeni puan 11 puanlı işçiyi tablodan atıyordu.
@@ -459,6 +702,7 @@ def tablo_olustur_ozet(
             continue
         t_ist.sort(key=lambda x: (-x["duzeltilmis"], -x["n"], -(x["son_ts"] or 0), x["isci"]))
         maliyet_sirasi(t_ist)
+        t_ist = kota_siralama(t_ist, kota)  # az kotalı işçi yedeğe iner
         kadro = t_ist[0]
         kadro_isci = kadro["isci"]
         puan = format_sayi(kadro["duzeltilmis"], 2)
@@ -470,6 +714,10 @@ def tablo_olustur_ozet(
             dayanak = "stale"
         if kadro.get("neden"):
             dayanak += f", {kadro['neden']}"
+        if kadro.get("kota_az"):
+            dayanak += ", low quota"
+        elif len(t_ist) >= 2 and t_ist[1].get("kota_az"):
+            dayanak += ", backup low quota"
         if len(t_ist) >= 2:
             yedek_isci = t_ist[1]["isci"]
             yedek_puani = format_sayi(t_ist[1]["duzeltilmis"], 2)
@@ -478,6 +726,7 @@ def tablo_olustur_ozet(
             yedek_puani = "—"
 
         dene = dene_adayi(rol, alan, {kadro_isci, yedek_isci})
+        gorunen.update({kadro_isci, yedek_isci, dene} - {"—"})
         satirlar.append(
             f"| {rol} | {alan} | {kadro_isci} | {puan} | {n} | {yedek_isci} | {yedek_puani} | {dayanak} | {dene} |"
         )
@@ -489,7 +738,9 @@ def tablo_olustur_ozet(
     tarih_str = dt.strftime("%Y-%m-%d")
     baslik = f"Roster summary: last {gun} days, {k_sayisi} records (generated: {tarih_str})"
     tablo = "\n".join(satirlar)
-    return f"{baslik}\n\n{tablo}"
+    alt = kota.notlar(gorunen) if kota else []
+    adaylar_metni = "\n".join(aday_satirlari(adaylar or [], gorunen, simdi))
+    return "\n\n".join([baslik, tablo, *alt, *([adaylar_metni] if adaylar_metni else [])])
 
 
 YAPI_FARK = 0.25  # iki taraf arasında bundan büyük fark "prefer" demektir (0011)
@@ -523,9 +774,9 @@ def yapi_satirlari(kayitlar: list[dict], simdi: float, yari_omur: float) -> tupl
             else:
                 oneri = "equal: external first, keep Claude quota"
         elif c_var:
-            oneri = "only Claude measured"
+            oneri = "external: little data" if d else "only Claude measured"
         elif d_var:
-            oneri = "only external measured"
+            oneri = "Claude: little data" if c else "only external measured"
         else:
             oneri = "not enough data"
         satirlar.append({"rol": rol, "claude": c, "dis": d, "oneri": oneri})
@@ -558,7 +809,35 @@ def takim_kullanimi(simdi: float, gun: int) -> dict | None:
     return {"is": len(isler), "lider": lider, "eszamanli": en_cok}
 
 
-def tablo_olustur_yapi(kayitlar: list[dict], simdi: float, yari_omur: float, gun: int) -> str:
+def kota_satirlari(kota: KotaBilgisi, saglayicilar) -> list[str]:
+    """Sağlayıcı başına kalan kota: günlükteki en yeni okuma; eskiyse "stale", azsa "low" (0011 yapı çıktısı)."""
+    satirlar = []
+    for saglayici in KOTA_SAGLAYICILAR:
+        if saglayici not in saglayicilar:
+            continue
+        gruplar: dict[str | None, list[str]] = {}
+        for (s, grup, pencere), v in sorted(kota.okumalar.items(), key=lambda x: tuple(map(str, x[0]))):
+            if s != saglayici:
+                continue
+            kalan = 100.0 - v["kullanilan"]
+            etiket = f"{KOTA_PENCERE_AD.get(pencere, pencere)} {format_kota(kalan)} left"
+            neden = kota.eski_neden(pencere, v)
+            if neden:
+                etiket += f" (stale: {neden})"
+            elif (pencere == "5 saat" and kalan < kota.az_5sa) or (pencere == "hafta" and kalan < kota.az_hafta):
+                etiket += " (low)"
+            gruplar.setdefault(grup, []).append(etiket)
+        if not gruplar:
+            satirlar.append(f"- {saglayici}: no reading")
+        for grup, parcalar in gruplar.items():
+            ad = saglayici if grup in (None, "Codex") or saglayici == "claude" and len(gruplar) == 1 else (
+                grup if str(grup).startswith(saglayici) else f"{saglayici}: {grup}")
+            satirlar.append(f"- {ad}: {', '.join(parcalar)}")
+    return satirlar
+
+
+def tablo_olustur_yapi(kayitlar: list[dict], simdi: float, yari_omur: float, gun: int,
+                       kota: KotaBilgisi | None = None, saglayicilar=KOTA_SAGLAYICILAR) -> str:
     satirlar, kacin = yapi_satirlari(kayitlar, simdi, yari_omur)
 
     def hucre(i: dict | None) -> str:
@@ -582,6 +861,9 @@ def tablo_olustur_yapi(kayitlar: list[dict], simdi: float, yari_omur: float, gun
                      f"running at once, {kullanim['lider']} lead(s) started.")
         if kullanim["lider"] == 0:
             cikti.append("The small team (PM → workers) is what is actually used; a lead is not needed at this size.")
+    if kota:
+        cikti.append("\nQuota left (newest reading in the event log):")
+        cikti += kota_satirlari(kota, saglayicilar)
     return "\n".join(cikti)
 
 
@@ -596,7 +878,8 @@ def cmd_yapi(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     simdi = args.simdi if args.simdi is not None else time.time()
     kayitlar, disarida = ortak_uygula(args, kayitlari_oku(tohumsuz=args.tohumsuz))
-    print(tablo_olustur_yapi(kayitlar, simdi, args.yari_omur, args.gun))
+    kurulu = {"claude", *(kurulu_saglayicilar(args.saglayicilar) or set())}
+    print(tablo_olustur_yapi(kayitlar, simdi, args.yari_omur, args.gun, kota_kur(args, simdi), kurulu))
     disarida_yaz(disarida)
     return 0
 
@@ -610,9 +893,11 @@ def cmd_ozet(argv: list[str]) -> int:
                         help="days after which a score counts half (default: 30; 0 = no fading)")
     ortak_bayraklar(parser)
     args = parser.parse_args(argv)
+    simdi = args.simdi if args.simdi is not None else time.time()
 
     kayitlar, disarida = ortak_uygula(args, kayitlari_oku(tohumsuz=args.tohumsuz))
-    cikti = tablo_olustur_ozet(kayitlar, gun=args.gun, simdi=args.simdi, yari_omur=args.yari_omur)
+    cikti = tablo_olustur_ozet(kayitlar, gun=args.gun, simdi=simdi, yari_omur=args.yari_omur,
+                               kota=kota_kur(args, simdi), adaylar=adaylari_oku())
     print(cikti)
     disarida_yaz(disarida)
     return 0
@@ -624,6 +909,9 @@ def main(argv: list[str]) -> int:
         return 2
 
     cmd = argv[0]
+    if cmd in ("-h", "--help"):
+        print(__doc__)
+        return 0
     if cmd == "suggest":
         return cmd_oneri(argv[1:])
     if cmd == "structure":

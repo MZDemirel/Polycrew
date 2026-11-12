@@ -102,17 +102,32 @@ else:
         if son:
             break
     ETIKET = {"5 saat": "5 hours", "hafta": "week"}
+    # Kayıt kendi penceresinden eskiyse (sıfırlanma geçti, ya da yaşı 5 saati / haftalıkta bir günü aştı) "stale" yazılır.
+    # Codex'i yenilemek için model koşusu başlatılmaz: kayıt ancak codex kullanılınca tazelenir (0014).
+    SINIR = {"5 saat": (5 * 3600, "5 hours"), "hafta": (24 * 3600, "a day")}
+    def olcum_zamani(t):
+        try:
+            return datetime.datetime.fromisoformat(t.replace("Z", "+00:00")).timestamp()
+        except (ValueError, TypeError, AttributeError):
+            return None
     if son:
         ts, rl = son
+        olcum = olcum_zamani(ts)
         for k, ad in (("primary", "5 saat"), ("secondary", "hafta")):
             b = rl.get(k) or {}
             r = datetime.datetime.fromtimestamp(b.get("resets_at", 0)).strftime("%m-%d %H:%M")
-            yaz(f"codex   {ETIKET[ad]:7s} used {b.get('used_percent')}%  resets {r}  (measured {ts})")
             # Son kayıt eski bir pencereden kalmış olabilir: yenilenme saati geçtiyse yeni pencere 0'dan başlar (0010).
             gecti = bool(b.get("resets_at")) and b["resets_at"] <= time.time()
-            kovalar.append({"saglayici": "codex", "grup": "Codex", "pencere": ad,
-                            "kullanilan": b.get("used_percent"), "hassas": 0.0 if gecti else b.get("used_percent"),
-                            "yenilenir": r, "olcum": ts})
+            eski = "reset passed" if gecti else (
+                f"older than {SINIR[ad][1]}" if olcum is not None and time.time() - olcum > SINIR[ad][0] else None)
+            yaz(f"codex   {ETIKET[ad]:7s} used {b.get('used_percent')}%  resets {r}  (measured {ts})"
+                + (f"  stale ({eski})" if eski else ""))
+            kova = {"saglayici": "codex", "grup": "Codex", "pencere": ad,
+                    "kullanilan": b.get("used_percent"), "hassas": 0.0 if gecti else b.get("used_percent"),
+                    "yenilenir": r, "olcum": ts}
+            if b.get("resets_at"):
+                kova["yenilenir_epoch"] = b["resets_at"]  # kesin sıfırlanma zamanı: roster.py bayatlığı bundan karar verir
+            kovalar.append(kova)
     else:
         yaz("codex   no record")
 json.dump(kovalar, open(os.environ["KOTA_DOSYA"], "w"))
@@ -128,7 +143,7 @@ kota_agy() {
   local j
   j=$(cd /tmp && zaman_sinirli 60 agy -p "/quota" --output-format json < /dev/null 2>/dev/null)
   KOTA_DOSYA=$1 python3 - "$j" <<'PY'
-import json, os, sys
+import datetime, json, os, sys
 sessiz = os.environ.get("KOTA_SESSIZ") == "1"
 kovalar = []
 try:
@@ -157,9 +172,15 @@ for g in gruplar if isinstance(gruplar, list) else []:
         kalan = None if rf is None else round(100 * rf)
         if not sessiz:
             print(f"agy     {grup[:22]:22s} {etiket:7s} left {'?' if kalan is None else kalan}%  resets {yenilenir}")
-        kovalar.append({"saglayici": "agy", "grup": grup, "pencere": pencere,
-                        "kullanilan": None if kalan is None else 100 - kalan,
-                        "hassas": None if rf is None else round(100 * (1 - rf), 1), "yenilenir": yenilenir})
+        kova = {"saglayici": "agy", "grup": grup, "pencere": pencere,
+                "kullanilan": None if kalan is None else 100 - kalan,
+                "hassas": None if rf is None else round(100 * (1 - rf), 1), "yenilenir": yenilenir}
+        try:
+            kova["yenilenir_epoch"] = datetime.datetime.fromisoformat(
+                str(b["reset_time"]).replace("Z", "+00:00")).timestamp()
+        except (KeyError, ValueError, TypeError):
+            pass
+        kovalar.append(kova)
 json.dump(kovalar, open(os.environ["KOTA_DOSYA"], "w"))
 PY
 }
