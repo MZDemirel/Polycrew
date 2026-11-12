@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 KOK = Path(__file__).resolve().parent.parent
@@ -686,6 +687,171 @@ class KadroVePuanTesti(unittest.TestCase):
                            capture_output=True, text=True, env=env, check=False)
         self.assertEqual(r.returncode, 0)
         self.assertTrue(self.gunluk.exists() and self.defter.exists())
+
+
+SIMDI = 100000  # kota testlerinde --now; okumalar bundan 1000 sn önce (taze) ya da saatler önce (bayat)
+
+
+def codex_kovalari(bes_saat_kullanilan, hafta_kullanilan, **ek):
+    return [{"saglayici": "codex", "grup": "Codex", "pencere": "5 saat", "kullanilan": bes_saat_kullanilan, **ek},
+            {"saglayici": "codex", "grup": "Codex", "pencere": "hafta", "kullanilan": hafta_kullanilan, **ek}]
+
+
+class KotaSiralamaTesti(unittest.TestCase):
+    """Az kotası kalan işçi satırda alta iner ve "low quota" yazılır; okuma yok ya da bayatsa sıra aynı kalır."""
+
+    def setUp(self):
+        self.d = tempfile.TemporaryDirectory()
+        self.gunluk = Path(self.d.name) / "olaylar.jsonl"
+        self.defter = Path(self.d.name) / "puanlar.jsonl"
+        self.defter_yaz(("codex/gpt-x/high", 5), ("claude/developer/sonnet-9", 4),
+                        ("agy/gemini-x-high", 3.2), ("agy/claude-opus-x", 3))
+
+    def tearDown(self):
+        self.d.cleanup()
+
+    def defter_yaz(self, *isciler):
+        with open(self.defter, "w", encoding="utf-8") as f:
+            for isci, puan in isciler:
+                for _ in range(4):
+                    f.write(json.dumps({"isci": isci, "rol": "developer", "alan": "py", "not": puan,
+                                        "ts": SIMDI - 100}) + "\n")
+
+    def kota(self, ts, kovalar):
+        with open(self.gunluk, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"tur": "kota", "ts": ts, "kovalar": kovalar}) + "\n")
+
+    def kos(self, *argv):
+        r = calistir_kadro([*argv, "--no-seed", "--half-life", "0", "--now", str(SIMDI)],
+                           defter=self.defter, gunluk=self.gunluk)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+    def siralama(self, *ek):
+        """suggest tablosunun (işçi, durum) sırası ve bütün çıktı."""
+        cikti = self.kos("suggest", "--role", "developer", *ek)
+        satirlar = [[h.strip() for h in s.split("|")[1:-1]] for s in cikti.splitlines()
+                    if s.startswith("| ") and not s.startswith("| Worker")]
+        return [(s[0], s[-1]) for s in satirlar], cikti
+
+    def ozet_satiri(self):
+        satir = [s for s in self.kos("summary", "--days", "7").splitlines() if s.startswith("| developer | py")][0]
+        return [h.strip() for h in satir.split("|")[1:-1]]  # rol, alan, kadro, puan, n, yedek, yedek puanı, dayanak, dene
+
+    def test_az_kalan_isci_alta_iner_ve_isaretlenir(self):
+        self.kota(SIMDI - 1000, codex_kovalari(85, 30))  # 5 saatte %15 kaldı
+        sira, _ = self.siralama()
+        self.assertEqual([i for i, _ in sira][:2], ["claude/developer/sonnet-9", "agy/gemini-x-high"])
+        self.assertEqual(sira[-1], ("codex/gpt-x/high", "low quota"))
+        # Eşik kesin "altı": tam %20 kalan düşmez; haftalıkta %10'dan az kalan düşer.
+        self.kota(SIMDI - 900, codex_kovalari(80, 30))
+        self.assertEqual(self.siralama()[0][0], ("codex/gpt-x/high", ""))
+        self.kota(SIMDI - 800, codex_kovalari(10, 91))
+        self.assertEqual(self.siralama()[0][-1], ("codex/gpt-x/high", "low quota"))
+
+    def test_esik_bayragi(self):
+        self.kota(SIMDI - 1000, codex_kovalari(85, 30))
+        self.assertEqual(self.siralama("--quota-low-5h", "10")[0][0][0], "codex/gpt-x/high")
+        self.assertEqual(self.siralama("--quota-low-5h", "16")[0][-1][0], "codex/gpt-x/high")
+        self.kota(SIMDI - 900, codex_kovalari(10, 91))
+        self.assertEqual(self.siralama("--quota-low-week", "5")[0][0][0], "codex/gpt-x/high")
+
+    def test_no_quota_sirayi_degistirmez(self):
+        self.kota(SIMDI - 1000, codex_kovalari(99, 99))
+        sira, cikti = self.siralama("--no-quota")
+        self.assertEqual(sira[0], ("codex/gpt-x/high", ""))
+        self.assertNotIn("Quota:", cikti)
+
+    def test_okuma_yoksa_ya_da_bayatsa_sira_ayni_not_var(self):
+        sira, cikti = self.siralama()  # günlük boş
+        self.assertEqual(sira[0], ("codex/gpt-x/high", ""))
+        self.assertIn("Quota: no quota reading for agy, codex;", cikti)
+        # 6 saat önceki okumada 5 saatlik kova bayat, haftalık taze ve yeterli: sıra aynı, Codex için not yok.
+        self.kota(SIMDI - 6 * 3600, codex_kovalari(99, 30))
+        sira, cikti = self.siralama()
+        self.assertEqual(sira[0], ("codex/gpt-x/high", ""))
+        self.assertNotIn("codex", cikti.split("Quota:")[1])
+        # Bir günden eski haftalık da bayat: Codex'in iki kovası da bayatsa not "stale" der.
+        self.gunluk.unlink()
+        self.kota(SIMDI - 30 * 3600, codex_kovalari(99, 99))
+        sira, cikti = self.siralama()
+        self.assertEqual(sira[0], ("codex/gpt-x/high", ""))
+        self.assertIn("stale quota reading for codex", cikti)
+
+    def test_sifirlanma_gecmisse_bayat(self):
+        # Ölçümden sonra penceresi yenilenmiş: %99 dolu görünse de sayılmaz.
+        self.kota(SIMDI - 1000, codex_kovalari(99, 99, yenilenir_epoch=SIMDI - 500))
+        sira, cikti = self.siralama()
+        self.assertEqual(sira[0], ("codex/gpt-x/high", ""))
+        self.assertIn("stale quota reading for codex", cikti)
+        # Sıfırlanma gelecekteyse sayılır.
+        self.kota(SIMDI - 400, codex_kovalari(99, 99, yenilenir_epoch=SIMDI + 500))
+        self.assertEqual(self.siralama()[0][-1], ("codex/gpt-x/high", "low quota"))
+
+    def test_agy_modelin_grubuna_bakar(self):
+        self.kota(SIMDI - 1000, [
+            {"saglayici": "agy", "grup": "agy: Claude/GPT", "pencere": "5 saat", "kullanilan": 100},
+            {"saglayici": "agy", "grup": "agy: Gemini", "pencere": "5 saat", "kullanilan": 0}])
+        durum = dict(self.siralama()[0])
+        self.assertEqual((durum["agy/claude-opus-x"], durum["agy/gemini-x-high"]), ("low quota", ""))
+        self.kota(SIMDI - 900, [{"saglayici": "agy", "grup": "agy: Gemini", "pencere": "5 saat", "kullanilan": 100}])
+        self.assertEqual(dict(self.siralama()[0])["agy/gemini-x-high"], "low quota")
+        self.assertEqual(kadro.isci_kota_grubu("agy/gemini-4-argon-high/-"), ("agy", "Gemini 4 Argon"))
+        self.assertEqual(kadro.isci_kota_grubu("agy/gpt-oss-120b"), ("agy", "agy: Claude/GPT"))
+        self.assertEqual(kadro.isci_kota_grubu("codex/gpt-x/high"), ("codex", "Codex"))
+        self.assertIsNone(kadro.isci_kota_grubu("pahali"))
+
+    def test_claude_okumasi_varsa_kullanilir_yoksa_dokunulmaz(self):
+        sira, cikti = self.siralama()
+        self.assertEqual(dict(sira)["claude/developer/sonnet-9"], "")
+        self.assertNotIn("claude", cikti.split("Quota:")[1])  # Claude için "okuma yok" notu yazılmaz
+        self.kota(SIMDI - 1000, [
+            {"saglayici": "claude", "grup": "Claude", "pencere": "5 saat", "kullanilan": 95},
+            {"saglayici": "claude", "grup": "Claude", "pencere": "bağlam", "kullanilan": 5, "token": 1}])
+        self.assertEqual(dict(self.siralama()[0])["claude/developer/sonnet-9"], "low quota")
+
+    def test_ozet_kadro_sonrakine_gecer_dusen_yedege_iner(self):
+        self.kota(SIMDI - 1000, codex_kovalari(85, 30) + [
+            {"saglayici": "agy", "grup": "agy: Gemini", "pencere": "5 saat", "kullanilan": 0}])
+        hucre = self.ozet_satiri()
+        self.assertEqual((hucre[2], hucre[5]), ("claude/developer/sonnet-9", "agy/gemini-x-high"))
+        # Düşen işçi kadrodan gider ama tablodan silinmez: yedeğe iner (iki işçi kalınca).
+        self.defter_yaz(("codex/gpt-x/high", 5), ("claude/developer/sonnet-9", 4))
+        hucre = self.ozet_satiri()
+        self.assertEqual((hucre[2], hucre[5], hucre[7]),
+                         ("claude/developer/sonnet-9", "codex/gpt-x/high", "window, backup low quota"))
+        # İkisi de az: sıra puana göre kalır, kadro işçisi işaretlenir.
+        self.kota(SIMDI - 500, [{"saglayici": "claude", "grup": "Claude", "pencere": "5 saat", "kullanilan": 95}])
+        hucre = self.ozet_satiri()
+        self.assertEqual((hucre[2], hucre[5], hucre[7]),
+                         ("codex/gpt-x/high", "claude/developer/sonnet-9", "window, low quota"))
+        # --no-quota hepsini kapatır.
+        satir = [s for s in self.kos("summary", "--days", "7", "--no-quota").splitlines() if s.startswith("| developer | py")][0]
+        self.assertIn("| codex/gpt-x/high | 4.50 | 4 | claude/developer/sonnet-9 |", satir)
+        self.assertNotIn("low quota", satir)
+
+    def test_ucuz_ve_az_kotali_isaretleri_birlikte(self):
+        with open(self.defter, "w", encoding="utf-8") as f:
+            for isci, puan, sure in (("pahali/x/high", 4.1, 1000), ("codex/ucuz/high", 4.0, 600)):
+                for _ in range(4):
+                    f.write(json.dumps({"isci": isci, "rol": "developer", "alan": "py", "not": puan, "sure": sure,
+                                        "ts": SIMDI - 100}) + "\n")
+        self.assertEqual(self.siralama()[0][0], ("codex/ucuz/high", "faster"))
+        self.kota(SIMDI - 1000, codex_kovalari(95, 10))
+        self.assertEqual(self.siralama()[0], [("pahali/x/high", ""), ("codex/ucuz/high", "faster, low quota")])
+
+    def test_yenilenme_metni_eski_olaylarda_cozulur(self):
+        olcum = 1794400000.0  # 2026-11-12 UTC
+        agy = kadro._kota_yenilenme({"saglayici": "agy", "yenilenir": "11-12T16:07"}, olcum)
+        self.assertEqual(agy, datetime(2026, 11, 12, 16, 7, tzinfo=timezone.utc).timestamp())
+        codex = kadro._kota_yenilenme({"saglayici": "codex", "yenilenir": "11-16 15:43"}, olcum)
+        self.assertEqual(codex, datetime(2026, 11, 16, 15, 43).timestamp())  # yerel saat
+        self.assertEqual(kadro._kota_yenilenme({"yenilenir_epoch": 5.0, "yenilenir": "11-16 15:43"}, olcum), 5.0)
+        self.assertIsNone(kadro._kota_yenilenme({"yenilenir": "?"}, olcum))
+        # Yıl dönümü: aralıkta ölçülen, ocakta sıfırlanan.
+        aralik = datetime(2026, 12, 31, 22, 0, tzinfo=timezone.utc).timestamp()
+        ocak = kadro._kota_yenilenme({"saglayici": "agy", "yenilenir": "01-02T10:00"}, aralik)
+        self.assertEqual(ocak, datetime(2027, 1, 2, 10, 0, tzinfo=timezone.utc).timestamp())
 
 
 if __name__ == "__main__":
