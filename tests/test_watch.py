@@ -511,3 +511,101 @@ class OfisYerlesim(unittest.TestCase):
         self.assertIn('<canvas id="ofis"', html)
         self.assertIn("function ofisYerlesim", html)
         self.assertIn('"id": "k1"', html)
+
+
+@unittest.skipUnless(NODE, "node yok: ofis etiketleri Node ile sınanır")
+class OfisEtiket(unittest.TestCase):
+    """0015: masadaki işçinin kısa etiketi (model kısaltması; aynısı birden çoksa numara)."""
+
+    def etiketler(self, isler):
+        sayfa = (KOK / "skills" / "watch" / "page.html").read_text(encoding="utf-8")
+        mantik = re.search(r"/\*OFIS-MANTIK\*/(.*?)/\*OFIS-MANTIK-SON\*/", sayfa, re.S).group(1)
+        betik = mantik + "\nconst y = ofisYerlesim(JSON.parse(process.argv.at(-1)));\n" \
+            "console.log(JSON.stringify({claude: y.claude.map((k) => k.etiket), dis: y.dis.map((k) => k.etiket)," \
+            " kisa: ['gpt-6.1-sol', 'gemini-3.8-flash-high', 'claude-opus-5-5-high', 'sonnet', '', null].map(ofisKisaltma)}));\n"
+        r = subprocess.run([NODE, "-e", betik, "--", json.dumps(isler)], capture_output=True, text=True, check=False)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def test_ayni_model_numarayla_ayrilir(self):
+        def i(kimlik, kaynak, model, bas):
+            return {"id": kimlik, "kaynak": kaynak, "saglayici": kaynak, "durum": "calisiyor", "rol": "yazar",
+                    "model": model, "baslangic": bas}
+        y = self.etiketler([i("a", "codex", "gpt-6.1-sol", 1), i("b", "codex", "gpt-6.1-sol", 2),
+                            i("c", "codex", "gpt-6-astra", 3), i("d", "codex", "gpt-6.1-sol", 4),
+                            i("e", "claude", "claude-sonnet-5-5", 5), i("f", "claude", None, 6)])
+        self.assertEqual(y["dis"], ["sol1", "sol2", "astra", "sol3"])
+        self.assertEqual(y["claude"], ["sonnet", ""])
+        self.assertEqual(y["kisa"], ["sol", "flash", "opus", "sonnet", "", ""])
+
+
+@unittest.skipUnless(NODE, "node yok: çizelge mantığı Node ile sınanır")
+class Cizelge(unittest.TestCase):
+    """0015: işçi başına şerit ve genişliğe göre eksen (sayfadaki CIZELGE-MANTIK bloğu)."""
+
+    def kos(self, ifade, veri):
+        sayfa = (KOK / "skills" / "watch" / "page.html").read_text(encoding="utf-8")
+        mantik = re.search(r"/\*CIZELGE-MANTIK\*/(.*?)/\*CIZELGE-MANTIK-SON\*/", sayfa, re.S).group(1)
+        betik = mantik + "\nconst v = JSON.parse(process.argv.at(-1));\nconsole.log(JSON.stringify(" + ifade + "));\n"
+        r = subprocess.run([NODE, "-e", betik, "--", json.dumps(veri)], capture_output=True, text=True, check=False)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def seritler(self, isler, simdi=1000):
+        return self.kos("cizelgeSeritler(v.isler, v.simdi, (i) => i.model).map((s) => ({ad: s.ad, satir: s.satir, "
+                        "calisan: s.calisan, cubuklar: s.cubuklar.map((c) => [c.id, c.b, c.e, c.satir])}))",
+                        {"isler": isler, "simdi": simdi})
+
+    @staticmethod
+    def i(kimlik, model, bas, bit=None, durum="bitti"):
+        return {"id": kimlik, "model": model, "saglayici": "codex", "baslangic": bas, "bitis": bit, "durum": durum}
+
+    def test_ayni_iscinin_isleri_tek_seritte_cakisan_alt_satirda(self):
+        s = self.seritler([self.i("a", "sol", 0, 100), self.i("b", "sol", 50, 150), self.i("c", "sol", 100, 200),
+                           self.i("d", "astra", 10, 20)])
+        sol = next(x for x in s if x["ad"] == "sol")
+        self.assertEqual(len(s), 2)
+        self.assertEqual(sol["satir"], 2)
+        # a ve c üst üste gelmez (a 100'de biter, c 100'de başlar): aynı alt satır; b ikisiyle de çakışır.
+        self.assertEqual({c[0]: c[3] for c in sol["cubuklar"]}, {"a": 0, "b": 1, "c": 0})
+
+    def test_calisani_olan_serit_once_ve_calisan_simdiye_uzar(self):
+        s = self.seritler([self.i("eski", "astra", 900, 990), self.i("yeni", "sol", 100, None, "calisiyor"),
+                           self.i("yarim", "flash", 500, None, "bilinmiyor")], simdi=1000)
+        self.assertEqual([x["ad"] for x in s], ["sol", "astra", "flash"])
+        self.assertEqual(s[0]["cubuklar"][0][1:3], [100, 1000])
+        self.assertEqual(s[2]["cubuklar"][0][1:3], [500, 500])  # bitişi bilinmeyen iş uzamaz
+
+    def eksen(self, bas, bit, genislik, kayma=0):
+        return self.kos("cizelgeEksen(v.bas, v.bit, v.genislik, v.kayma)",
+                        {"bas": bas, "bit": bit, "genislik": genislik, "kayma": kayma})
+
+    def test_eksen_dar_genislikte_seyrelir_tasmaz_ve_ust_uste_binmez(self):
+        gun = 86400
+        for genislik in (120, 240, 380, 520, 820):
+            for aralik in (1800, 4 * 3600, 30 * 3600, 38 * gun):
+                e = self.eksen(1_000_000, 1_000_000 + aralik, genislik)
+                et = e["etiketler"]
+                with self.subTest(genislik=genislik, aralik=aralik):
+                    self.assertTrue(et)
+                    self.assertLessEqual(len(et), 8)
+                    self.assertTrue(all(x["sol"] >= 0 and x["sag"] <= genislik for x in et))
+                    self.assertTrue(all(b["sol"] >= a["sag"] + 6 for a, b in zip(et, et[1:])))
+        dar, genis = self.eksen(0, 38 * gun, 240), self.eksen(0, 38 * gun, 820)
+        self.assertLess(len(dar["etiketler"]), len(genis["etiketler"]))
+
+    def test_eksen_kenardaki_etiket_kenara_yaslanir(self):
+        # 0. saniyede başlayan bir saatlik aralık: ilk etiket tam sol kenarda, son etiket tam sağ kenarda.
+        e = self.eksen(0, 3600, 400)
+        self.assertEqual(e["etiketler"][0]["hiza"], "sol")
+        self.assertEqual(e["etiketler"][-1]["hiza"], "sag")
+        self.assertEqual(e["etiketler"][-1]["sag"], 400)
+
+    def test_eksen_turu_ve_yerel_saat(self):
+        gun = 86400
+        self.assertEqual(self.eksen(0, 3 * 3600, 600)["tur"], "saat")
+        self.assertEqual(self.eksen(0, 30 * 3600, 900)["tur"], "gunsaat")  # 0014: bir günden uzun aralıkta gün de yazılır
+        uzun = self.eksen(1000, 38 * gun, 600, kayma=-3 * 3600)        # UTC+3
+        self.assertEqual(uzun["tur"], "gun")
+        # Günlük adımda etiket yerel gece yarısına düşer (0014'te UTC gece yarısı yerelde 03:00 görünüyordu).
+        self.assertTrue(all((x["x"] + 3 * 3600) % gun == 0 for x in uzun["etiketler"]))

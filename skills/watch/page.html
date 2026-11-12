@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Polycrew Team Watch</title>
 <style>
-/* Layout: counters on top, then running now, timeline, quotas, job table; a side panel on click. Two languages (METIN). */
+/* Layout (0015): status line, office, running now, quotas, timeline (one lane per worker), jobs, agent map;
+   a side panel on click. Breakpoints follow the page's own width (container queries), not the window:
+   the page usually sits in a half-width pane. Two languages (METIN). */
 :root {
   --bg: #f6f5f1; --surface: #ffffff; --ink: #1d1d1f; --muted: #66666e; --line: #dedcd5;
   --claude: #c8643f; --codex: #0f8f6f; --gemini: #3a6fd8; --hata: #c0392b; --ok: #2e7d4f;
@@ -28,142 +30,165 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
+[hidden] { display: none !important; }  /* the report hides the window buttons; a display rule must not bring them back */
 body { background: var(--bg); color: var(--ink); font: 14px/1.5 var(--sans); }
-.wrap { max-width: 72rem; margin: 0 auto; padding: 20px 16px 48px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; }
-.wrap > *, .row > *, section { min-width: 0; }
-h1 { font-size: 1.5rem; margin: 0; }
-h2 { font-size: 1rem; margin: 0 0 10px; color: var(--muted); font-weight: 600; letter-spacing: .02em; }
-header { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; }
+.wrap { max-width: 76rem; margin: 0 auto; padding: 18px 16px 56px; container-type: inline-size; }
+.wrap > * + * { margin-top: 26px; }
+section, details.katla { border-top: 1px solid var(--line); padding-top: 12px; min-width: 0; }
+section[hidden] { display: none; }
+h1 { font: 700 1.05rem/1.2 var(--mono); letter-spacing: .02em; margin: 0; display: flex; align-items: center; gap: 10px; }
+.marka { display: inline-grid; grid-template-columns: repeat(3, 7px); gap: 2px; }
+.marka i { width: 7px; height: 7px; background: var(--c); }
+h2 { font: 600 11px/1.2 var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
+.ust { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+.ust .ayar { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
 .meta { color: var(--muted); font: 12px var(--mono); }
-.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
-.seg button { border: 0; background: var(--surface); color: var(--ink); padding: 5px 10px; font: inherit; cursor: pointer; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.seg button { border: 0; background: transparent; color: var(--muted); padding: 4px 9px; font: 12px var(--mono); cursor: pointer; }
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
-.proje { border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); padding: 4px 8px; font: inherit; }
-button:focus-visible, .row:focus-visible, .card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.sayac { display: flex; gap: 16px; flex-wrap: wrap; }
-.sayac div { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; min-width: 7rem; }
-.sayac b { display: block; font-size: 1.4rem; }
-.sayac span { color: var(--muted); font-size: 12px; }
+.proje { border: 1px solid var(--line); border-radius: 4px; background: transparent; color: var(--ink); padding: 3px 6px; font: 12px var(--mono); max-width: 100%; }
+button:focus-visible, [data-id]:focus-visible, summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.dot { display: inline-block; width: 8px; height: 8px; background: var(--c); margin-right: 7px; vertical-align: 1px; }
+.p-claude { --c: var(--claude); } .p-codex { --c: var(--codex); } .p-gemini { --c: var(--gemini); }
+.bos { color: var(--muted); }
+
+/* Status line: the counts as one sentence, not five boxes. */
+.durum { display: flex; flex-wrap: wrap; gap: 4px 24px; align-items: baseline; font: 12px var(--mono); color: var(--muted); }
+.durum b { font-size: 1.35rem; color: var(--ink); font-variant-numeric: tabular-nums; margin-right: 6px; }
+.durum .canli b { color: var(--ok); } .durum .kotu b { color: var(--hata); }
+
+/* Office: a pixel floor plan drawn on a canvas; the timeline, the list and the map are its accessible equivalent. */
+.ofis { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+.ofis canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; border-radius: 3px; }
+.balon { position: absolute; z-index: 2; max-width: min(18rem, 80%); background: var(--ink); color: var(--bg); border-radius: 4px;
+  padding: 6px 9px; font-size: 12px; line-height: 1.35; pointer-events: none; transform: translate(-50%, -100%); overflow-wrap: anywhere; }
+.balon b { display: block; }
+.balon[hidden] { display: none; }
+
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr)); gap: 10px; }
-.card { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--c); border-radius: 8px; padding: 10px 12px; cursor: pointer; min-width: 0; }
-.card .ust { display: flex; justify-content: space-between; gap: 8px; font: 12px var(--mono); color: var(--muted); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 9px 12px; cursor: pointer; min-width: 0; }
+.card .ust2 { display: flex; justify-content: space-between; gap: 8px; font: 12px var(--mono); color: var(--muted); }
 .card .ad { font-weight: 600; margin: 2px 0; overflow-wrap: anywhere; }
 .card .ac { color: var(--muted); overflow-wrap: anywhere; }
-.bos { color: var(--muted); font-style: italic; }
-.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--c); margin-right: 6px; vertical-align: 1px; }
-.p-claude { --c: var(--claude); } .p-codex { --c: var(--codex); } .p-gemini { --c: var(--gemini); }
-.cizelge { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; overflow: hidden; }
-.eksen { position: relative; height: 18px; margin-left: var(--lw); font: 11px var(--mono); color: var(--muted); }
-.eksen span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
-.row { display: grid; grid-template-columns: var(--lw) 1fr; align-items: center; gap: 8px; padding: 3px 0; cursor: pointer; border-radius: 4px; }
-.row:hover { background: var(--track); }
-.row .et { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.track { position: relative; height: 14px; background: var(--track); border-radius: 3px; }
-.bar { position: absolute; top: 0; height: 100%; border-radius: 3px; background: var(--c); min-width: 3px; }
-.bar.calisiyor { background-image: repeating-linear-gradient(45deg, transparent 0 6px, rgba(255,255,255,.35) 6px 12px); animation: kay 1s linear infinite; background-size: 17px 17px; }
-.bar.hata { background: var(--hata); }
-.bar.bilinmiyor { opacity: .4; }
-@keyframes kay { to { background-position: 17px 0; } }
-@media (prefers-reduced-motion: reduce) { .bar.calisiyor { animation: none; } }
-:root { --lw: 16rem; }
-@media (max-width: 640px) { :root { --lw: 0px; } .row { grid-template-columns: 1fr; gap: 2px; } .eksen { margin-left: 0; } }
-.kota { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); gap: 10px; }
-.kova { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
-.kova .b { display: flex; justify-content: space-between; font-size: 12px; }
-.kova .pen { margin-top: 8px; color: var(--muted, inherit); }
-.olcu { height: 8px; background: var(--track); border-radius: 4px; overflow: hidden; margin-top: 6px; }
+
+.kota { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); gap: 18px 32px; }
+.kova .b { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; overflow-wrap: anywhere; font-size: 12px; }
+.kova .b b { font: 600 12px var(--mono); font-variant-numeric: tabular-nums; }
+.kova .pen { margin-top: 8px; color: var(--muted); }
+.kova .ad { font-weight: 600; font-size: 13px; }
+.olcu { height: 6px; background: var(--track); margin-top: 5px; }
 .olcu i { display: block; height: 100%; background: var(--c); }
 .olcu i.yuksek { background: var(--hata); }
 .olcu i.eski { opacity: .25; }
 .eski-etiket { color: var(--muted); font-weight: 400; font-size: 11px; }
 .baglam { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 3px; }
 .baglam .olcu { height: 3px; }
-.kova .b { gap: 8px; flex-wrap: wrap; overflow-wrap: anywhere; }
-.harita { overflow-x: auto; padding-bottom: 4px; }
-/* A tree read left to right: a node, a link, then its children stacked. */
-.dal { display: flex; align-items: flex-start; }
-.dal > .cocuklar { display: grid; gap: 6px; margin-left: 28px; position: relative; }
-.dal > .cocuklar > .dal { position: relative; }
-.dal > .cocuklar > .dal::before { content: ""; position: absolute; left: -14px; top: 22px; width: 14px; border-top: 1px solid var(--line); }
-.dal > .cocuklar::before { content: ""; position: absolute; left: -28px; top: 22px; width: 14px; border-top: 1px solid var(--line); }
-.dal > .cocuklar::after { content: ""; position: absolute; left: -14px; top: 22px; bottom: var(--son, 22px); border-left: 1px solid var(--line); }
-.dugum { width: 360px; flex: none; padding: 8px 12px; cursor: pointer; }
-.dugum .ad { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dugum .ac { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dugum.ozet { background: var(--track); }
-/* Status: a running node is full strength with a pulsing mark; a finished one is dimmed. */
-.dugum .ust2 { display: flex; align-items: center; gap: 8px; }
-.dugum .ad { flex: 1; min-width: 0; }
-.isaret { flex: none; width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; font: 700 10px var(--sans, sans-serif); color: var(--surface); }
+.kova .meta { font-size: 11px; margin-top: 3px; }
+
+/* Timeline: one lane per worker, its jobs as bars; overlapping jobs stack inside the lane. */
+.cizelge { --lw: clamp(6.5rem, 26cqi, 14rem); }
+.eksen { position: relative; height: 18px; margin-left: calc(var(--lw) + 10px); font: 11px var(--mono); color: var(--muted); }
+.eksen span { position: absolute; top: 0; white-space: nowrap; }
+.eksen .orta { transform: translateX(-50%); } .eksen .sag { transform: translateX(-100%); }
+.serit { display: grid; grid-template-columns: var(--lw) minmax(0, 1fr); gap: 10px; align-items: center; padding: 3px 0; }
+.serit .et { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.serit .et .meta { margin-left: 7px; font-size: 11px; }
+.track { position: relative; background: var(--track); overflow: hidden; }
+.track .cizgi { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.bar { position: absolute; height: 10px; background: var(--c); min-width: 3px; cursor: pointer; }
+.bar:hover { outline: 1px solid var(--ink); outline-offset: 1px; }
+.bar.calisiyor { background-image: repeating-linear-gradient(45deg, transparent 0 6px, rgba(255,255,255,.35) 6px 12px); animation: kay 1s linear infinite; background-size: 17px 17px; }
+.bar.hata { background: var(--hata); }
+.bar.bilinmiyor { opacity: .4; }
+@keyframes kay { to { background-position: 17px 0; } }
+@media (prefers-reduced-motion: reduce) { .bar.calisiyor { animation: none; } }
+@container (max-width: 400px) {
+  .cizelge { --lw: 0px; }
+  .eksen { margin-left: 0; }
+  .serit { grid-template-columns: minmax(0, 1fr); gap: 3px; padding: 5px 0; }
+}
+
+/* Jobs: one record per job; a single row when wide, three short lines when narrow. Never scrolls sideways. */
+.is { display: grid; grid-template-columns: 6.5rem minmax(8rem, 15rem) minmax(0, 1fr) 5.5rem 3.5rem 5.5rem 2.5rem;
+  gap: 2px 14px; padding: 7px 4px; border-bottom: 1px solid var(--line); align-items: baseline; font-size: 13px; }
+.is[data-id] { cursor: pointer; }
+.is[data-id]:hover { background: var(--track); }
+.is.bas { color: var(--muted); font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; padding-top: 0; }
+.is .n { font: 12px var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); }
+.is .k { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+.is .a { overflow-wrap: anywhere; min-width: 0; }
+.is .a .meta { display: block; }
+.is .s, .is .tk, .is .p { text-align: right; }
+.is .p b { color: var(--ink); }
+.dur-bitti { color: var(--ok); } .dur-hata { color: var(--hata); } .dur-calisiyor { color: var(--focus); } .dur-bilinmiyor { color: var(--muted); }
+.dugme { margin-top: 12px; border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 4px; padding: 5px 12px; font: 12px var(--mono); cursor: pointer; }
+.dugme[hidden] { display: none; }
+@container (max-width: 760px) {
+  .is.bas { display: none; }
+  .is { grid-template-columns: minmax(0, 1fr) auto auto auto; grid-template-areas: "k k k d" "a a a a" "z s tk p"; }
+  .is .z { grid-area: z; } .is .k { grid-area: k; } .is .a { grid-area: a; } .is .s { grid-area: s; }
+  .is .tk { grid-area: tk; } .is .d { grid-area: d; } .is .p { grid-area: p; }
+}
+
+/* Agent map: an indented tree at every width; folded while no lead is in use. */
+details.katla > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+details.katla > summary::-webkit-details-marker { display: none; }
+details.katla > summary h2 { margin: 0; }
+details.katla > summary h2::before { content: "+ "; }
+details.katla[open] > summary h2::before { content: "\2212  "; }
+.harita { margin-top: 12px; }
+.dal > .cocuklar { margin-left: 7px; padding-left: 14px; border-left: 1px solid var(--line); }
+.dugum { display: flex; flex-wrap: wrap; align-items: center; gap: 1px 8px; padding: 4px 6px; border-radius: 4px; cursor: pointer; min-width: 0; }
+.dugum:hover { background: var(--track); }
+.dugum .ad { font-size: 13px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.dugum .ac { font: 11.5px var(--mono); color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
+.dugum.d-bitti, .dugum.d-bilinmiyor { opacity: .7; }
+.isaret { flex: none; width: 14px; height: 14px; display: grid; place-items: center; font: 700 9px var(--sans); color: var(--surface); }
 .isaret.calisiyor { background: var(--ok); animation: nabiz 1.4s ease-in-out infinite; }
 .isaret.bitti { background: var(--muted); }
 .isaret.hata { background: var(--hata); }
 .isaret.bilinmiyor { background: transparent; color: var(--muted); border: 1px dashed var(--muted); }
-.rozet { flex: none; font: 11px var(--mono); padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
-.rozet.calisiyor { border-color: var(--ok); color: var(--ok); font-weight: 700; }
-.rozet.hata { border-color: var(--hata); color: var(--hata); }
-.dugum.d-bitti, .dugum.d-bilinmiyor { opacity: .62; }
-.dugum.d-calisiyor { box-shadow: 0 0 0 1px var(--ok); }
-.harita-ozet { font: 12px var(--mono); color: var(--muted); margin: 0 0 8px; }
 .harita-ozet b.calisiyor { color: var(--ok); } .harita-ozet b.hata { color: var(--hata); }
 @keyframes nabiz { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent); } 50% { box-shadow: 0 0 0 5px transparent; } }
 @media (prefers-reduced-motion: reduce) { .isaret.calisiyor { animation: none; } }
-@media (max-width: 700px) {
-  .dal { display: block; }
-  .dal > .cocuklar { margin: 6px 0 0 14px; }
-  .dal > .cocuklar::before, .dal > .cocuklar::after, .dal > .cocuklar > .dal::before { display: none; }
-  .dugum { width: auto; }
-}
-/* Office: a pixel floor plan drawn on a canvas; the map and the table below are its accessible equivalent. */
-.ofis { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
-.ofis canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; border-radius: 4px; }
-.balon { position: absolute; z-index: 2; max-width: min(18rem, 80%); background: var(--ink); color: var(--bg); border-radius: 6px;
-  padding: 6px 9px; font-size: 12px; line-height: 1.35; pointer-events: none; transform: translate(-50%, -100%); overflow-wrap: anywhere; }
-.balon b { display: block; }
-.balon[hidden] { display: none; }
-.tbl { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
-table { border-collapse: collapse; width: 100%; font-size: 13px; }
-th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-th { color: var(--muted); font-weight: 600; white-space: nowrap; }
-td.n { font-family: var(--mono); white-space: nowrap; }
-tbody tr { cursor: pointer; }
-tbody tr:hover { background: var(--track); }
-.dur-bitti { color: var(--ok); } .dur-hata { color: var(--hata); } .dur-calisiyor { color: var(--focus); } .dur-bilinmiyor { color: var(--muted); }
+
 aside { position: fixed; inset: 0 0 0 auto; width: min(100%, 44rem); background: var(--surface); border-left: 1px solid var(--line); box-shadow: -8px 0 24px rgba(0,0,0,.15); display: none; flex-direction: column; z-index: 5; }
 aside.acik { display: flex; }
-aside header { padding: 12px 16px; border-bottom: 1px solid var(--line); justify-content: space-between; }
+aside header { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; padding: 12px 16px; border-bottom: 1px solid var(--line); justify-content: space-between; }
 aside .govde { padding: 12px 16px; overflow: auto; }
 aside pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5px/1.55 var(--mono); margin: 0; }
-.kapat { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.kapat { border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 4px; padding: 4px 10px; font: 12px var(--mono); cursor: pointer; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <h1 data-t="baslik"></h1>
+  <header class="ust">
+    <h1><span class="marka" aria-hidden="true"><i class="p-claude"></i><i class="p-codex"></i><i class="p-gemini"></i></span><span data-t="baslik"></span></h1>
     <span class="meta" id="guncel"></span>
-    <div class="seg" id="pencere" role="group">
-      <button type="button" data-saat="3" data-t="s3"></button>
-      <button type="button" data-saat="12" data-t="s12" aria-pressed="true"></button>
-      <button type="button" data-saat="48" data-t="s48"></button>
-      <button type="button" data-saat="0" data-t="hepsi"></button>
-    </div>
-    <select class="proje" id="proje"></select>
-    <div class="seg" id="dil" role="group" aria-label="Language / Dil">
-      <button type="button" data-dil="en">EN</button><button type="button" data-dil="tr">TR</button>
+    <div class="ayar">
+      <div class="seg" id="pencere" role="group">
+        <button type="button" data-saat="3" data-t="s3"></button>
+        <button type="button" data-saat="12" data-t="s12" aria-pressed="true"></button>
+        <button type="button" data-saat="48" data-t="s48"></button>
+        <button type="button" data-saat="0" data-t="hepsi"></button>
+      </div>
+      <select class="proje" id="proje"></select>
+      <div class="seg" id="dil" role="group" aria-label="Language / Dil">
+        <button type="button" data-dil="en">EN</button><button type="button" data-dil="tr">TR</button>
+      </div>
     </div>
   </header>
-  <div class="sayac" id="sayac"></div>
+  <div class="durum" id="sayac"></div>
   <section><h2 data-t="ofis"></h2><div class="ofis" id="ofis-kutu">
     <canvas id="ofis" width="320" height="150" role="img"></canvas><div class="balon" id="balon" hidden></div></div></section>
-  <section><h2 data-t="simdi"></h2><div class="cards" id="simdi"></div></section>
-  <section><h2 data-t="cizelge"></h2><div class="cizelge"><div class="eksen" id="eksen"></div><div id="satirlar"></div></div></section>
-  <section><h2 data-t="harita"></h2><div class="harita" id="harita"></div><p class="meta" data-t="pmNot"></p></section>
+  <section id="simdi-bolum" hidden><h2 data-t="simdi"></h2><div class="cards" id="simdi"></div></section>
   <section><h2 data-t="kota"></h2><div class="kota" id="kota"></div><p class="meta" id="kota-not"></p></section>
-  <section><h2 data-t="isler"></h2><div class="tbl"><table>
-    <thead><tr><th data-t="tBasladi"></th><th data-t="tKim"></th><th data-t="tIs"></th><th data-t="tSure"></th><th data-t="tToken"></th><th data-t="tDurum"></th><th data-t="tPuan"></th></tr></thead>
-    <tbody id="tablo"></tbody></table></div></section>
+  <section><h2 data-t="cizelge"></h2><div class="cizelge"><div class="eksen" id="eksen"></div><div id="satirlar"></div></div></section>
+  <section><h2 data-t="isler"></h2><div class="isler" id="isler"></div>
+    <button type="button" class="dugme" id="is-hepsi" hidden></button></section>
+  <details class="katla" id="harita-kutu"><summary><h2 data-t="harita"></h2><span class="meta harita-ozet" id="harita-ozet"></span></summary>
+    <div class="harita" id="harita"></div><p class="meta" data-t="pmNot"></p></details>
 </div>
 <aside id="panel">
   <header><div><b id="p-baslik"></b><div class="meta" id="p-alt"></div></div>
@@ -191,6 +216,7 @@ const METIN = {
     yukleniyor: "loading…", okunamadi: "could not be read", yok: "(none)", henuzRapor: "(no report yet)",
     raporYok: "(no report found)", sunucuYok: "cannot reach the server",
     sn: "s", dk: "min", sa: "h", yerel: "en-GB", okur: "read-only", yazar: "writer",
+    tumunuGoster: "Show all ({n})", dahaAz: "Show fewer",
   },
   tr: {
     baslik: "Takım izleme", s3: "3 sa", s12: "12 sa", s48: "2 gün", hepsi: "Hepsi",
@@ -209,6 +235,7 @@ const METIN = {
     yukleniyor: "yükleniyor…", okunamadi: "okunamadı", yok: "(yok)", henuzRapor: "(henüz rapor yok)",
     raporYok: "(rapor bulunamadı)", sunucuYok: "sunucuya ulaşılamıyor",
     sn: "sn", dk: "dk", sa: "sa", yerel: "tr-TR", okur: "okur", yazar: "yazar",
+    tumunuGoster: "Tümünü göster ({n})", dahaAz: "Daha az göster",
   },
 };
 function ilkDil() {
@@ -239,6 +266,11 @@ function kim(i) {
   if (i.kaynak === "claude") return (i.rol || "agent") + (i.model ? " · " + i.model : "");
   return (i.model || i.kaynak) + (i.efor && i.efor !== "-" ? " " + i.efor : "") + (i.rol ? " · " + t(i.rol) : "");
 }
+// A timeline lane: the role for a Claude agent, the model and effort for an external worker.
+function seritAdi(i) {
+  if (i.kaynak === "claude") return String(i.rol || "agent").replace(/^polycrew:/, "");
+  return (i.model || i.kaynak) + (i.efor && i.efor !== "-" ? " " + i.efor : "");
+}
 function token(n) { return n == null ? "—" : n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n); }
 
 /*OFIS-MANTIK*/
@@ -257,6 +289,23 @@ function ofisTohum(id) {
   return h;
 }
 function ofisRol(rol) { return String(rol || "").replace(/^polycrew:/, ""); }
+// A short desk label from the model name: "gpt-6.1-sol" -> "sol", "gemini-3.8-flash-high" -> "flash",
+// "claude-sonnet-5-5" -> "sonnet". Provider, version and effort words are skipped.
+function ofisKisaltma(model) {
+  const atla = /^(gpt|gemini|claude|codex|agy|high|low|medium|xhigh|minimal|thinking|\d.*)$/;
+  const parca = String(model || "").toLowerCase().split(/[-\/ ]+/).filter((x) => x && !atla.test(x));
+  return (parca[0] || "").slice(0, 6);
+}
+// Workers of one room that share a label get a number (sol1, sol2), in the order they started.
+function ofisEtiketle(kisiler) {
+  const sayi = {};
+  for (const k of kisiler) { k.etiket = ofisKisaltma(k.is.model); if (k.etiket) sayi[k.etiket] = (sayi[k.etiket] || 0) + 1; }
+  const sira = {};
+  for (const k of kisiler) {
+    if (k.etiket && sayi[k.etiket] > 1) { sira[k.etiket] = (sira[k.etiket] || 0) + 1; k.etiket = k.etiket.slice(0, 5) + sira[k.etiket]; }
+  }
+  return kisiler;
+}
 function ofisYerlesim(isler) {
   const kisi = (i, x, y, oturuyor) => ({ id: i.id, x, y, oturuyor, durum: i.durum, saglayici: i.saglayici,
     rol: ofisRol(i.rol), tohum: ofisTohum(i.id), is: i });
@@ -266,8 +315,8 @@ function ofisYerlesim(isler) {
   const oda = (ad, liste) => {
     const o = OFIS[ad], sigan = o.sutun * o.satir;
     return {
-      kisiler: liste.slice(0, sigan).map((i, n) => kisi(i,
-        o.x + 5 + (n % o.sutun) * OFIS.hucre.w, o.y + 12 + Math.floor(n / o.sutun) * OFIS.hucre.h, true)),
+      kisiler: ofisEtiketle(liste.slice(0, sigan).map((i, n) => kisi(i,
+        o.x + 5 + (n % o.sutun) * OFIS.hucre.w, o.y + 12 + Math.floor(n / o.sutun) * OFIS.hucre.h, true))),
       tasan: Math.max(0, liste.length - sigan),
     };
   };
@@ -314,9 +363,15 @@ function karakterCiz(c, x, y, k, kare, renk) {
     else if (k.rol === "designer") { px(11, 6, 1, 7, renk.focus); }
     else if (k.rol === "researcher") { px(4, 10, 4, 3, renk.surface); px(6, 10, 1, 3, renk.muted); }
     else if (k.rol === "lead" || k.rol === "pm") { px(6, 7, 1, 4, renk.hata); }
+    else if (k.rol === "okur") { px(3, 4, 6, 1, renk.ink); px(4, 4, 1, 1, renk.surface); px(7, 4, 1, 1, renk.surface); }  // glasses
+    else if (k.rol === "yazar") { px(10, 4, 1, 5, renk.focus); px(10, 9, 1, 1, renk.ink); }                             // pencil
     else if (k.is && k.is.kaynak !== "claude") { px(7, 8, 2, 2, renk.surface); }
   }
   c.globalAlpha = 1;
+  if (k.oturuyor && k.etiket) {
+    c.fillStyle = renk.muted; c.font = "6px monospace"; c.textAlign = "left";
+    c.fillText(k.etiket, x - 2, y - 3);
+  }
   if (k.durum === "hata" || k.durum === "bilinmiyor") {
     c.fillStyle = k.durum === "hata" ? renk.hata : renk.muted;
     c.font = "bold 7px monospace"; c.textAlign = "center";
@@ -432,6 +487,66 @@ function projeSecici() {
   if (s.dataset.html !== html) { s.innerHTML = html; s.dataset.html = html; }
   s.value = proje;
 }
+/*CIZELGE-MANTIK*/
+// Pure timeline logic (no DOM), tested with Node (tests/test_watch.py). 0015.
+// Lanes: one per worker (anahtar(i) names it). Jobs of a lane that overlap in time go to separate sub-rows.
+function cizelgeSeritler(isler, simdi, anahtar) {
+  const seritler = new Map();
+  for (const i of isler) {
+    const b = i.baslangic ?? i.bitis ?? simdi;
+    const e = Math.max(b, i.bitis ?? (i.durum === "calisiyor" ? simdi : b));
+    const ad = anahtar(i);
+    if (!seritler.has(ad)) seritler.set(ad, { ad, saglayici: i.saglayici, cubuklar: [], calisan: 0, son: 0, satir: 0 });
+    const s = seritler.get(ad);
+    s.cubuklar.push({ id: i.id, b, e, durum: i.durum, is: i, satir: 0 });
+    if (i.durum === "calisiyor") s.calisan += 1;
+    s.son = Math.max(s.son, e);
+  }
+  const liste = [...seritler.values()];
+  for (const s of liste) {
+    s.cubuklar.sort((x, y) => x.b - y.b || x.e - y.e);
+    const satirSonu = [];
+    for (const c of s.cubuklar) {
+      let n = satirSonu.findIndex((son) => son <= c.b);
+      if (n < 0) n = satirSonu.length;
+      satirSonu[n] = Math.max(c.e, c.b + 1);
+      c.satir = n;
+    }
+    s.satir = satirSonu.length;
+  }
+  // Lanes with a running job first, then the most recently active.
+  return liste.sort((x, y) => Number(y.calisan > 0) - Number(x.calisan > 0) || y.son - x.son || String(x.ad).localeCompare(String(y.ad)));
+}
+// Axis ticks for a track `genislik` px wide. The step is the smallest one whose labels fit; a label that
+// would leave the track is aligned to its edge ("sol"/"sag"), and one that would touch its neighbour is dropped.
+// `kayma` is the local time zone offset in seconds (Date.getTimezoneOffset() * 60), so ticks fall on local hours and days.
+const CIZELGE_ADIM = [300, 600, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400];
+function cizelgeEksen(bas, bit, genislik, kayma) {
+  kayma = kayma || 0;
+  const genis = Math.max(bit - bas, 60), g = Math.max(genislik || 0, 1);
+  // "saat": 13:20 · "gunsaat": 04/10 13:20 (span over a day, step under a day) · "gun": 04/10
+  const tur = (a) => (a >= 86400 ? "gun" : genis > 86400 ? "gunsaat" : "saat");
+  const en = (a) => (tur(a) === "gunsaat" ? 76 : 38);
+  const sigar = (a) => genis / a <= Math.min(8, Math.max(1, Math.floor(g / (en(a) + 12))));
+  let adim = CIZELGE_ADIM.find(sigar);
+  if (!adim) { let k = 2; while (!sigar(86400 * k)) k += 1; adim = 86400 * k; }
+  const w = en(adim), etiketler = [];
+  let sonBitis = -Infinity;
+  for (let x = Math.ceil((bas - kayma) / adim) * adim + kayma; x <= bit; x += adim) {
+    const p = ((x - bas) / genis) * g;
+    let hiza = "orta", sol = p - w / 2;
+    if (sol < 0) { hiza = "sol"; sol = p; } else if (p + w / 2 > g) { hiza = "sag"; sol = p - w; }
+    if (sol < 0 || sol + w > g || sol < sonBitis + 6) continue;
+    etiketler.push({ x, yuzde: (p / g) * 100, hiza, sol, sag: sol + w });
+    sonBitis = sol + w;
+  }
+  return { adim, tur: tur(adim), etiketler };
+}
+/*CIZELGE-MANTIK-SON*/
+
+const IS_SINIRI = 40;
+let tumIsler = false, sonGenislik = 0, haritaAyarli = false;
+
 function ciz() {
   if (!veri) return;
   projeSecici();
@@ -440,35 +555,40 @@ function ciz() {
   const simdi = veri.simdi;
   $("guncel").textContent = GOMULU ? `${t("raporBasligi")} · ${gunStr(simdi)}` : `${t("guncellendi")} ${saatStr(simdi)}`;
   const say = (d) => isler.filter((i) => i.durum === d).length;
-  $("sayac").innerHTML = [[t("calisiyor"), say("calisiyor")], [t("bitti"), say("bitti")], [t("hata"), say("hata")],
-    [t("toplamIs"), isler.length], [t("toplamSure"), sure(isler.reduce((a, i) => a + (i.sure || 0), 0))]]
-    .map(([a, b]) => `<div><b>${b}</b><span>${a}</span></div>`).join("");
+  const sayilar = [[t("calisiyor"), say("calisiyor"), "canli"], [t("bitti"), say("bitti"), ""], [t("hata"), say("hata"), "kotu"],
+    [t("bilinmiyor"), say("bilinmiyor"), ""], [t("toplamIs"), isler.length, ""],
+    [t("toplamSure"), sure(isler.reduce((a, i) => a + (i.sure || 0), 0)), ""]];
+  $("sayac").innerHTML = sayilar.filter(([a, b], n) => n !== 3 || b)
+    .map(([a, b, c]) => `<span class="${b && c ? c : ""}"><b>${b}</b>${a}</span>`).join("");
 
   const calisan = isler.filter((i) => i.durum === "calisiyor");
-  $("simdi").innerHTML = calisan.length ? calisan.map((i) => `
-    <div class="card p-${i.saglayici}" tabindex="0" data-id="${esc(i.id)}">
-      <div class="ust"><span><span class="dot"></span>${saglayiciAd[i.saglayici]}</span><span>${sure(i.sure)}</span></div>
-      <div class="ad">${esc(kim(i))}</div><div class="ac">${esc(i.aciklama || "")}</div></div>`).join("")
-    : `<div class="bos">${t("bosSimdi")}</div>`;
+  $("simdi-bolum").hidden = !calisan.length;
+  $("simdi").innerHTML = calisan.map((i) => `
+    <div class="card p-${i.saglayici}" tabindex="0" role="button" data-id="${esc(i.id)}">
+      <div class="ust2"><span><span class="dot"></span>${saglayiciAd[i.saglayici]}</span><span>${sure(i.sure)}</span></div>
+      <div class="ad">${esc(kim(i))}</div><div class="ac">${esc(i.aciklama || "")}</div></div>`).join("");
 
-  const bas = Math.min(...isler.map((i) => i.baslangic ?? i.bitis ?? simdi), simdi - 600);
-  const bit = GOMULU ? Math.max(...isler.map((i) => i.bitis ?? i.baslangic ?? 0), bas + 60) : simdi;
+  // Timeline. The axis sits on the jobs' own span: it ends at the last job, or now while something runs.
+  const seritler = cizelgeSeritler(isler, simdi, seritAdi);
+  const baslar = seritler.flatMap((s) => s.cubuklar.map((c) => c.b));
+  const bit = calisan.length || !baslar.length ? simdi : Math.max(...seritler.map((s) => s.son));
+  const bas = Math.min(...baslar, bit - 600);
   const genis = Math.max(bit - bas, 60);
   const yuzde = (x) => ((x - bas) / genis) * 100;
-  const adim = [300, 600, 900, 1800, 3600, 7200, 14400, 28800, 43200, 86400].find((a) => genis / a <= 8) || 86400 * Math.ceil(genis / 86400 / 8);
-  // Bir günden uzun aralıkta yalnız saat yazmak yanıltır (her gün aynı saat): gün de yazılır (0014).
-  const etiket = genis > 86400 ? gunStr : saatStr;
-  let eksen = "";
-  for (let x = Math.ceil(bas / adim) * adim; x <= bit; x += adim) eksen += `<span style="left:${yuzde(x)}%">${etiket(x)}</span>`;
-  $("eksen").innerHTML = eksen;
-  $("satirlar").innerHTML = isler.length ? isler.map((i) => {
-    const b = i.baslangic ?? i.bitis, e = i.bitis ?? (i.durum === "calisiyor" ? simdi : b);
-    return `<div class="row p-${i.saglayici}" tabindex="0" data-id="${esc(i.id)}" title="${esc(kim(i) + " — " + (i.aciklama || ""))}">
-      <div class="et"><span class="dot"></span>${esc(kim(i))} <span class="meta">${esc(i.aciklama || "")}</span></div>
-      <div class="track"><div class="bar ${i.durum}" style="left:${yuzde(b)}%;width:${Math.max(yuzde(e) - yuzde(b), 0.3)}%"></div></div></div>`;
-  }).join("") : `<div class="bos">${t("bosPencere")}</div>`;
+  sonGenislik = $("eksen").clientWidth || 600;
+  const eksen = cizelgeEksen(bas, bit, sonGenislik, new Date(bas * 1000).getTimezoneOffset() * 60);
+  const etiket = { saat: saatStr, gunsaat: gunStr, gun: (ts) => new Date(ts * 1000).toLocaleDateString(t("yerel"), { day: "2-digit", month: "2-digit" }) }[eksen.tur];
+  $("eksen").innerHTML = eksen.etiketler.map((e) => `<span class="${e.hiza}" style="left:${e.yuzde}%">${etiket(e.x)}</span>`).join("");
+  const cizgiler = eksen.etiketler.map((e) => `<i class="cizgi" style="left:${e.yuzde}%"></i>`).join("");
+  const CUBUK = 10, ARA = 3;
+  $("satirlar").innerHTML = seritler.length ? seritler.map((s) => `
+    <div class="serit p-${s.saglayici}"><div class="et" title="${esc(s.ad)}"><span class="dot"></span>${esc(s.ad)}<span class="meta">${s.cubuklar.length}</span></div>
+      <div class="track" style="height:${s.satir * (CUBUK + ARA) + ARA}px">${cizgiler}${s.cubuklar.map((c) => `<div class="bar ${c.durum}" data-id="${esc(c.id)}"
+        title="${esc([c.is.aciklama, kim(c.is), t(c.durum), sure(c.is.sure)].filter(Boolean).join(" · "))}"
+        style="left:min(${yuzde(c.b)}%, 100% - 3px);width:${Math.max(yuzde(c.e) - yuzde(c.b), 0.3)}%;top:${ARA + c.satir * (CUBUK + ARA)}px"></div>`).join("")}</div></div>`).join("")
+    : `<div class="bos">${t("bosPencere")}</div>`;
 
-  // The tree: each node is a card, its children a column to its right; running ones first.
+  // Agent map: an indented tree, running nodes first.
   const ISARET = { calisiyor: "", bitti: "✓", hata: "✕", bilinmiyor: "?" };
   const SIRA = { calisiyor: 0, hata: 1, bilinmiyor: 2, bitti: 3 };
   const sayim = {};
@@ -479,24 +599,23 @@ function ciz() {
     const alt = [n.sanal ? saglayiciAd[n.saglayici] : kim(n), sure(n.sure),
       n.token ? `${Math.round(n.token / 1000)}k token` : "", n.puan ? `${n.puan.not}/5` : ""].filter(Boolean);
     const cocuklar = [...(n.cocuklar || [])].sort((x, y) => SIRA[x.durum] - SIRA[y.durum]).map(agac).join("");
-    return `<div class="dal"><div class="card dugum d-${n.durum} p-${n.saglayici}${n.sanal ? " ozet" : ""}" tabindex="0" role="button"
-      data-id="${esc(n.id)}" title="${esc(baslik)}" aria-label="${esc(baslik + ": " + t(n.durum))}">
-      <div class="ust2"><span class="isaret ${n.durum}">${ISARET[n.durum] ?? ""}</span>
-      <div class="ad">${esc(baslik)}</div><span class="rozet ${n.durum}">${t(n.durum)}</span></div>
-      <div class="ac">${esc(alt.join(" · "))}</div></div>${cocuklar ? `<div class="cocuklar">${cocuklar}</div>` : ""}</div>`;
+    return `<div class="dal"><div class="dugum d-${n.durum} p-${n.saglayici}" tabindex="0" role="button"
+      data-id="${esc(n.id)}" aria-label="${esc(baslik + ": " + t(n.durum))}">
+      <span class="isaret ${n.durum}">${ISARET[n.durum] ?? ""}</span><span class="ad">${esc(baslik)}</span>
+      <span class="ac">${esc(alt.join(" · "))}</span></div>${cocuklar ? `<div class="cocuklar">${cocuklar}</div>` : ""}</div>`;
   }
   const agacHtml = agac(veri.harita);
-  const ozet = ["calisiyor", "hata", "bilinmiyor", "bitti"].filter((d) => sayim[d])
+  $("harita-ozet").innerHTML = ["calisiyor", "hata", "bilinmiyor", "bitti"].filter((d) => sayim[d])
     .map((d) => `<b class="${d}">${sayim[d]}</b> ${t(d)}`).join(" · ");
-  $("harita").innerHTML = agacHtml ? `<p class="harita-ozet">${ozet}</p>${agacHtml}` : `<div class="bos">${t("bosPencere")}</div>`;
-  // The trunk stops at the last child's link, wherever that child's own subtree ends.
-  for (const c of document.querySelectorAll("#harita .cocuklar")) {
-    const son = c.lastElementChild;
-    if (son) c.style.setProperty("--son", `${son.offsetHeight - 22}px`);
+  $("harita").innerHTML = agacHtml || `<div class="bos">${t("bosPencere")}</div>`;
+  // Open by itself only when the tree has depth (a lead, or an agent that started agents); the user's choice stays after that.
+  if (!haritaAyarli && veri.harita) {
+    haritaAyarli = true;
+    $("harita-kutu").open = (veri.harita.cocuklar || []).some((c) => (c.cocuklar || []).length);
   }
 
   const kovalar = (veri.kota && veri.kota.kovalar) || [];
-  // One card per provider group; its 5-hour and weekly windows are rows of the same card.
+  // One block per provider group; its 5-hour and weekly windows are rows of the same block.
   const gruplar = new Map();
   for (const k of kovalar) {
     const ad = `${k.saglayici}|${k.grup}`;
@@ -509,7 +628,7 @@ function ciz() {
   $("kota").innerHTML = kovalar.length ? kartlar.map(({ k, satirlar }) => {
     const p = k.saglayici === "codex" ? "codex" : k.saglayici === "claude" || /claude|gpt/i.test(k.grup) ? "claude" : "gemini";
     satirlar.sort((a, b) => (sira[pencere(a.pencere)] ?? 9) - (sira[pencere(b.pencere)] ?? 9));
-    return `<div class="kova p-${p}"><div class="b"><span><span class="dot"></span>${esc(k.grup)}</span>${k.plan ? `<span class="meta">${esc(k.plan)}</span>` : ""}</div>` + satirlar.map((r) => {
+    return `<div class="kova p-${p}"><div class="b"><span class="ad"><span class="dot"></span>${esc(k.grup)}</span>${k.plan ? `<span class="meta">${esc(k.plan)}</span>` : ""}</div>` + satirlar.map((r) => {
       const u = Math.max(0, Math.min(100, Number(r.kullanilan) || 0));
       const ad = pencere(r.pencere);
       const baglam = r.pencere === "bağlam";
@@ -520,12 +639,21 @@ function ciz() {
   }).join("") : `<div class="bos">${t("bosKota")}</div>`;
   $("kota-not").textContent = kovalar.some((k) => k.saglayici === "claude") ? "" : t("claudeNot");
 
-  $("tablo").innerHTML = isler.slice().reverse().map((i) => `
-    <tr data-id="${esc(i.id)}"><td class="n">${i.baslangic != null ? gunStr(i.baslangic) : "—"}</td>
-      <td><span class="p-${i.saglayici}"><span class="dot"></span></span>${esc(kim(i))}</td><td>${esc(i.aciklama || "")}</td>
-      <td class="n">${sure(i.sure)}</td><td class="n">${token(i.token)}</td>
-      <td class="dur-${i.durum}">${t(i.durum)}</td>
-      <td>${i.puan ? `<b>${esc(i.puan.not)}/5</b> <span class="meta">${esc(i.puan.gerekce || "")}</span>` : "—"}</td></tr>`).join("");
+  // Jobs, newest first; the first IS_SINIRI unless the user asked for all of them.
+  const sirali = isler.slice().reverse();
+  const gorunen = tumIsler ? sirali : sirali.slice(0, IS_SINIRI);
+  $("isler").innerHTML = sirali.length ? `<div class="is bas"><span>${t("tBasladi")}</span><span>${t("tKim")}</span><span>${t("tIs")}</span>
+      <span class="s">${t("tSure")}</span><span class="tk">${t("tToken")}</span><span>${t("tDurum")}</span><span class="p">${t("tPuan")}</span></div>`
+    + gorunen.map((i) => `
+    <div class="is" tabindex="0" role="button" data-id="${esc(i.id)}"><span class="n z">${i.baslangic != null ? gunStr(i.baslangic) : "—"}</span>
+      <span class="k"><span class="p-${i.saglayici}"><span class="dot"></span></span>${esc(kim(i))}</span>
+      <span class="a">${esc(i.aciklama || "")}${i.puan && i.puan.gerekce ? `<span class="meta">${esc(i.puan.gerekce)}</span>` : ""}</span>
+      <span class="n s">${sure(i.sure)}</span><span class="n tk">${token(i.token)}</span>
+      <span class="n d dur-${i.durum}">${t(i.durum)}</span><span class="n p">${i.puan ? `<b>${esc(i.puan.not)}</b>/5` : "—"}</span></div>`).join("")
+    : `<div class="bos">${t("bosPencere")}</div>`;
+  const dugme = $("is-hepsi");
+  dugme.hidden = sirali.length <= IS_SINIRI;
+  dugme.textContent = tumIsler ? t("dahaAz") : t("tumunuGoster").replace("{n}", sirali.length);
   if (secili) panelBaslik();
   ofisCiz();
 }
@@ -564,6 +692,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") { $("panel").classList.remove("acik"); secili = null; }
   if (["Enter", " "].includes(e.key) && e.target.dataset && e.target.dataset.id) { e.preventDefault(); ac(e.target.dataset.id); }
 });
+$("is-hepsi").onclick = () => { tumIsler = !tumIsler; ciz(); };
 $("p-kapat").onclick = () => { $("panel").classList.remove("acik"); secili = null; };
 $("p-rapor").onclick = () => { sekme = "rapor"; goster(); };
 $("p-gorev").onclick = () => { sekme = "gorev"; goster(); };
@@ -598,6 +727,11 @@ async function yenile() {
 }
 sabitler();
 ofisBagla();
+// The axis is laid out for the track's width; a pane that is dragged wider or narrower gets a new one.
+if (window.ResizeObserver) new ResizeObserver(() => {
+  const g = $("eksen").clientWidth;
+  if (g && Math.abs(g - sonGenislik) > 4) ciz();
+}).observe($("eksen"));
 if (GOMULU) {
   veri = GOMULU;
   $("pencere").hidden = true;
