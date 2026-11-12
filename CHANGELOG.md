@@ -2,6 +2,18 @@
 
 Decision notes (in Turkish) are in [`docs/decisions/`](docs/decisions/); the number in brackets points to one.
 
+## 0.12.0 (2026-11-12)
+
+- **Watch page redesigned for a half-width pane.** [0015] The timeline has one lane per worker (the role for a Claude agent, the model for an external worker) instead of one row per job; jobs that overlap stack inside the lane. Axis labels are laid out for the measured width: none is cut at the edge and none touches its neighbour, and daily ticks fall on local midnight. The axis ends at the last job when nothing is running. With 177 jobs the timeline went from 4240 px to 398 px at 560 px wide.
+- The five counter boxes are one status line; the job table is a list that never scrolls sideways (newest 40, a button for the rest); the agent map is an indented tree at every width, folded until a lead gives it depth; "Running now" shows only while something runs. Breakpoints follow the page's own width (container queries).
+- Office: a worker at a desk carries a short label from its model (`sol`, `flash`; numbered when several share one); a read-only worker wears glasses, a writer holds a pencil. [0015]
+- Fixed: the static report showed the time-window buttons it was meant to hide; the page read agy's reset time as local time (it is UTC).
+- **New skill `/doctor`:** a read-only setup check (tools on PATH, project files, event log, quota readings, agy permissions, shell syntax of the plugin's scripts). It prints `ok` / `warn` / `fail` lines, exits 1 on a failure, and changes nothing. [0017]
+- **Quota-aware roster:** `roster.py suggest` and `summary` read the newest quota reading. A worker with under 20% left in the 5-hour window or under 10% left in the week drops to the end of its row and is marked `low quota`; it is not offered in `Try` either. A missing or stale reading changes nothing. `--no-quota`, `--quota-low-5h`, `--quota-low-week`. Quota events carry the exact reset time (`yenilenir_epoch`). [0017]
+- **Pitfall candidates:** a score below 3 is also kept next to the event log, and `roster.py summary` lists the recent ones of the workers in the table. Hints only: they never change a ranking. [0017]
+- `events.py score` prints a confirmation line; `roster.py --help` exits 0; `roster.py structure` says "Claude: little data" and lists the quota left per provider; `external-agent.sh quota` marks an old Codex reading `stale`. [0014]
+- Draft decision on a shared memory for all workers (general and per project); no code yet. [0016]
+
 ## 0.11.0 (2026-10-19)
 
 From the first real team run (Pixlender). [0014]

@@ -749,6 +749,28 @@ class KotaSiralamaTesti(unittest.TestCase):
         self.kota(SIMDI - 800, codex_kovalari(10, 91))
         self.assertEqual(self.siralama()[0][-1], ("codex/gpt-x/high", "low quota"))
 
+    def test_inceleme_duzeltmeleri_bozuk_olay_okunamayan_kova_gecmis_sifirlanma(self):
+        # Bozuk bir kota olayı (kovalar liste değil) öbür okumaları düşürmez.
+        self.kota(SIMDI - 1000, codex_kovalari(85, 30))
+        self.kota(SIMDI - 900, 123)
+        self.assertEqual(self.siralama()[0][-1], ("codex/gpt-x/high", "low quota"))
+        # Daha yeni ama okunamayan kova eski "az" okumasını geçersiz kılar: sıra değişmez.
+        self.kota(SIMDI - 800, [{"saglayici": "codex", "grup": "Codex", "pencere": p, "kullanilan": None}
+                                for p in ("5 saat", "hafta")])
+        self.assertEqual(self.siralama()[0][0], ("codex/gpt-x/high", ""))
+        # Sıfırlanma anı ölçümden önce de olsa geçmişse okuma eskidir (eski pencerenin son kaydı).
+        self.kota(SIMDI - 700, [{"saglayici": "codex", "grup": "Codex", "pencere": "5 saat", "kullanilan": 99,
+                                 "yenilenir_epoch": SIMDI - 750}])
+        sira, cikti = self.siralama()
+        self.assertEqual(sira[0], ("codex/gpt-x/high", ""))
+        self.assertIn("stale quota reading for codex", cikti)
+
+    def test_agy_yuvarlanmamis_deger_esikte_okunur(self):
+        # %19,6 kalan: "kullanilan" 80'e yuvarlanır (tam %20 kalan, düşmez), "hassas" 80,4 ile düşer.
+        self.kota(SIMDI - 1000, [{"saglayici": "agy", "grup": "agy: Gemini", "pencere": "5 saat",
+                                  "kullanilan": 80, "hassas": 80.4}])
+        self.assertIn(("agy/gemini-x-high", "low quota"), self.siralama()[0])
+
     def test_esik_bayragi(self):
         self.kota(SIMDI - 1000, codex_kovalari(85, 30))
         self.assertEqual(self.siralama("--quota-low-5h", "10")[0][0][0], "codex/gpt-x/high")
@@ -889,6 +911,26 @@ class TuzakAdayiTesti(unittest.TestCase):
         self.assertIsInstance(aday["ts"], float)
         # Dosya olay günlüğünün yanındadır ve POLYCREW_EVENTS'i izler.
         self.assertEqual(self.adaylar.parent, self.gunluk.parent)
+
+    def test_eski_aday_duser_ve_bozuk_aday_ozeti_dusurmez(self):
+        self.adaylar.write_text(
+            json.dumps({"ts": 1000.0, "proje": "P", "isci": "codex/gpt-x/high", "not": 1, "id": "cok-eski"}) + "\n"
+            + json.dumps({"ts": 5.0, "proje": [], "isci": "codex/gpt-x/high", "not": 1, "id": "bozuk"}) + "\n",
+            encoding="utf-8")
+        # Bozuk üstveri (proje bir liste) özeti düşürmez.
+        r = calistir_kadro(["summary", "--days", "7", "--no-seed"], defter=self.defter, gunluk=self.gunluk)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.puan("yeni", 2, "taze")
+        self.assertEqual([a["id"] for a in self.satirlar()], ["yeni"])  # 90 günden eski adaylar yeniden yazımda düşer
+
+    def test_paralel_puanlar_birbirinin_adayini_ezmez(self):
+        komut = [sys.executable, str(KOK / "hooks" / "events.py"), "score"]
+        ortam = {**os.environ, "POLYCREW_EVENTS": str(self.gunluk), "POLYCREW_SCORES": str(self.defter)}
+        surecler = [subprocess.Popen([*komut, f"p{n}", "2", "paralel", "--worker", "codex/gpt-x/high", "--project", "P"],
+                                     env=ortam, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) for n in range(8)]
+        for s in surecler:
+            self.assertEqual(s.wait(timeout=60), 0)
+        self.assertEqual(sorted(a["id"] for a in self.satirlar()), [f"p{n}" for n in range(8)])
 
     def test_ayni_isin_yeni_puani_adayin_yerine_gecer(self):
         self.puan("a1", 1, "ilk")

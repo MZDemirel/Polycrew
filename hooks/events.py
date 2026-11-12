@@ -309,6 +309,7 @@ def duzen_var(yuk: dict) -> bool:
 
 
 TUZAK_ESIGI = 3  # bundan düşük puan "tuzak adayı" olur
+TUZAK_SAKLAMA = 90 * 86400  # saniye: bundan eski aday yeniden yazımda düşer (özet zaten son 30 günü gösterir)
 TUZAK_ALANLARI = ("ts", "proje", "isci", "rol", "alan", "zorluk", "not", "gerekce", "id")
 
 
@@ -323,35 +324,52 @@ def aday_guncelle(kayit: dict) -> None:
     yeni puan eşik ve üstüyse eski aday silinir. Yalnız öneridir: hiçbir şey bunu kural diye okumaz."""
     try:
         yol = adaylar_dosyasi()
-        anahtar = (kayit.get("proje"), str(kayit.get("id")))
-        puan = kayit.get("not")
-        dusuk = isinstance(puan, (int, float)) and not isinstance(puan, bool) and puan < TUZAK_ESIGI
-        kalan, eskisi_vardi = [], False
-        if yol.exists():
-            for satir in yol.read_text(encoding="utf-8", errors="ignore").splitlines():
-                try:
-                    a = json.loads(satir)
-                except ValueError:
-                    a = None
-                if isinstance(a, dict) and (a.get("proje"), str(a.get("id"))) == anahtar:
-                    eskisi_vardi = True
-                elif satir.strip():
-                    kalan.append(satir)
-        if not dusuk and not eskisi_vardi:
-            return
-        if dusuk:
-            kalan.append(json.dumps({k: kayit.get(k) for k in TUZAK_ALANLARI}, ensure_ascii=False))
         yol.parent.mkdir(parents=True, exist_ok=True)
-        tutamak, gecici = tempfile.mkstemp(dir=yol.parent, prefix=yol.name + ".", suffix=".tmp")
-        try:
-            with os.fdopen(tutamak, "w", encoding="utf-8") as f:
-                f.write("".join(satir + "\n" for satir in kalan))
-            os.replace(gecici, yol)
-        finally:
-            if os.path.exists(gecici):
-                os.unlink(gecici)
+        # Paralel iki puan aynı dosyayı okuyup birbirinin adayını ezmesin: oku-yaz arası kilitli.
+        with open(str(yol) + ".kilit", "w") as kilit:
+            try:
+                import fcntl
+                fcntl.flock(kilit, fcntl.LOCK_EX)
+            except (ImportError, OSError):
+                pass  # kilit yoksa (Windows) eski davranış: son yazan kazanır
+            _aday_yaz(yol, kayit)
     except OSError:
         pass  # öneri dosyası puanın yazılmasını asla durdurmaz
+
+
+def _aday_yaz(yol: Path, kayit: dict) -> None:
+    anahtar = (str(kayit.get("proje")), str(kayit.get("id")))
+    puan = kayit.get("not")
+    dusuk = isinstance(puan, (int, float)) and not isinstance(puan, bool) and puan < TUZAK_ESIGI
+    kalan, degisti = [], False
+    if yol.exists():
+        for satir in yol.read_text(encoding="utf-8", errors="ignore").splitlines():
+            try:
+                a = json.loads(satir)
+            except ValueError:
+                a = None
+            if not isinstance(a, dict):
+                degisti = degisti or bool(satir.strip())
+                continue
+            ts = a.get("ts")
+            if (str(a.get("proje")), str(a.get("id"))) == anahtar:
+                degisti = True
+            elif isinstance(ts, (int, float)) and not isinstance(ts, bool) and ts < time.time() - TUZAK_SAKLAMA:
+                degisti = True  # eskimiş aday: dosya sınırsız büyümesin
+            else:
+                kalan.append(satir)
+    if not dusuk and not degisti:
+        return
+    if dusuk:
+        kalan.append(json.dumps({k: kayit.get(k) for k in TUZAK_ALANLARI}, ensure_ascii=False))
+    tutamak, gecici = tempfile.mkstemp(dir=yol.parent, prefix=yol.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(tutamak, "w", encoding="utf-8") as f:
+            f.write("".join(satir + "\n" for satir in kalan))
+        os.replace(gecici, yol)
+    finally:
+        if os.path.exists(gecici):
+            os.unlink(gecici)
 
 
 def defter_yaz(kayit: dict) -> None:

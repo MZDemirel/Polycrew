@@ -65,7 +65,10 @@
 - [x] `0013`: CI'ın macOS ve 3.9 işleri yeşil (2026-10-19)
 - [ ] `0013`'ün açık kalanı: sayfanın `/session-start`'ta açılmasını kurulu 0.10.0 ile gerçek oturumda dene
 - [x] İlk gerçek takım koşusu (Pixlender, 2026-10-19) ve bulgularının A–B grubu: proje süzgeci, agy kota çöküşü, kadro özeti penceresi, zaman ekseni, ortak kota farkı, skill metinleri; 0.11.0 (`0014`)
-- [ ] `0014`'ün C listesi: `score` onay satırı, `roster.py --help` çıkış kodu, `structure`'da az verili Claude ve kalan kota, Codex ölçümünün yaşı; ofiste masa etiketi ve okur/yazar ayrımı; çizelgenin varsayılan penceresi işlerin aralığına otursun
+- [x] `0014`'ün C listesi: `score` onay satırı, `roster.py --help` çıkış kodu, `structure`'da az verili Claude ve kalan kota, Codex ölçümünün yaşı (`0017`); ofiste masa etiketi ve okur/yazar ayrımı, çizelgenin işlerin aralığına oturması (`0015`)
+- [x] İzleme sayfasının yeniden tasarımı: yarım panelde taşmayan, işçi başına şeritli çizelge, durum satırı, tek iş listesi, girintili harita; 0.12.0 (`0015`)
+- [x] Kotaya bakan atama (`low quota`), tuzak adayları, `/doctor` skill'i; ilk kez `polycrew:developer` gerçek oturumda (`0017`)
+- [ ] Ortak hafıza: genel ve proje katmanı, sahibi polycrew, yazan PM; taslak `0016`, açık sorular kullanıcıda, kod yok
 - [ ] Paylaşım kalanları (`0013`): tohum verinin tek kişiden gelmesi, katkı için Türkçe iç belgeler, Windows (WSL), CLI'da Claude kotası; marketplace'i GitHub kaynağıyla kurup başkasının göreceği kurulumu dene (sürüm etiketi ve depo açıklaması 2026-10-19'da yapıldı)
 
 **Bitti sayılır:** yeni bir model çıktığında kadro onu eski modelin puanıyla değil kendi koşularıyla sıralıyor; eski puanlar sıralamayı tek başına belirlemiyor; Codex ve agy kurulu olmayan bir makinede `/team` çalışıyor.

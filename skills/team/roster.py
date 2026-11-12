@@ -188,10 +188,11 @@ def _kota_yenilenme(kova: dict, olcum: float) -> float | None:
     if not metin:
         return None
     try:
-        yil = datetime.fromtimestamp(olcum, tz=timezone.utc).year
+        agy = kova.get("saglayici") == "agy"
+        yil = (datetime.fromtimestamp(olcum, tz=timezone.utc) if agy else datetime.fromtimestamp(olcum)).year
         for ek in (0, 1):  # yıl dönümünde sıfırlanma ertesi yıla düşer
             gun = datetime.strptime(f"{yil + ek}-{str(metin).replace('T', ' ')}", "%Y-%m-%d %H:%M")
-            if kova.get("saglayici") == "agy":
+            if agy:
                 gun = gun.replace(tzinfo=timezone.utc)
             if gun.timestamp() >= olcum - 86400:
                 return gun.timestamp()
@@ -207,12 +208,15 @@ def kota_okumalari() -> dict[tuple, dict]:
         ts = _kota_zamani(e.get("ts"))
         if e.get("tur") != "kota" or ts is None:
             continue
-        for k in e.get("kovalar") or []:
+        kovalar = e.get("kovalar")
+        for k in kovalar if isinstance(kovalar, list) else []:  # bozuk olay öbür sağlayıcıları düşürmez
             if not isinstance(k, dict):
                 continue
-            kullanilan = k.get("kullanilan")
+            # agy'nin "kullanilan"ı tam sayıya yuvarlıdır (%19,6 kalan → 20); eşik için yuvarlanmamış "hassas" okunur.
+            # Codex'te "hassas" pencere sıfırlanınca 0 yazılır, o yüzden orada "kullanilan".
+            kullanilan = k.get("hassas") if k.get("saglayici") == "agy" and k.get("hassas") is not None else k.get("kullanilan")
             if not isinstance(kullanilan, (int, float)) or isinstance(kullanilan, bool):
-                continue  # okunamayan kova (agy "?") kalan sayılmaz
+                kullanilan = None  # okunamayan kova (agy "?"): kalan bilinmiyor, ama eski okumayı da geçersiz kılar
             grup = KOTA_ESKI_GRUP.get(k.get("grup"), k.get("grup"))
             pencere = KOTA_ESKI_PENCERE.get(k.get("pencere"), k.get("pencere"))
             if pencere not in KOTA_ESKI:
@@ -221,9 +225,9 @@ def kota_okumalari() -> dict[tuple, dict]:
             olcum = ts if olcum is None else olcum
             anahtar = (k.get("saglayici"), grup, pencere)
             if anahtar not in son or olcum >= son[anahtar]["olcum"]:
-                son[anahtar] = {"kullanilan": float(kullanilan), "olcum": olcum,
+                son[anahtar] = {"kullanilan": None if kullanilan is None else float(kullanilan), "olcum": olcum,
                                 "yenilenir": _kota_yenilenme(k, olcum)}
-    return son
+    return {a: v for a, v in son.items() if v["kullanilan"] is not None}
 
 
 def isci_kota_grubu(isci: str) -> tuple[str, str | None] | None:
@@ -253,7 +257,7 @@ class KotaBilgisi:
 
     def eski_neden(self, pencere: str, kova: dict) -> str | None:
         """Okuma pencereden eskiyse nedeni: sıfırlanma geçti, ya da yaşı pencereyi aştı."""
-        if kova["yenilenir"] is not None and kova["olcum"] < kova["yenilenir"] <= self.simdi:
+        if kova["yenilenir"] is not None and kova["yenilenir"] <= self.simdi:
             return "reset passed"
         sinir = KOTA_ESKI.get(pencere, KOTA_ESKI["5 saat"])
         if self.simdi - kova["olcum"] > sinir:
@@ -315,8 +319,8 @@ def adaylari_oku() -> list[dict]:
             a = json.loads(satir)
         except ValueError:
             continue
-        if isinstance(a, dict) and a.get("isci"):
-            adaylar[(a.get("proje"), str(a.get("id")))] = olay.kayit_adlari(a)  # aynı işin sonraki puanı geçerli
+        if isinstance(a, dict) and isinstance(a.get("isci"), str) and a["isci"]:
+            adaylar[(str(a.get("proje")), str(a.get("id")))] = olay.kayit_adlari(a)  # aynı işin sonraki puanı geçerli
     return list(adaylar.values())
 
 
@@ -684,7 +688,7 @@ def tablo_olustur_ozet(
         etkin = {i["isci"]: i["etkin"] for i in isci_istatistik(tum_gruplar[(rol, alan)], simdi, yari_omur)}
         adaylar = [(-i["duzeltilmis"], etkin.get(i["isci"], 0.0), i["isci"]) for i in rol_istatistik.get(rol, [])
                    if i["isci"] not in secilenler and etkin.get(i["isci"], 0.0) < AZ_VERI
-                   and i["duzeltilmis"] >= 3.5]
+                   and i["duzeltilmis"] >= 3.5 and not (kota and kota.durum(i["isci"]) == "low")]
         return min(adaylar)[2] if adaylar else "—"
 
     satirlar = [
