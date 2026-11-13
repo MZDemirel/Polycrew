@@ -297,6 +297,11 @@ class Birlestir(unittest.TestCase):
         v = izle.birlestir([{"tur": "kota", "ts": 101, "kovalar": [yeni]}, {"tur": "kota", "ts": 102, "kovalar": [eski]}],
                            simdi=110)
         self.assertEqual(v["kota"]["kovalar"][0]["kullanilan"], 40)
+        # Kota olayından sonra gelen iş olayı da işlenir (0019'da bir ad çakışması sayfayı düşürüyordu).
+        v = izle.birlestir([{"tur": "kota", "ts": 101, "kovalar": [yeni]},
+                            {"tur": "isci_basladi", "ts": 103, "id": "x1", "kaynak": "codex", "model": "m"},
+                            {"tur": "isci_bitti", "ts": 104, "id": "x1", "kaynak": "codex", "cikis": 0}], simdi=110)
+        self.assertEqual([i["id"] for i in v["isler"]], ["x1"])
 
     def test_broken_quota_event_does_not_crash(self):
         v = izle.birlestir([{"tur": "kota", "ts": 10, "kovalar": 5},

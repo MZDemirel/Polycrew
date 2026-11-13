@@ -255,10 +255,10 @@ def birlestir(olaylar: list[dict], simdi: float | None = None) -> dict:
                 if isinstance(k, dict):
                     k = kurallar.adlari_duzelt(k)  # eski agy adları (aynı kova)
                     anahtar = (k.get("saglayici"), k.get("grup"), k.get("pencere"))
-                    yeni = kota_kovasi(k, ts, simdi)
+                    okunan = kota_kovasi(k, ts, simdi)  # "yeni" adı bu fonksiyonda iş kurucusudur
                     # 0019: aynı kovaya üç kaynak yazar (masaüstü, statusline, PM); en yeni ölçüm kazanır.
-                    if anahtar not in kovalar or yeni["olcum_ts"] >= kovalar[anahtar]["olcum_ts"]:
-                        kovalar[anahtar] = yeni
+                    if anahtar not in kovalar or okunan["olcum_ts"] >= kovalar[anahtar]["olcum_ts"]:
+                        kovalar[anahtar] = okunan
         elif tur == "puan":
             hedef = str(e.get("id"))
             i = isler.get(hedef) or isler.get(agent_kimligi.get(hedef, ""))
