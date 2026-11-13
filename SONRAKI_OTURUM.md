@@ -1,32 +1,75 @@
 # Sonraki oturum
 
-Son güncelleme: **2026-11-12** (izleme sayfasının yeniden tasarımı `0015`, ortak hafıza taslağı `0016`, kotaya bakan atama, tuzak adayları ve `/doctor` `0017`; 0.12.0).
+Son güncelleme: **2026-11-13** (kotanın doğruluğu ve tazeliği `0018`, Claude kotası kendiliğinden ve dış işçinin düşme nedeni `0019`; 0.12.1 ve 0.13.0, ikisi de `main`'de).
 
 ## Nerede kaldık
 
-- **2026-11-12 oturumu (`0015`, `0016`, `0017`; 0.12.0).** Dal `claude/polycrew-plugin-improvements-ccd392`, `main`'e alınmadı.
-  1. **Geri bildirim:** "İzleme sayfası yarım panelde kayıyor, özellikle çalışma saatini gösteren kısım; arayüz AI slop duruyor; ortak hafıza eklemek istiyorum (genel + proje)." Ölçüm: 560 px'te eksenin ilk etiketi kesik, 700 px'te etiketler yapışık, "Hepsi"de çizelge 4240 px, harita ve tablo yana taşıyor. Neden: kırılmalar pencereye bakıyordu.
-  2. **İzleme sayfası (`0015`):** işçi başına şeritli çizelge (Claude'da rol, dış işçide model + efor), ölçülen genişliğe göre eksen, tek durum satırı, yana kaymayan iş listesi (en yeni 40), girintili ve katlanır harita, kapsayıcı sorguları (760 ve 400 px). 400–1100 px'te taşma yok; çizelge 560 px'te 398 px. Ofiste model etiketi (`sol`, `sol1`), okur gözlüklü, yazar kalemli. Raporda gizli olması gereken pencere düğmeleri düzeldi. README resimleri örnek günlükle yeniden alındı (başsız Chrome).
-  3. **Takım (kullanıcının isteği: "önerileri bir ajana yaptır, sonra kontrol et ve geliştir"):** iki akış, lider yok.
-     - A: `claude/developer/sonnet-5-5` (826 sn, 4 puan): `0014` C listesi, kotaya bakan atama, tuzak adayları. İnceleme Codex sol (304 sn, 5 puan): 9 bulgu, hepsi düzeltildi.
-     - B: `codex/gpt-6.1-sol/high` yazar (479 sn, 5 puan): `/doctor`. İnceleme `claude/reviewer/sonnet-5-5` (135 sn, 5 puan): 10 bulgu, 9'u düzeltildi.
-     - İki incelemede de yanlış alarm yok. `polycrew:developer` ilk kez gerçek oturumda koştu: commit'leri Türkçe, tek satır, imzasız.
-  4. **0.12.0 (`0017`):** `roster.py` kalan kotaya bakar (5 saatte %20, haftada %10 altı `low quota`, satırın sonuna; ölçüm yok ya da eskiyse sıra değişmez; `--no-quota`); kota olaylarında `yenilenir_epoch`; 3'ün altındaki puan `<günlük>-tuzak-adaylari.jsonl`'a, `summary` altında ipucu; `/doctor` salt okunur kurulum denetimi; `score` onay satırı, `roster.py --help` çıkış 0, `structure`'da kalan kota, `quota`'da `stale`.
-  5. **Ortak hafıza (`0016`, taslak, kod yok):** sahibi polycrew, genel `~/.config/polycrew/memory/` + proje içinde git'te; okuma `external-agent.sh` ve `SessionStart`, yazma PM'de (`/session-end` ayıklar); "yalnız Claude" işareti. Codex (`memories_1.sqlite`) ve agy (`brain/`) iç biçimlerine dokunulmaz.
-  6. **Gözlemler:** Codex commit'te "`packed-refs.lock` salt okunur" hatası verdi ama commit atıldı; Codex salt okunur kipte testleri koşamıyor (geçici dosya açamaz); developer sandbox'ında uzun bileşik komutlar reddedildi; kadro testleri gerçek günlüğü okuyordu (yalıtıldı).
-  7. **Kota:** Codex 5 saat %0 → %9 (iki koşu), hafta %24; agy Gemini %100, Claude/GPT hafta %49, Argon hafta %22. Claude ölçümü 70 saatlik (yazılmadı).
-  8. **Testler:** 137 test, 17 sn (85'ten). `claude plugin validate .` ve `bash -n` temiz. Python 3.9'da yerelde koşulmadı (kurulu değil). Yeni bağımlılık yok.
-  9. **Takım raporu:** https://claude.ai/artifact/CKfjNQT8RjoSPxBneb2qSK (bu projenin dört işi).
+- **2026-11-13 oturumu (`0018`, `0019`; 0.12.1 ve 0.13.0).** Dal `claude/epic-merkle-c03e41`, `main`'e alındı (`aed6b9a`).
+  1. **Kullanıcının soruları:**
+     - Son değişiklikler neyi değiştirdi?
+     - Öbür ajanlara eklenti kurmak gerekiyor mu? Yanıt: hayır. Kurallar ve ileride hafıza `external-agent.sh`'in görev metniyle gider.
+     - Kotalar doğru ve zamanında alınıyor mu?
+     - Ajanların görüşleri istendi.
+  2. **Tarama:** PM ile üç gözden geçirici koştu: Codex sol (331 sn), agy Argon (480 sn), Claude sonnet (205 sn). Üçü de 5 puan aldı. Ortak bulgular:
+     - Claude ölçümü 4 gün eskiydi: haftalık %5 görünüyordu, gerçekte %32. Sayfa ölçümün yaşına bakmıyordu.
+     - Argon koşusu Gemini kovasından ölçülüyordu.
+     - agy'nin sıfırlanma saati UTC görünüyordu.
+     - `hassas` alanı atılıyordu.
+     - Kota olayları günlüğün %73'üydü.
+     - Günlüğe ekleme kilitsizdi.
+  3. **0.12.1 (`0018`), PM yazdı, Codex inceledi (5 bulgu, hepsi düzeltildi):**
+     - tek kural kaynağı `hooks/quota.py`;
+     - eski ölçüm kuralı: sıfırlanma geçtiyse ya da 5 saatten (5 saatlik pencere) / 1 günden (hafta) eskiyse;
+     - Argon'un kendi kovası;
+     - yerel saat; okunamayan kova `?` gösteriyor;
+     - Claude model başına haftalık sınır (`--model-week`);
+     - `claude-statusline.py`;
+     - değişmeyen kota yazılmıyor;
+     - günlük kilidi.
+     
+     Günlük bir kez sıkıştırıldı: 3,6 MB → 1,9 MB, yedek `olaylar.jsonl.yedek-20261113`.
+  4. **Masaüstü kaynağı:** Claude Code masaüstü uygulaması `~/.config/Claude/plan-usage-history.json`'a 15 dakikada bir 5 saat ve hafta yüzdesi yazıyor. Belgelenmemiş bir dosya; kullanıcı yedekli kullanımı onayladı.
+  5. **0.13.0 (`0019`), iki akış:**
+     - **A (PM):** Claude kotası masaüstünden kendiliğinden (kanca, sayfa, `quota`, oturum açılışı); en yeni ölçüm kazanıyor; agy işçi adında efor; puan 1–5; devam eden agent süresi; Try'ın alan düzeyi; `/doctor`'da kaynak.
+     - **B (Codex yazar, 311 sn, 4 puan):** `istem.md`; kota 5, izin 6; okuma kipinde değişiklik uyarısı; agy `null` yanıtı.
+     - **Çapraz inceleme:** Codex A'yı (4 bulgu, 5 puan), Claude B'yi (3 düzeltme, 5 puan) inceledi.
+     - **Yakalanan hata:** A'da sayfa, kota olayından sonra gelen iş olayında çöküyordu. PM tarayıcıda yakaladı, Codex da buldu; `main`'e girmedi.
+  6. **Statusline gerçek CLI'da:** Claude Code 2.1.273, kullanıcı ilk kurulumu yaptıktan sonra.
+     - `rate_limits` sıfırlanma anlarıyla geldi; okuma günlüğe yazıldı.
+     - Kullanıcının isteğiyle `~/.claude/settings.json`'a `statusLine` eklendi; betik `main` kopyasından çalışıyor.
+  7. **Kota (16:40):**
+     - Claude: 5 saat %44, hafta %37, Fable %23.
+     - Codex: 5 saat %17, hafta %26.
+     - agy: Argon hafta %17 kaldı, Claude/GPT hafta %49, Gemini %100.
+  8. **Testler:** 188 test, 33 sn (137'den). `claude plugin validate .` ve `bash -n` temiz. Yeni bağımlılık yok.
+  9. **Takım raporu:** https://claude.ai/artifact/TizbZNhC8idWij4NUFHZCf
 - **Açık kalanlar:**
-  - Ortak hafızanın altı açık sorusu (`0016`): proje içindeki klasör adı, madde biçimi, bütçe, eskime, Claude'un kendi hafızasıyla çakışma, gizli bilgi denetimi.
-  - 0.12.0 başka projede denenmedi (CLAUDE.md: önce Pixlender). Sayfa yalnız bu oturumda, iki işçi çalışırken görüldü.
-  - `external-agent.sh` argon koşularını Gemini grubuna karşı ölçüyor, `roster.py` argon'u kendi kovasına bağlıyor (`0017`).
-  - Kota eşikleri (%20, %10) tahmin. `/doctor` izleme sunucusuna bakmıyor. `TMPDIR` not dosyalı bir klasörün altındaysa iki doctor testi düşer.
-  - Sayfa: "Hepsi"de haftalara yayılan eksende çubuklar çizgi kalınlığında; PM düğümünün süresi işlerin toplamı; çubuklar klavyeyle gezilmiyor (`0015`).
-  - Gerçek oturumda denenmeyenler: `/project-setup`, lider, kurulu sürümle sayfanın `/session-start`'ta açılması (bu oturumda yerel depodan açıldı).
-  - Paylaşım: tohum veri tek kişiden; katkı için Türkçe iç belgeler; Windows yalnız WSL; CLI'da Claude kotası; GitHub kaynağından kurulumun denenmesi.
-  - Pixlender'ın 0.11.0 öncesi raporu (https://claude.ai/artifact/LjJu9LQQRwaG4NHLmrxBgb) polycrew'deki Codex işini de taşıyor.
-  - `roster.md`'deki "Codex ağır yazar ≈ %20–25" tahmini tutmadı: bu oturumda yazar koşusu %5, okur %4.
+  - **Ortak hafıza (`0016`):** altı açık soru duruyor. Ajanların görüşleri:
+
+    | Soru | Claude | Codex | agy |
+    |---|---|---|---|
+    | Klasör | `.polycrew/memory/` | `.polycrew/memory/` | `docs/memory.md` |
+    | Biçim | madde başına dosya, ön bilgili | madde başına dosya, ön bilgili | katman başına tek dosya |
+    | Bütçe | 1500–2000 karakter | 8000 karakter | 1500 karakter |
+    | Eskime | model değişince ya da 90 gün | 30 günde gözden geçir | 60 gün |
+
+    Üçü de şunlarda birleşiyor:
+    - yazmadan önce gizli bilgi taraması;
+    - varsayılan "yalnız Claude", paylaşım açıkça seçilir;
+    - dış işçiye giden metin `istem.md`'de görünür (artık var).
+  - **Masaüstü dosyası belgelenmemiş:** biçim değişirse `/doctor` uyarır. Model başına haftalık sınır yalnız PM'den gelir.
+  - **İzleme sunucusunda `Host` denetimi yok:** DNS rebinding ile `/api/is` okunabilir.
+  - **`events.py write`:** `123` gibi bir başlık sayıya dönüşüyor.
+  - **Maliyet karşılaştırması:** `ort_kota` farklı pencerelerin yüzdelerini karıştırıyor.
+  - **Codex kotası** yalnız Codex kullanılınca tazeleniyor.
+  - **Denenmeyenler:**
+    - 0.12 ve 0.13 başka projede (Pixlender) denenmedi;
+    - `/project-setup` ve lider gerçek oturumda denenmedi.
+  - **Codex ortamı:** Codex yine `TMPDIR`'i not dosyalı klasörün altına koydu; 5 test düştü, normal `TMPDIR` ile hepsi geçti.
+  - **0017'den kalanlar:** sayfanın `0015` açıkları; kota eşikleri tahmin; `/doctor` izleme sunucusuna bakmıyor.
+  - **`roster.md`:** "Codex ağır yazar ≈ %20–25" tahmini tutmadı; bu oturumda yazar %5, okur %3–5.
+
+- **2026-11-12 oturumu (`0015`, `0016`, `0017`; 0.12.0).** İzleme sayfasının yarım panele göre yeniden tasarımı, ortak hafıza taslağı, kotaya bakan atama, tuzak adayları ve `/doctor`. İki akışlı takım koşusu: Claude developer ile Codex yazar. 137 test. Rapor: https://claude.ai/artifact/CKfjNQT8RjoSPxBneb2qSK. Ayrıntı karar notlarında.
 
 - **2026-10-19 oturumu (`0013`, `0014`; 0.10.0 ve 0.11.0).** Paylaşıma hazırlık (günlük yalnız polycrew projelerinde, macOS, CI), ilk gerçek takım koşusu (Pixlender) ve düzeltmeleri (proje süzgeci, agy kota çöküşü, ortak kota farkı, kadro özeti bütün geçmişle). 85 test. Rapor: https://claude.ai/artifact/UV55P9dZtM21uwC59Y6dje. Ayrıntı karar notlarında.
 
@@ -56,63 +99,114 @@ Son güncelleme: **2026-11-12** (izleme sayfasının yeniden tasarımı `0015`, 
 ## Sıradaki
 
 ### 1. Ortak hafızanın ilk dilimi (`0016`)
-- İş: açık soruları kullanıcıyla kapat; sonra iki klasör, `memory.py` (listele, ekle, role ve alana göre seç, bütçe), `external-agent.sh` görev metnine ekleme, `SessionStart` kancası, `/session-end`'e ayıklama adımı (tuzak adayları ve işçilerin "Lessons" satırları kaynak).
-- Bitti: bir dış işçi görevinde ve bir Claude oturumunda hafıza maddesi görünüyor; "yalnız Claude" maddesi dış işçiye gitmiyor; düzeni kullanmayan projede hiçbir şey yazılmıyor; testli; `0016` "Kabul edildi".
+- **İş:**
+  - Açık soruları kullanıcıyla kapat; ajanların görüşleri yukarıdaki tabloda.
+  - Sonra iki klasör ve `memory.py` (listele, ekle, role ve alana göre seç, bütçe).
+  - `external-agent.sh` görev metnine ekleme; `istem.md`'de görünür.
+  - `SessionStart` kancası.
+  - `/session-end`'e ayıklama adımı. Kaynaklar: tuzak adayları ve işçilerin "Lessons" satırları.
+- **Bitti:**
+  - Bir dış işçi görevinde ve bir Claude oturumunda hafıza maddesi görünüyor.
+  - "Yalnız Claude" maddesi dış işçiye gitmiyor.
+  - Gizli bilgi taraması var.
+  - Düzeni kullanmayan projede hiçbir şey yazılmıyor.
+  - Testli; `0016` "Kabul edildi".
 
-### 2. 0.12.0'ı gerçek projede dene
-- İş: Pixlender'da `/session-start` (sayfa yarım panelde), bir `/team` koşusu (`low quota` ve tuzak adayları özeti), `/doctor`.
-- Bitti: gözlemler `0015` ve `0017`'ye yazıldı.
+### 2. 0.12–0.13'ü gerçek projede dene
+- **İş:** Pixlender'da `/session-start` (Claude kotası masaüstünden, sayfa yarım panelde), bir `/team` koşusu (`low quota`, kota 5 ve izin 6, `istem.md`) ve `/doctor`.
+- **Bitti:** gözlemler `0018` ve `0019`'a yazıldı.
 
-### 3. `0017`'nin açıkları
-- İş: argon'un kota grubu (`external-agent.sh` ile `roster.py` aynı kovaya baksın); `/doctor`'a izleme sunucusu satırı; `external-agent.sh` yazma kipinde `packed-refs`'i sandbox'a eklesin; doctor testlerinde `TMPDIR` bağımlılığı.
-- Bitti: her biri testli, CHANGELOG'da.
+### 3. Küçük düzeltmeler
+- **İş:**
+  - izleme sunucusunda `Host` denetimi;
+  - `events.py write` başlığı metin olarak yazsın;
+  - `ort_kota` aynı pencereyi karşılaştırsın;
+  - `/doctor`'a izleme sunucusu satırı;
+  - doctor testlerinin `TMPDIR` bağımlılığı.
+- **Bitti:** her biri testli, CHANGELOG'da.
 
 ### 4. Sayfanın açıkları (`0015`)
-- İş: "Hepsi"de oturumlara göre kümeleme ya da yakınlaştırma; PM süresi duvar saati olsun; çubuklara klavye.
-- Bitti: 5 haftalık günlükte çubuklar seçilebiliyor; ekran görüntüsü `0015`'te.
+- **İş:** "Hepsi"de oturumlara göre kümeleme ya da yakınlaştırma; PM süresi duvar saati olsun; çubuklara klavye.
+- **Bitti:** 5 haftalık günlükte çubuklar seçilebiliyor; ekran görüntüsü `0015`'te.
 
 ### 5. Eski açık kalanlar
-- Paylaşım kalanları (`0013`): tohum verinin açıklaması, CONTRIBUTING, CLI kullanıcısı için Claude kotası.
+- Paylaşım kalanları (`0013`): tohum verinin açıklaması, CONTRIBUTING, GitHub kaynağından kurulum.
 - Gemini Pro ve agy Opus kodlamayı yeniden denemek (geniş izin kullanıcının kararı).
 - Tasarımcı ve lider rolleri ölçülmedi; yeni model çıkınca `deney/` ile tekrar.
-- Yarı ömrü birkaç haftalık veriyle yeniden değerlendir (`0008`); veri birikince maliyeti puana katmak (`0009`).
+- Yarı ömrü birkaç haftalık veriyle yeniden değerlendir (`0008`); veri birikince maliyeti puana kat (`0009`).
 - Ofis: Pixlender sprite sayfası, odalar arası yürüme, README üst görselinin gerçek oturumdan alınması.
 - Pixlender ve Masalino `CLAUDE.md`'lerine sabit git bloğu (kullanıcının onayıyla).
 
 ## Kullanıcıya sorulacaklar
 
-- Ortak hafıza (`0016`): proje klasörünün adı (`.polycrew/memory/` mi, `docs/memory/` mi); madde başına dosya mı, tek dosyada liste mi; görev başına bütçe kaç karakter?
-- Marketplace'i GitHub kaynağıyla yeniden ekleyelim mi? (Başkalarının göreceği kurulum denenir; `main`'i ileri sarmak çalışan oturumları değiştirmez.)
+- Ortak hafıza (`0016`):
+  - Proje klasörü `.polycrew/memory/` mi, `docs/memory.md` mi?
+  - Madde başına dosya mı, tek dosya mı?
+  - Görev başına bütçe kaç karakter (1500–8000)?
+  - Paylaşım varsayılan olarak "yalnız Claude" mu?
+- Marketplace'i GitHub kaynağıyla yeniden ekleyelim mi?
 - Pixlender'ın eski takım raporu silinsin mi, yeniden mi üretilsin?
 
 ## Sonraki oturumun kadrosu
 
-Roster summary: last 7 days, 29 records (generated: 2026-11-12)
+Roster summary: last 7 days, 36 records (generated: 2026-11-13)
 
 | Role | Field | Roster | Score | n | Backup | Backup score | Basis | Try |
 |---|---|---|---|---|---|---|---|---|
-| artist | art | claude/artist/opus-5-5 | 4.59 | 12 | — | — | window | — |
-| designer | design | agy/gemini-4-argon-high | 4.39 | 3 | claude/designer/opus-5-5 | 4.18 | window, little data | — |
-| developer | js | claude/developer/sonnet-5-5 | 3.99 | 4 | claude/developer/opus-5-5 | 3.82 | window | codex/gpt-6.1-sol/high |
-| developer | py | claude/developer/sonnet-5-5 | 4.15 | 15 | codex/gpt-6.1-sol/high | 3.89 | window | claude/developer/opus-5-5 |
-| developer | script | agy/gemini-4-argon-high | 3.66 | 1 | agy/gemini-3.8-flash-high | 3.35 | window, little data | claude/developer/sonnet-5-5 |
-| image-generation | art | codex/gpt-6.1-sol/high | 3.88 | 2 | agy/gemini-3.1-pro-high | 3.34 | stale | — |
-| image-reading | art | agy/gemini-3.8-flash-high | 4.24 | 7 | codex/gpt-6.1-sol/high | 4.06 | window | claude/image-reading/sonnet-5-5 |
-| researcher | research | codex/gpt-6.1-sol/high | 4.08 | 3 | codex/gpt-6-astra/xhigh | 3.74 | stale | agy/gemini-3.8-flash-high |
-| reviewer | review | codex/gpt-6.1-sol/high | 4.61 | 17 | claude/reviewer/sonnet-5-5 | 4.47 | window | agy/gemini-4-argon-high |
+| artist | art | claude/artist/opus-5-5 | 4.58 | 12 | — | — | window | — |
+| designer | design | agy/gemini-4-argon-high | 4.38 | 3 | claude/designer/opus-5-5 | 4.17 | window, little data | — |
+| developer | js | claude/developer/sonnet-5-5 | 3.98 | 4 | claude/developer/opus-5-5 | 3.81 | window | codex/gpt-6.1-sol/high |
+| developer | py | claude/developer/sonnet-5-5 | 4.14 | 15 | codex/gpt-6.1-sol/high | 3.89 | window | claude/developer/opus-5-5 |
+| developer | script | agy/gemini-4-argon-high | 3.66 | 1 | codex/gpt-6.1-sol/high | 3.67 | window, little data, cheaper | claude/developer/sonnet-5-5 |
+| image-generation | art | codex/gpt-6.1-sol/high | 3.87 | 2 | agy/gemini-3.1-pro-high | 3.34 | stale | — |
+| image-reading | art | agy/gemini-3.8-flash-high | 4.23 | 7 | codex/gpt-6.1-sol/high | 4.06 | window | claude/image-reading/sonnet-5-5 |
+| researcher | research | codex/gpt-6.1-sol/high | 4.07 | 3 | codex/gpt-6-astra/xhigh | 3.74 | stale | agy/gemini-3.8-flash-high |
+| reviewer | review | codex/gpt-6.1-sol/high | 4.69 | 20 | claude/reviewer/sonnet-5-5 | 4.60 | window | agy/gemini-4-argon-high |
 
-`roster.py structure`: developer → prefer Claude (sonnet 4.18 / Codex sol 3.91); reviewer → equal: external first, keep Claude quota (Codex sol 4.61 / sonnet 4.47). Avoid: agy/gemini-3.8-flash-high as designer (2.98, eff. n 2.6).
+`roster.py structure`: developer → prefer Claude (sonnet 4.18 / Codex sol 3.91). Avoid: agy/gemini-3.8-flash-high as designer (2.98, eff. n 2.6).
 
-Not: agy Gemini 4 Argon'un haftalık kotasında %22 kaldı; `designer` ve `developer/script` satırlarının kadrosu o. Atamadan önce `external-agent.sh quota` (tablo %10'un altında kendisi düşürür).
+Not: Argon'un haftalık kotasında %17 kaldı (sıfırlanma 11-16 15:43). `designer` ve `developer/script` satırlarının kadrosu o; tablo %10'un altında kendisi düşürür. `developer/script`'te Codex 0.01 farkla yedek; bu oturumdaki yazar koşusu 4 aldı ve henüz yalnız 1 Argon kaydı var.
 
 ## Senin yapman gerekenler
 
-- Bu dalı `main`'e al ve push et: `git -C ~/Belgeler/My_Project/claude-eklenti merge --ff-only claude/polycrew-plugin-improvements-ccd392`, sonra `git push origin main` ve `git tag v0.12.0 && git push origin v0.12.0`. Push'tan sonra CI'a bak (özellikle Python 3.9 ve macOS işleri).
-- `main`'e alınca çalışan oturumlar yeni skill'leri ve sayfayı görür (marketplace yerel klasörden).
-- Yeni sayfaya yarım panelde bak: `http://localhost:8770/?project=claude-eklenti`. Takım raporu: https://claude.ai/artifact/CKfjNQT8RjoSPxBneb2qSK.
-- `0016`'daki açık soruları oku.
-- İşçi dalları duruyor: `claude/polycrew-doctor-skill`, `worktree-agent-a66d48ba794d9853c` (worktree'si de: `.claude/worktrees/agent-a66d48ba794d9853c`; istersen kaldır, dal kalır). Eski worktree'ler: `polycrew-plugin-dev-6ebcae`, `universal-git-rules-ff6998`.
-- Önceki oturumdan kalanlar: Pixlender'ın `main`'i push edilmedi; `~/.cache/polycrew/dis-ajan-kopya.sh` eski kopya; Pixlender ve Masalino izin listelerindeki eski betik adları.
+- **`main`'i push et** (`main` artık `aed6b9a`):
+
+  ```bash
+  git -C ~/Belgeler/My_Project/claude-eklenti push origin main
+  ```
+
+  Sonra sürümleri etiketle:
+
+  ```bash
+  git -C ~/Belgeler/My_Project/claude-eklenti tag v0.12.0 3e6f082
+  ```
+
+  ```bash
+  git -C ~/Belgeler/My_Project/claude-eklenti tag v0.12.1 4888396
+  ```
+
+  ```bash
+  git -C ~/Belgeler/My_Project/claude-eklenti tag v0.13.0 aed6b9a
+  ```
+
+  ```bash
+  git -C ~/Belgeler/My_Project/claude-eklenti push origin --tags
+  ```
+
+  Push'tan sonra CI'a bak; özellikle macOS ve Python 3.9 işleri (bash 3.2 heredoc düzeltmesi orada denenir).
+- **Statusline:** `~/.claude/settings.json`'da. Açık CLI oturumları yeniden başlayınca devreye girer; geri almak için `statusLine` bloğunu sil.
+- **Olay günlüğü yedeği:** `~/.cache/polycrew/olaylar.jsonl.yedek-20261113`. Sayfa doğru görünüyorsa silebilirsin.
+- **`0016`:** açık soruları ve yukarıdaki görüş tablosunu oku.
+- **Duran dallar ve worktree'ler:**
+  - bu oturumun işçi dalı `ext-dis-ajan-hatalari` (worktree'si `.claude/worktrees/ext-dis-ajan-hatalari`);
+  - `claude/polycrew-doctor-skill`, `worktree-agent-a66d48ba794d9853c`;
+  - eski worktree'ler: `polycrew-plugin-dev-6ebcae`, `universal-git-rules-ff6998`, `polycrew-plugin-improvements-ccd392`.
+  
+  İstersen worktree'leri kaldır; dallar kalır.
+- **Önceki oturumdan kalanlar:**
+  - Pixlender'ın `main`'i push edilmedi;
+  - `~/.cache/polycrew/dis-ajan-kopya.sh` eski bir kopya;
+  - Pixlender ve Masalino izin listelerinde eski betik adları duruyor.
 
 ## Başlangıç promptu
 

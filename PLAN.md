@@ -68,7 +68,11 @@
 - [x] `0014`'ün C listesi: `score` onay satırı, `roster.py --help` çıkış kodu, `structure`'da az verili Claude ve kalan kota, Codex ölçümünün yaşı (`0017`); ofiste masa etiketi ve okur/yazar ayrımı, çizelgenin işlerin aralığına oturması (`0015`)
 - [x] İzleme sayfasının yeniden tasarımı: yarım panelde taşmayan, işçi başına şeritli çizelge, durum satırı, tek iş listesi, girintili harita; 0.12.0 (`0015`)
 - [x] Kotaya bakan atama (`low quota`), tuzak adayları, `/doctor` skill'i; ilk kez `polycrew:developer` gerçek oturumda (`0017`)
-- [ ] Ortak hafıza: genel ve proje katmanı, sahibi polycrew, yazan PM; taslak `0016`, açık sorular kullanıcıda, kod yok
-- [ ] Paylaşım kalanları (`0013`): tohum verinin tek kişiden gelmesi, katkı için Türkçe iç belgeler, Windows (WSL), CLI'da Claude kotası; marketplace'i GitHub kaynağıyla kurup başkasının göreceği kurulumu dene (sürüm etiketi ve depo açıklaması 2026-10-19'da yapıldı)
+- [x] Kotanın doğruluğu ve tazeliği: tek kural (`hooks/quota.py`), Argon kovası, yerel sıfırlanma saati, yaşa göre eski ölçüm, Claude model kovası, yinelenen kota olayı yazılmaz, günlük kilidi; 0.12.1 (`0018`)
+- [x] Claude kotası kendiliğinden: masaüstü uygulamasının kullanım örnekleri ve CLI statusline (gerçek CLI'da denendi); dış işçinin düşme nedeni (kota 5, izin 6), `istem.md`, okuma kipinde değişiklik uyarısı; agy işçi adı, puan aralığı, devam eden agent süresi, Try'ın alan düzeyi; 0.13.0 (`0019`)
+- [ ] Ortak hafıza: genel ve proje katmanı, sahibi polycrew, yazan PM; taslak `0016`, açık sorular kullanıcıda, kod yok (ajanların görüşleri 2026-11-13 oturumunda toplandı, `SONRAKI_OTURUM.md`)
+- [ ] İzleme sunucusunda `Host` başlığı denetimi (DNS rebinding ile `/api/is` okunabilir; 2026-11-13 Claude incelemesi)
+- [ ] `events.py write` değerleri JSON olarak çözüyor: `123` gibi bir iş başlığı sayıya dönüşüyor; maliyet karşılaştırması farklı pencerelerin yüzdelerini karıştırıyor (`ort_kota`)
+- [ ] Paylaşım kalanları (`0013`): tohum verinin tek kişiden gelmesi, katkı için Türkçe iç belgeler, Windows (WSL); marketplace'i GitHub kaynağıyla kurup başkasının göreceği kurulumu dene (sürüm etiketi ve depo açıklaması 2026-10-19'da yapıldı)
 
 **Bitti sayılır:** yeni bir model çıktığında kadro onu eski modelin puanıyla değil kendi koşularıyla sıralıyor; eski puanlar sıralamayı tek başına belirlemiyor; Codex ve agy kurulu olmayan bir makinede `/team` çalışıyor.
