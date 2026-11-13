@@ -169,14 +169,23 @@ _kota_zamani = kurallar.zaman
 _kota_yenilenme = kurallar.yenilenme
 
 
-def kota_okumalari() -> dict[tuple, dict]:
-    """Olay günlüğündeki en yeni kota okuması, (sağlayıcı, grup, pencere) başına."""
+def kota_okumalari(agy_gruplari: set | None = None) -> dict[tuple, dict]:
+    """Olay günlüğündeki en yeni kota okuması, (sağlayıcı, grup, pencere) başına.
+
+    ``agy_gruplari`` verilirse en yeni agy okumasındaki grup adlarıyla doldurulur: Argon'un kendi kovası
+    yalnız agy onu bugün de veriyorsa sayılır (eski bir okumada kalan Argon kovası Gemini'ye düşmeyi
+    engellemesin, 0018)."""
     son: dict[tuple, dict] = {}
+    son_agy = (None, set())
     for e in olay._olaylar():
         ts = _kota_zamani(e.get("ts"))
         if e.get("tur") != "kota" or ts is None:
             continue
         kovalar = e.get("kovalar")
+        gruplar = {kurallar.adlari_duzelt(k).get("grup") for k in kovalar if isinstance(k, dict)
+                   and k.get("saglayici") == "agy"} if isinstance(kovalar, list) else set()
+        if gruplar and (son_agy[0] is None or ts >= son_agy[0]):
+            son_agy = (ts, gruplar)
         for k in kovalar if isinstance(kovalar, list) else []:  # bozuk olay öbür sağlayıcıları düşürmez
             if not isinstance(k, dict):
                 continue
@@ -195,6 +204,8 @@ def kota_okumalari() -> dict[tuple, dict]:
             if anahtar not in son or olcum >= son[anahtar]["olcum"]:
                 son[anahtar] = {"kullanilan": None if kullanilan is None else float(kullanilan), "olcum": olcum,
                                 "yenilenir": _kota_yenilenme(k, olcum)}
+    if agy_gruplari is not None:
+        agy_gruplari.update(son_agy[1])
     return {a: v for a, v in son.items() if v["kullanilan"] is not None}
 
 
@@ -217,8 +228,9 @@ class KotaBilgisi:
     """Kota okumaları ve eşikler; ``durum(işçi)`` low / ok / stale / none döner (tanınmayan araçta None)."""
 
     def __init__(self, okumalar: dict[tuple, dict], simdi: float,
-                 az_5sa: float = KOTA_AZ_5SA, az_hafta: float = KOTA_AZ_HAFTA):
+                 az_5sa: float = KOTA_AZ_5SA, az_hafta: float = KOTA_AZ_HAFTA, agy_gruplari: set | None = None):
         self.okumalar, self.simdi, self.az_5sa, self.az_hafta = okumalar, simdi, az_5sa, az_hafta
+        self.agy_gruplari = agy_gruplari  # en yeni agy okumasının grupları; yoksa okumalardan
 
     def eski_neden(self, pencere: str, kova: dict) -> str | None:
         """Okuma pencereden eskiyse nedeni: sıfırlanma geçti, ya da yaşı pencereyi aştı."""
@@ -230,7 +242,7 @@ class KotaBilgisi:
 
     def isci_kovalari(self, isci: str) -> list[tuple[str, dict]]:
         """İşçinin kotasını gösteren kovalar (pencere, okuma)."""
-        gruplar = {g for (s, g, _p) in self.okumalar if s == "agy"}
+        gruplar = self.agy_gruplari if self.agy_gruplari else {g for (s, g, _p) in self.okumalar if s == "agy"}
         return [(p, v) for (s, g, p), v in sorted(self.okumalar.items(), key=lambda x: tuple(map(str, x[0])))
                 if kurallar.isci_kovasi_mi(isci, s, g, gruplar)]
 
@@ -545,7 +557,9 @@ def kota_kur(args, simdi: float) -> KotaBilgisi | None:
     if args.kotasiz:
         return None
     try:
-        return KotaBilgisi(kota_okumalari(), simdi, args.kota_az_5sa, args.kota_az_hafta)
+        gruplar: set = set()
+        okumalar = kota_okumalari(gruplar)
+        return KotaBilgisi(okumalar, simdi, args.kota_az_5sa, args.kota_az_hafta, gruplar)
     except Exception:  # noqa: BLE001 - kota yalnız bir ipucudur; sıralama onsuz da çalışır
         return None
 

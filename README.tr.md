@@ -120,7 +120,8 @@ Sayfa `http://localhost:8770` adresinde açılır. Oturumun planında takım ya 
 - **Şimdi çalışanlar:** rol ya da model, iş, geçen süre.
 - **Zaman çizelgesi:** işçi başına bir şerit (Claude agent'ında rol, dış işçide model), işleri çubuk olarak; aynı anda koşan işler şeridin içinde alt alta durur. Claude turuncu, Codex yeşil, Gemini mavi. Eksen sayfanın genişliğine göre kurulur, yarım panelde de okunur. Bir çubuğa tıklayınca işçinin son raporu ve görevi açılır.
 - **Kota:** sağlayıcı başına bir kart, son ölçümüyle: Codex'in 5 saatlik ve haftalık penceresi, Gemini, agy üzerinden Claude ve Claude Code'un kendisi. Pencerenin yenilenme saatinden eski ölçüm soluk ve "eski ölçüm" etiketiyle görünür.
-  - Claude'un kendi kullanımı CLI'dan okunmuyor. PM onu okur (masaüstü uygulamasının kullanım aracı ya da `/usage`) ve `skills/watch/claude-quota.py --five-hour <%> --week <%> ...` ile yazar; betik argümansız son ölçümü yazdırır, 5 saatlik pencerenin %80'inde ya da haftanın %70'inde uyarır. Kendiliğinden güncellenmez.
+  - Claude'un kendi kullanımı: CLI'da isteğe bağlı statusline kurulursa kendiliğinden yazılır. `~/.claude/settings.json` içine `"statusLine": {"type": "command", "command": "python3 <eklenti>/skills/watch/claude-statusline.py"}` eklenir; var olan statusline `--then "<komutu>"` ile korunur. Yoksa PM atamadan önce okur (masaüstü uygulamasının kullanım aracı ya da `/usage`) ve `skills/watch/claude-quota.py --five-hour <%> --week <%> ...` ile yazar. Model başına haftalık sınır için `--model-week Fable <%> <sıfırlanma>` kullanılır. Betik argümansız son ölçümü yazdırır, 5 saatlik pencerenin %80'inde ya da haftanın %70'inde uyarır.
+  - Ölçüm iki durumda eski sayılır: penceresi sıfırlanmışsa ya da 5 saatlik pencerede 5 saatten, haftalıkta bir günden eskiyse. Sayfa, `roster.py` ve `/doctor` bunu söyler.
 - **İşler ve puanlar:** süre, token, durum ve PM'in gerekçeli 1–5 puanı; en yeni 40 iş, gerisi düğmeyle.
 - **Agent haritası:** girintili bir ağaç; kökte PM, altında başlattığı işçiler (Claude rolleri, Codex, Gemini). Çalışan işçi yeşil ve nabız gibi atar, biten solar, başlıkta sayım durur. Lider ya da iç içe agent ağaca derinlik verene kadar katlı gelir.
 
@@ -190,9 +191,9 @@ skills/external-agent/external-agent.sh quota                               # Co
 ```text
 .claude-plugin/   eklenti ve marketplace tanımları
 agents/           roller (model, efor, araçlar)
-skills/           session-start, session-end, decision, project-setup, team (+ roster.md, roster.py), external-agent (+ external-agent.sh), watch (+ watch.py, claude-quota.py, page.html), doctor (+ doctor.py)
+skills/           session-start, session-end, decision, project-setup, team (+ roster.md, roster.py), external-agent (+ external-agent.sh), watch (+ watch.py, claude-quota.py, claude-statusline.py, page.html), doctor (+ doctor.py)
 rules/            sabit git kuralları (tek kaynak; skill'ler ve roller buraya işaret eder)
-hooks/            SessionStart "nerede kaldık", events.py (olay günlüğü ve puan defteri)
+hooks/            SessionStart "nerede kaldık", events.py (olay günlüğü ve puan defteri), quota.py (kota kuralları)
 docs/decisions/   neden böyle olduğu
 deney/            ölçülen koşular: görevler, cevap anahtarları, puanlar
 tests/            olay günlüğü, canlı sayfa ve git kuralları için birim testleri

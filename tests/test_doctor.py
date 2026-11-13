@@ -148,8 +148,13 @@ class DoktorTesti(unittest.TestCase):
             encoding="utf-8")
         _, sonuclar = self.sonuclar()
         self.assertEqual(sonuclar["Quota (codex)"]["status"], "warn")
-        self.assertIn("5-hour window reset", sonuclar["Quota (codex)"]["detail"])
+        self.assertIn("5-hour window: reset passed", sonuclar["Quota (codex)"]["detail"])
         self.assertEqual(sonuclar["Quota (agy)"]["status"], "ok")
+        # Codex incelemesi (0018): haftalık kova 6 saatlikken tazedir (sayfa ve roster gibi).
+        self.gunluk.write_text(json.dumps({"tur": "kota", "ts": self.simdi - 6 * 3600, "kovalar": [
+            {"saglayici": "agy", "pencere": "hafta", "yenilenir_epoch": self.simdi + 86400}]}) + "\n",
+            encoding="utf-8")
+        self.assertEqual(self.sonuclar()[1]["Quota (agy)"]["status"], "ok")
 
     def test_kotada_en_yeni_olay_siradan_bagimsiz(self):
         with self.gunluk.open("a", encoding="utf-8") as dosya:

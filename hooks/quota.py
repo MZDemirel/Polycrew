@@ -145,9 +145,11 @@ def durum_dosyasi() -> Path:
 
 
 def _imza(kova: dict) -> str:
-    # Sıfırlanma zamanı imzaya girmez: kullanılmayan agy penceresinin sıfırlanması her okumada "şimdi + 5
-    # saat"tir, kayar. Yeni pencere zaten kullanımı da değiştirir; değişmezse YENIDEN aralığı tazeler.
-    atla = {"yenilenir", "yenilenir_epoch"} | (set() if kova.get("saglayici") == "codex" else {"olcum"})
+    # Sıfırlanma anı imzaya girer (yeni pencere = yeni okuma); yalnız kullanılmayan agy penceresinde girmez,
+    # onun sıfırlanması her okumada "şimdi + 5 saat"tir, kayar. Ölçüm zamanı yalnız Codex'te girer.
+    kayan = kova.get("saglayici") == "agy" and not kova.get("kullanilan")
+    atla = ({"yenilenir", "yenilenir_epoch"} if kayan else set()) | (
+        set() if kova.get("saglayici") == "codex" else {"olcum"})
     return json.dumps({k: v for k, v in kova.items() if k not in atla}, sort_keys=True, ensure_ascii=False)
 
 
@@ -160,6 +162,13 @@ def kaydet(kovalar: list[dict], yeniden: float = YENIDEN, simdi: float | None = 
     if not kovalar:
         return False
     yol = durum_dosyasi()
+    yol.parent.mkdir(parents=True, exist_ok=True)
+    # Okuma, karşılaştırma, olay ve durum yazımı tek kilit altında: statusline ile quota aynı anda yazabilir.
+    with olay.kilit(yol):
+        return _kaydet(yol, kovalar, yeniden, simdi, ek)
+
+
+def _kaydet(yol: Path, kovalar: list[dict], yeniden: float, simdi: float, ek: dict) -> bool:
     try:
         durum = json.loads(yol.read_text(encoding="utf-8"))
         if not isinstance(durum, dict):

@@ -105,7 +105,8 @@ The page runs at `http://localhost:8770`. `/session-start` opens it by itself wh
 - **Running now:** role or model, task, elapsed time.
 - **Timeline:** one lane per worker (the role for a Claude agent, the model for an external worker) with its jobs as bars; jobs that ran at the same time stack inside the lane. Claude in orange, Codex in green, Gemini in blue. The axis fits the width of the page, so it stays readable in a half-width pane. Click a bar to see the worker's last report and its task.
 - **Quotas:** one card per provider with its latest measurement: Codex 5-hour and weekly windows, Gemini, Claude through agy, and Claude Code itself. A measurement older than the window's reset time is dimmed and marked as stale.
-  - Claude's own usage cannot be read from the CLI. The PM reads it (the desktop app's usage tool, or `/usage`) and records it with `skills/watch/claude-quota.py --five-hour <%> --week <%> ...`; without arguments the script prints the last measurement, and it warns at 80% of the 5-hour window or 70% of the week. It does not update by itself.
+  - Claude's own usage: in the CLI, set the optional status line and it records itself: `"statusLine": {"type": "command", "command": "python3 <plugin>/skills/watch/claude-statusline.py"}` in `~/.claude/settings.json` (keep your own status line with `--then "<its command>"`). Otherwise the PM reads it (the desktop app's usage tool, or `/usage`) before assigning work and records it with `skills/watch/claude-quota.py --five-hour <%> --week <%> ...` (`--model-week Fable <%> <reset>` for a per-model weekly limit); without arguments the script prints the last measurement, and it warns at 80% of the 5-hour window or 70% of the week.
+  - A reading is stale when its window has reset or it is older than 5 hours (5-hour window) or a day (week); the page, `roster.py` and `/doctor` say so.
 - **Jobs and scores:** duration, tokens, status and the PM's 1–5 score with a reason; the newest 40, with a button for the rest.
 - **Agent map:** an indented tree with the PM at the root and the workers it started (Claude roles, Codex, Gemini) under it. Running workers pulse green, finished ones fade, and a count sits in the heading. It is folded until a lead or a nested agent gives the tree some depth.
 
@@ -175,9 +176,9 @@ skills/external-agent/external-agent.sh quota                               # cu
 ```text
 .claude-plugin/   plugin and marketplace manifests
 agents/           roles (model, effort, tools)
-skills/           session-start, session-end, decision, project-setup, team (+ roster.md, roster.py), external-agent (+ external-agent.sh), watch (+ watch.py, claude-quota.py, page.html), doctor (+ doctor.py)
+skills/           session-start, session-end, decision, project-setup, team (+ roster.md, roster.py), external-agent (+ external-agent.sh), watch (+ watch.py, claude-quota.py, claude-statusline.py, page.html), doctor (+ doctor.py)
 rules/            fixed git rules (single source; skills and roles point here)
-hooks/            SessionStart "where we left off", events.py (event log and score ledger)
+hooks/            SessionStart "where we left off", events.py (event log and score ledger), quota.py (quota rules)
 docs/decisions/   why things are the way they are
 deney/            measured runs: tasks, answer keys, scores
 tests/            unit tests for the event log, the live page and the git rules

@@ -17,7 +17,10 @@ import watch as izle
 
 
 def yuzde(metin: str) -> float:
-    sayi = float(metin)
+    try:
+        sayi = float(metin)
+    except ValueError:
+        raise argparse.ArgumentTypeError("percentage must be a number") from None
     if not math.isfinite(sayi) or not 0 <= sayi <= 100:
         raise argparse.ArgumentTypeError("percentage must be between 0 and 100")
     return sayi

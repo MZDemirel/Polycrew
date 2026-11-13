@@ -2,6 +2,17 @@
 
 Decision notes (in Turkish) are in [`docs/decisions/`](docs/decisions/); the number in brackets points to one.
 
+## 0.12.1 (2026-11-13)
+
+Quota readings are now right and on time. [0018]
+
+- **Stale readings show as stale everywhere.** The watch page, `roster.py` and `/doctor` share one rule (`hooks/quota.py`): a reading is stale when its reset has passed, or when it is older than 5 hours (5-hour window) or a day (week). The page shows why. Before this, a four-day-old Claude reading (week 5%, really 32%) looked fresh on the page.
+- **Claude quota on time:** the new optional status line `skills/watch/claude-statusline.py` records the plan's 5-hour and 7-day usage from Claude Code's status line input when it changes. Without it, `/session-start` and `/team` have the PM read the desktop usage tool (or `/usage`) and record it before assigning work, and `roster.py` notes a missing or stale Claude reading. `claude-quota.py --model-week Fable 23 <reset>` records a per-model weekly limit, which only affects workers of that model. Reset times in the past or beyond the window are refused.
+- **Right bucket:** Argon workers are measured on agy's own Argon group (Gemini when agy reports none); a run's quota difference used to be measured on Gemini (0). Codex windows come from `window_minutes`; a bucket without a reset time is skipped instead of crashing. When Codex writes no new reading during a run, the difference stays empty instead of 0.
+- **Times and unknowns:** agy reset times are shown in local time (they were UTC); a bucket that could not be read shows `?`, not 0%. A stale reading already under the limit still counts as `low quota` until its window resets.
+- **Smaller event log:** an unchanged quota reading is not written again (at most every 30 minutes), and the page refreshes Codex and agy every 5 minutes instead of every minute. Quota events had been 73% of the log. Appending and trimming the log share a lock.
+- The session start hook no longer risks exit 141 on a long first section.
+
 ## 0.12.0 (2026-11-12)
 
 - **Watch page redesigned for a half-width pane.** [0015] The timeline has one lane per worker (the role for a Claude agent, the model for an external worker) instead of one row per job; jobs that overlap stack inside the lane. Axis labels are laid out for the measured width: none is cut at the edge and none touches its neighbour, and daily ticks fall on local midnight. The axis ends at the last job when nothing is running. With 177 jobs the timeline went from 4240 px to 398 px at 560 px wide.

@@ -92,6 +92,17 @@ class Kaydet(unittest.TestCase):
         self.assertEqual(len(self.satirlar()), 3)
         self.assertEqual(self.satirlar()[0]["tur"], "kota")
 
+    def test_sabit_pencerenin_yeni_sifirlanmasi_yazilir(self):
+        # Codex incelemesi (0018): Claude %0 → yeni pencerede yine %0; sıfırlanma değişti, yeni okuma yazılır.
+        claude = {"saglayici": "claude", "grup": "Claude", "pencere": "5 saat", "kullanilan": 0,
+                  "yenilenir_epoch": SIMDI + 60}
+        self.assertTrue(kurallar.kaydet([claude], simdi=SIMDI))
+        self.assertTrue(kurallar.kaydet([{**claude, "yenilenir_epoch": SIMDI + 5 * 3600}], simdi=SIMDI + 120))
+        # agy'nin kullanılan penceresinde de sıfırlanma sabittir.
+        agy = {"saglayici": "agy", "grup": "agy: Gemini", "pencere": "hafta", "kullanilan": 4, "yenilenir_epoch": 1.0}
+        self.assertTrue(kurallar.kaydet([agy], simdi=SIMDI))
+        self.assertTrue(kurallar.kaydet([{**agy, "yenilenir_epoch": 2.0}], simdi=SIMDI + 1))
+
     def test_codex_yeni_kayit_yazilir(self):
         codex = {"saglayici": "codex", "grup": "Codex", "pencere": "5 saat", "kullanilan": 5, "olcum": "a"}
         self.assertTrue(kurallar.kaydet([codex], simdi=SIMDI))
@@ -135,7 +146,7 @@ class DurumSatiri(unittest.TestCase):
 
     def yuk(self, bes=12.5, dizin=None):
         import time
-        simdi = time.time()
+        simdi = getattr(self, "_simdi", None) or setattr(self, "_simdi", int(time.time())) or self._simdi
         return {"model": {"display_name": "Opus"}, "workspace": {"project_dir": str(dizin or self.proje)},
                 "rate_limits": {"five_hour": {"used_percentage": bes, "resets_at": simdi + 3600},
                                 "seven_day": {"used_percentage": 33, "resets_at": simdi + 86400}}}

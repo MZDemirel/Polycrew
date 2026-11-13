@@ -419,6 +419,7 @@ class ClaudeKota(unittest.TestCase):
         for args in (self.args() + ["--five-hour-resets", gecmis], self.args() + ["--five-hour-resets", uzak],
                      self.args() + ["--week-resets", (datetime.now().astimezone() + timedelta(days=8)).isoformat()],
                      self.args() + ["--model-week", "Fable", "101", ileride],
+                     self.args() + ["--model-week", "Fable", "x", ileride],
                      self.args() + ["--model-week", "Fable", "5", gecmis]):
             with self.subTest(args=args[-3:]):
                 self.assertEqual(self.calistir(args).returncode, 2)

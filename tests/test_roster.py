@@ -786,6 +786,18 @@ class KotaSiralamaTesti(unittest.TestCase):
         bilgi.okumalar = self.okumalar()
         self.assertEqual(bilgi.durum("agy/gemini-4-argon-high"), "low")
 
+    def test_eski_argon_okumasi_gemini_dusmesini_engellemez(self):
+        # Codex incelemesi (0018): agy artık Argon grubunu vermiyorsa eski Argon okuması sayılmaz.
+        self.kota(SIMDI - 2000, [{"saglayici": "agy", "grup": "agy: Argon", "pencere": "hafta", "kullanilan": 95,
+                                  "yenilenir_epoch": SIMDI + 86400}])
+        self.kota(SIMDI - 1000, [{"saglayici": "agy", "grup": "agy: Gemini", "pencere": "hafta", "kullanilan": 10,
+                                  "yenilenir_epoch": SIMDI + 86400}])
+        gruplar = set()
+        with patch.dict(os.environ, {"POLYCREW_EVENTS": str(self.gunluk)}):
+            okumalar = kadro.kota_okumalari(gruplar)
+        self.assertEqual(gruplar, {"agy: Gemini"})
+        self.assertEqual(kadro.KotaBilgisi(okumalar, SIMDI, agy_gruplari=gruplar).durum("agy/gemini-4-argon-high"), "ok")
+
     def test_eski_ama_dolu_okuma_az_sayilir(self):
         # 0018: kullanım pencerede yalnız artar; sıfırlanması gelmemiş eski okuma eşiğin altındaysa yine "low".
         bilgi = kadro.KotaBilgisi({("codex", "Codex", "hafta"): {"kullanilan": 95.0, "olcum": SIMDI - 3 * 86400,

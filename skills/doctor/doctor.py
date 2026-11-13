@@ -161,13 +161,19 @@ def kota_olcumleri():
                     olcum = ts
                 ad = kova["saglayici"]
                 olcumler[ad] = max(olcum, olcumler.get(ad, olcum))
-                # 0018: yaşı genç olsa da penceresi o okumadan sonra sıfırlanmış kova eskidir (hooks/quota.py).
+                # 0018: tazelik kova başına, sayfa ve roster.py ile aynı kural (hooks/quota.py): sıfırlanma
+                # geçtiyse ya da yaş pencereyi aştıysa (5 saatlikte 5 saat, haftalıkta bir gün) eski.
                 kurallar = sys.modules.get("quota")
-                yenilenir = kurallar.yenilenme(kurallar.adlari_duzelt(kova), olcum) if kurallar else None
-                if yenilenir is not None and yenilenir <= simdi:
-                    pencere = {"5 saat": "5-hour", "hafta": "weekly"}.get(
-                        kurallar.adlari_duzelt(kova).get("pencere"), str(kova.get("pencere") or "a"))
-                    sifirlanan.setdefault(ad, set()).add(pencere)
+                if kurallar:
+                    k = kurallar.adlari_duzelt(kova)
+                    neden = kurallar.eski_neden(k.get("pencere"), olcum, kurallar.yenilenme(k, olcum), simdi)
+                elif simdi - olcum > KOTA_YASI:
+                    k, neden = kova, "older than 5 hours"
+                else:
+                    k, neden = kova, None
+                if neden:
+                    pencere = {"5 saat": "5-hour", "hafta": "weekly"}.get(k.get("pencere"), "")
+                    sifirlanan.setdefault(ad, set()).add(f"{pencere} window: {neden}" if pencere else neden)
             for ad, olcum in olcumler.items():
                 if ad not in son or ts >= son[ad][0]:
                     son[ad] = (ts, olcum, sorted(sifirlanan.get(ad, ())))
@@ -176,7 +182,7 @@ def kota_olcumleri():
     return {ad: olcum for ad, (_, olcum, _) in son.items()}
 
 
-SIFIRLANAN: dict = {}  # sağlayıcı -> son okumasından sonra sıfırlanan pencereler (kota_olcumleri doldurur)
+SIFIRLANAN: dict = {}  # sağlayıcı -> son okumasındaki eski kovaların nedenleri (kota_olcumleri doldurur)
 
 
 def kota(saglayici, olcumler):
@@ -188,11 +194,9 @@ def kota(saglayici, olcumler):
     if son_olcum is None:
         return "warn", f"no quota reading; {nasil}"
     yas = max(0, time.time() - son_olcum)
-    if yas > KOTA_YASI:
-        return "warn", f"last reading is {yas / 3600:.1f} hours old; {nasil}"
     if SIFIRLANAN.get(saglayici):
-        return "warn", (f"the {' and '.join(SIFIRLANAN[saglayici])} window reset after the last reading "
-                        f"({yas / 3600:.1f} hours old); {nasil}")
+        return "warn", (f"last reading is {yas / 3600:.1f} hours old and stale "
+                        f"({'; '.join(SIFIRLANAN[saglayici])}); {nasil}")
     return "ok", f"last reading is {yas / 3600:.1f} hours old"
 
 
