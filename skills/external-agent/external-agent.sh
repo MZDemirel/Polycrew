@@ -4,18 +4,18 @@
 #   external-agent.sh <codex|agy> <model> <effort|-> <read|write> <dir> <task.md> [image ...]
 #   external-agent.sh quota        (current quota of Codex and agy)
 #
-# read : codex -s read-only, agy --mode plan. Changes no files.
+# read : codex -s read-only, agy --mode plan. Warns if git status changes.
 # write: codex -s workspace-write, agy --mode accept-edits. Only in a git worktree;
 #        refused in the main working tree. No push, no --dangerously-*.
 # Log: $EXTERNAL_AGENT_LOG (default ~/.cache/polycrew/dis-ajan)/<time>-<tool>-<model>/
-#   gorev.md, komut.txt, ham.jsonl|ham.json, hata.txt, rapor.md (last message), sure_sn,
+#   gorev.md, istem.md (exact prompt), komut.txt, ham.jsonl|ham.json, hata.txt, rapor.md (last message), sure_sn,
 #   kullanim.json (tokens), cikis_kodu, kota.json (quota before/after and the difference).
 #   The last output line is the log folder's path.
 # EXTERNAL_AGENT_EXTRA_DIRS="a:b": extra folders codex may write to in write mode (e.g. ~/.cache/uv).
 # EXTERNAL_AGENT_TIMEOUT: seconds (default 3600).
 # EXTERNAL_AGENT_NO_QUOTA=1: skip the quota reading before and after the run.
-# Exit codes: 2 bad arguments, 3 write mode outside a worktree, 4 the tool is not installed;
-# otherwise the tool's own exit code.
+# Exit codes: 2 bad arguments, 3 write mode outside a worktree, 4 the tool is not installed,
+# 5 quota/rate limit, 6 agy permission denied; otherwise the tool's own exit code (124 timeout).
 # The old variable names (DIS_AJAN_KAYIT, DIS_AJAN_EK_DIZIN, DIS_AJAN_ZAMAN_ASIMI, POLYCREW_OLAY,
 # POLYCREW_OTURUM) are still read as a fallback. Log file names and event fields stay Turkish (0007).
 set -uo pipefail
@@ -317,6 +317,10 @@ baslangic=$(simdi)
 baslik=$(grep -m1 -E '^#' "$gorev" | sed 's/^#* *//; s/^Görev: *//; s/^Task: *//')
 olay isci_basladi "id=$(basename "$kayit")" "kaynak=$arac" "model=$model" "efor=$efor" "kip=$kip" \
   "klasor=$klasor" "aciklama=${baslik:-$(basename "$gorev")}" "kayit=$kayit" "oturum=${POLYCREW_SESSION:-${POLYCREW_OTURUM:-}}"
+okuma_denetle=0 durum_once="" degisti=""
+if [ "$kip" = okur ] && [ "$(git -C "$klasor" rev-parse --is-inside-work-tree 2>/dev/null)" = true ]; then
+  if durum_once=$(git -C "$klasor" status --porcelain 2>/dev/null); then okuma_denetle=1; fi
+fi
 if [ "$arac" = codex ]; then
   sandbox=read-only
   [ "$kip" = yazar ] && sandbox=workspace-write
@@ -332,21 +336,22 @@ if [ "$arac" = codex ]; then
     IFS=: read -ra ek <<< "$ek_dizin"
     for e in "${ek[@]}"; do [ -d "$e" ] && komut+=(--add-dir "$e"); done
   fi
-  printf '%q ' "${komut[@]}" > "$kayit/komut.txt"; echo "< gorev.md" >> "$kayit/komut.txt"
-  { echo "$kural"; echo; cat "$gorev"; } | zaman_sinirli "$zaman_asimi" "${komut[@]}" - > "$kayit/ham.jsonl" 2> "$kayit/hata.txt"
+  { printf '%s\n\n' "$kural"; cat "$gorev"; } > "$kayit/istem.md"
+  printf '%q ' "${komut[@]}" > "$kayit/komut.txt"; echo "< istem.md" >> "$kayit/komut.txt"
+  zaman_sinirli "$zaman_asimi" "${komut[@]}" - < "$kayit/istem.md" > "$kayit/ham.jsonl" 2> "$kayit/hata.txt"
   kod=$?
   python3 - "$kayit" <<'EOF'
 import json, sys
 k = sys.argv[1]
-use = None
+kullanim = None
 for line in open(f"{k}/ham.jsonl", errors="ignore"):
     try:
         e = json.loads(line)
     except ValueError:
         continue
-    if e.get("type") == "turn.completed":
-        use = e.get("usage")
-json.dump(use, open(f"{k}/kullanim.json", "w"))
+    if isinstance(e, dict) and e.get("type") == "turn.completed":
+        kullanim = e.get("usage")
+json.dump(kullanim, open(f"{k}/kullanim.json", "w"))
 EOF
 else
   mode=plan
@@ -359,9 +364,13 @@ else
   [ -n "$izinli" ] && on="$on Only these shell commands are allowed: $izinli. Any other command (find, sed, python...) and commands chained with ';', '&&' or '|' stop the whole job; run each command on its own; use 'rg --files' to find files, 'rg' or 'grep' to search, and the file reading tool to read."
   for r in ${resimler[@]+"${resimler[@]}"}; do on="$on Image to look at: $(tam_yol "$r")."; done
   istem="$on $kural"$'\n\n'"$(cat "$gorev")"
+  if [ "$kip" = okur ]; then
+    istem="Headless single-turn run: do not wait for approval; put the full report in your final message."$'\n\n'"$istem"
+  fi
+  printf '%s' "$istem" > "$kayit/istem.md"
   komut=(agy -p "$istem" --model "$model" --mode "$mode" --output-format json --print-timeout "${zaman_asimi}s")
   [ "$efor" != - ] && komut+=(--effort "$efor")
-  printf '%q ' agy -p "<gorev.md + folder line>" --model "$model" --mode "$mode" --output-format json > "$kayit/komut.txt"
+  printf '%q ' agy -p "<istem.md>" --model "$model" --mode "$mode" --output-format json > "$kayit/komut.txt"
   (cd "$klasor" && zaman_sinirli "$((zaman_asimi + 60))" "${komut[@]}" < /dev/null > "$kayit/ham.json" 2> "$kayit/hata.txt")
   kod=$?
   python3 - "$kayit" <<'EOF'
@@ -371,13 +380,30 @@ try:
     d = json.load(open(f"{k}/ham.json"))
 except (ValueError, OSError):
     d = {}
-open(f"{k}/rapor.md", "w").write(d.get("response", ""))
+if not isinstance(d, dict):
+    d = {}
+yanit = d.get("response")
+open(f"{k}/rapor.md", "w").write(yanit if isinstance(yanit, str) else "")
 json.dump({"usage": d.get("usage"), "status": d.get("status"),
            "denied_actions": d.get("denied_actions"), "conversation_id": d.get("conversation_id")},
           open(f"{k}/kullanim.json", "w"))
 EOF
 fi
+# Durum satırlarının yalnız değişenlerini göster; önceden kirli bir ağaç tek başına uyarı değildir.
+if [ "$okuma_denetle" = 1 ]; then
+  if durum_sonra=$(git -C "$klasor" status --porcelain 2>/dev/null) && [ "$durum_once" != "$durum_sonra" ]; then
+    degisti=1
+    python3 - "$kayit/rapor.md" "$durum_once" "$durum_sonra" <<'EOF'
+import difflib, sys
+satirlar = [s for s in difflib.ndiff(sys.argv[2].splitlines(), sys.argv[3].splitlines())
+            if s.startswith(("- ", "+ "))]
+with open(sys.argv[1], "a") as f:
+    f.write("\n\n**Warning:** files changed in read mode:\n\n```\n" + "\n".join(satirlar[:20]) + "\n```\n")
+EOF
+  fi
+fi
 # 0014: kesilen ya da düşen koşunun raporu yarım kalabilir; sonuna neden düştüğü yazılır.
+neden=""
 if [ "$kod" != 0 ]; then
   case $kod in
     124) anlam="stopped by the time limit, EXTERNAL_AGENT_TIMEOUT=${zaman_asimi}s" ;;
@@ -385,6 +411,36 @@ if [ "$kod" != 0 ]; then
   esac
   { echo; echo "---"; echo "**Run failed:** exit code $kod ($anlam). Last lines of hata.txt:"
     tail -n 5 "$kayit/hata.txt" 2> /dev/null | sed 's/^/    /'; } >> "$kayit/rapor.md"
+  neden=$(python3 - "$kayit" "$arac" <<'EOF'
+import json, re, sys
+from pathlib import Path
+kayit, arac = Path(sys.argv[1]), sys.argv[2]
+try:
+    kullanim = json.loads((kayit / "kullanim.json").read_text())
+except (ValueError, OSError):
+    kullanim = None
+reddedilen = kullanim.get("denied_actions") if arac == "agy" and isinstance(kullanim, dict) else None
+metin = ""
+for ad in ("hata.txt", "ham.jsonl" if arac == "codex" else "ham.json"):
+    try:
+        metin += (kayit / ad).read_text(errors="replace") + "\n"
+    except OSError:
+        pass
+with (kayit / "rapor.md").open("a") as f:
+    if isinstance(reddedilen, list) and reddedilen:
+        f.write("\n**Permission denied:**\n")
+        for eylem in reddedilen[:10]:
+            # Bir eylem tek satırda kalır; yapılandırılmış eylemler de okunabilir olsun.
+            satir = eylem if isinstance(eylem, str) else json.dumps(eylem, ensure_ascii=False)
+            f.write("- " + " ".join(satir.splitlines()) + "\n")
+        f.write("Ask the user before adding a permission rule to ~/.gemini/antigravity-cli/settings.json.\n")
+        print("permission")
+    elif re.search(r"429|RESOURCE_EXHAUSTED|rate limit|rate_limit|usage limit|quota", metin, re.IGNORECASE):
+        f.write("\n**Quota exhausted:** the tool stopped on a quota or rate limit; do not score this as the worker's quality.\n")
+        print("quota")
+EOF
+)
+  case $neden in quota) kod=5 ;; permission) kod=6 ;; esac
 fi
 bitis=$(simdi)
 python3 -c "print(round($bitis - $baslangic, 1))" > "$kayit/sure_sn"
@@ -438,6 +494,6 @@ KOTA
 fi
 olay isci_bitti "id=$(basename "$kayit")" "kaynak=$arac" "cikis=$kod" "sure_sn=$(cat "$kayit/sure_sn")" \
   "kullanim=$(cat "$kayit/kullanim.json" 2>/dev/null || echo null)" "kayit=$kayit" ${kota_fark:+"kota=$kota_fark"} \
-  ${kota_ortak:+"kota_ortak=$kota_ortak"}
+  ${kota_ortak:+"kota_ortak=$kota_ortak"} ${neden:+"neden=$neden"} ${degisti:+"degisti=$degisti"}
 echo "$kayit"
 exit "$kod"
