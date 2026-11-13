@@ -80,10 +80,15 @@ Codex'in yazar raporu Türkçe geldi (görev İngilizceydi). "TMPDIR not dosyal�
 - **Testler:** 188 test, 33 sn (önce 164). `claude plugin validate .` ve `bash -n` temiz.
 - **Gerçek masaüstü okuması:** 5 saat %33, hafta %36. Sıfırlanma saatleri (19:40, 21:00) PM okumasından taşındı. Sayfada Claude kartı `desktop` kaynaklı, Argon tek şeritte (15 şerit, 187 iş).
 - **Hız:** `session_start.sh` 0,05 sn sürdü.
+- **Statusline, gerçek CLI** (Claude Code 2.1.273, kullanıcı ilk kurulumu tamamladıktan sonra):
+  - Kurulum: `script -qfc` ile `claude --settings <geçici>` açıldı, tek kısa yanıt alındı. Günlük geçiciydi, kullanıcının ayarlarına dokunulmadı.
+  - Girdi ilk yanıttan sonra `rate_limits.five_hour` (44, `resets_at` 19:40) ve `seven_day` (37, 21:00) taşıdı. Sıfırlanma anları masaüstü kullanım aracınınkiyle aynı.
+  - Durum satırı `Opus 5 (1M context) · 5h 44% · week 37%` oldu.
+  - Günlüğe önce oturum açılış kancası masaüstü örneğini yazdı (15:57, %43 ve %38). Ardından statusline 16:37'de kendi okumasını sıfırlanma anlarıyla yazdı; daha yeni ölçüm olarak o kazandı.
+  - Masaüstünün haftalık değeri statusline'dan 1 puan yüksekti (38 ve 37). Yuvarlama ya da ölçüm anı farkı olabilir; ikisi de aynı kovaya yazıyor.
 
 ## Açık kalan
 
-- **Statusline gerçek CLI'da denenemedi.** Bu makinedeki `claude` CLI (2.1.273) ilk açılışın tema ekranında kaldı. Kullanıcının ayarı değiştirilmesin diye geçilmedi.
 - Masaüstü dosyası belgelenmemiş; uygulama güncellemesinde biçim değişirse `/doctor` uyarır.
 - Model başına haftalık sınır (Fable) hâlâ yalnız PM'den gelir.
 - Codex kaydı yalnız Codex kullanılınca tazelenir.
