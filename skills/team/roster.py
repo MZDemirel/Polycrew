@@ -288,6 +288,8 @@ class KotaBilgisi:
                 "(run external-agent.sh quota to refresh)."]
 
 
+DENE_ALAN_ALT = 3.0  # 0019: bu alandaki ortalaması bunun altındaki işçi o alanda "Try"a önerilmez
+
 ADAY_GUN = 30  # gün: bundan eski tuzak adayı özette görünmez
 ADAY_SATIR = 5  # özette en çok bu kadar aday satırı
 ADAY_GEREKCE = 110  # karakter: gerekçe bu kadar kısaltılır
@@ -673,10 +675,13 @@ def tablo_olustur_ozet(
     rol_istatistik = {rol: isci_istatistik(ks, simdi, yari_omur) for rol, ks in rol_kayitlari.items()}
 
     def dene_adayi(rol: str, alan: str, secilenler: set[str]) -> str:
-        etkin = {i["isci"]: i["etkin"] for i in isci_istatistik(tum_gruplar[(rol, alan)], simdi, yari_omur)}
+        alan_ist = {i["isci"]: i for i in isci_istatistik(tum_gruplar[(rol, alan)], simdi, yari_omur)}
+        etkin = {isci: i["etkin"] for isci, i in alan_ist.items()}
+        # 0019: rol ortalaması iyi olsa da bu alanda kötü puan almış işçi (alan puanı 3'ün altı) önerilmez.
         adaylar = [(-i["duzeltilmis"], etkin.get(i["isci"], 0.0), i["isci"]) for i in rol_istatistik.get(rol, [])
                    if i["isci"] not in secilenler and etkin.get(i["isci"], 0.0) < AZ_VERI
-                   and i["duzeltilmis"] >= 3.5 and not (kota and kota.durum(i["isci"]) == "low")]
+                   and i["duzeltilmis"] >= 3.5 and not (kota and kota.durum(i["isci"]) == "low")
+                   and not (i["isci"] in alan_ist and alan_ist[i["isci"]]["ortalama"] < DENE_ALAN_ALT)]
         return min(adaylar)[2] if adaylar else "—"
 
     satirlar = [

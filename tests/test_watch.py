@@ -15,6 +15,8 @@ sys.path.insert(0, str(KOK / "skills" / "watch"))
 sys.path.insert(0, str(KOK / "hooks"))
 import watch as izle  # noqa: E402
 import events as olay  # noqa: E402
+# 0019: testler masaüstü uygulamasının gerçek kota dosyasını okumasın.
+os.environ.setdefault("POLYCREW_DESKTOP_USAGE", "/nonexistent/polycrew-test")
 
 
 # 0013: kanca yalnız not dosyası olan projede yazar; testlerin kancası bu sahte projeden çağrılır.
@@ -286,6 +288,15 @@ class Birlestir(unittest.TestCase):
         self.assertEqual((k["grup"], k["pencere"]), ("agy: Gemini", "hafta"))
         argon = izle.kota_kovasi({"saglayici": "agy", "grup": "Gemini 4 Argon", "pencere": "weekly"}, olcum, olcum)
         self.assertEqual(argon["grup"], "agy: Argon")
+
+    def test_newest_measurement_wins_over_log_order(self):
+        # 0019: masaüstü, statusline ve PM aynı kovaya yazar; günlükteki sıra değil ölçüm zamanı kazanır.
+        yeni = {"saglayici": "claude", "grup": "Claude", "pencere": "hafta", "kullanilan": 40,
+                "olcum": datetime.fromtimestamp(100, timezone.utc).isoformat()}
+        eski = {**yeni, "kullanilan": 30, "olcum": datetime.fromtimestamp(50, timezone.utc).isoformat()}
+        v = izle.birlestir([{"tur": "kota", "ts": 101, "kovalar": [yeni]}, {"tur": "kota", "ts": 102, "kovalar": [eski]}],
+                           simdi=110)
+        self.assertEqual(v["kota"]["kovalar"][0]["kullanilan"], 40)
 
     def test_broken_quota_event_does_not_crash(self):
         v = izle.birlestir([{"tur": "kota", "ts": 10, "kovalar": 5},

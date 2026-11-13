@@ -264,13 +264,15 @@ function sure(s) {
 const saglayiciAd = { claude: "Claude", codex: "Codex", gemini: "Gemini" };
 function kim(i) {
   if (i.kaynak === "claude") return (i.rol || "agent") + (i.model ? " · " + i.model : "");
-  return (i.model || i.kaynak) + (i.efor && i.efor !== "-" ? " " + i.efor : "") + (i.rol ? " · " + t(i.rol) : "");
+  return seritAdi(i) + (i.rol ? " · " + t(i.rol) : "");
 }
 // A timeline lane: the role for a Claude agent, the model and effort for an external worker.
 function seritAdi(i) {
   if (i.kaynak === "claude") return String(i.rol || "agent").replace(/^polycrew:/, "");
-  const model = i.model || i.kaynak, efor = i.efor && i.efor !== "-" ? String(i.efor) : "";
-  return model + (efor && !String(model).endsWith("-" + efor) ? " " + efor : "");  // agy model names already end in the effort
+  const model = String(i.model || i.kaynak), efor = i.efor && i.efor !== "-" ? String(i.efor) : "";
+  if (!efor || model.endsWith("-" + efor)) return model;
+  // 0019: agy'de efor modelin adındadır; "gemini-4-argon" + "high" ile "gemini-4-argon-high" tek şerit.
+  return i.kaynak === "agy" ? `${model}-${efor}` : `${model} ${efor}`;
 }
 function token(n) { return n == null ? "—" : n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n); }
 

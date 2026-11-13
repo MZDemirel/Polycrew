@@ -264,6 +264,7 @@ if [ "${1:-}" = quota ]; then
   kota_py="$(dirname "$OLAY")/quota.py"
   if [ -f "$kota_py" ]; then
     python3 "$kota_py" record "$f1" "$f2" 2>/dev/null || true
+    python3 "$kota_py" desktop 2>/dev/null || true  # 0019: Claude, masaüstü uygulamasından
   else
     olay kota "kovalar=$(python3 -c 'import json,sys; print(json.dumps([b for f in sys.argv[1:] for b in json.load(open(f))]))' "$f1" "$f2")"
   fi

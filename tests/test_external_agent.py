@@ -43,6 +43,8 @@ print(json.dumps({"type": "turn.completed", "usage": {"input_tokens": 7}}))
 # Sahte agy: /quota durum dosyasındaki kalan oranları verir; bir görev koşusu modelin grubundan düşer.
 SAHTE_AGY = r'''#!/usr/bin/env python3
 import json, os, sys
+# 0019: testler masaüstü uygulamasının gerçek kota dosyasını okumasın.
+os.environ.setdefault("POLYCREW_DESKTOP_USAGE", "/nonexistent/polycrew-test")
 a = sys.argv[1:]
 yol = os.path.expanduser("~/agy_durum.json")
 durum = json.load(open(yol))

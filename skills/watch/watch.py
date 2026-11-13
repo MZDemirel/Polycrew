@@ -255,7 +255,10 @@ def birlestir(olaylar: list[dict], simdi: float | None = None) -> dict:
                 if isinstance(k, dict):
                     k = kurallar.adlari_duzelt(k)  # eski agy adları (aynı kova)
                     anahtar = (k.get("saglayici"), k.get("grup"), k.get("pencere"))
-                    kovalar[anahtar] = kota_kovasi(k, ts, simdi)
+                    yeni = kota_kovasi(k, ts, simdi)
+                    # 0019: aynı kovaya üç kaynak yazar (masaüstü, statusline, PM); en yeni ölçüm kazanır.
+                    if anahtar not in kovalar or yeni["olcum_ts"] >= kovalar[anahtar]["olcum_ts"]:
+                        kovalar[anahtar] = yeni
         elif tur == "puan":
             hedef = str(e.get("id"))
             i = isler.get(hedef) or isler.get(agent_kimligi.get(hedef, ""))
@@ -404,6 +407,7 @@ class _Kota:
                 return
             self.zaman = time.time()
         def calistir():
+            kurallar.masaustu_kaydet()  # 0019: Claude, masaüstü uygulamasından (istisna atmaz)
             try:
                 subprocess.run(["bash", str(DIS_AJAN), "quota"], capture_output=True, timeout=120, check=False)
             except (subprocess.TimeoutExpired, OSError):

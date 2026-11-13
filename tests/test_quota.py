@@ -13,6 +13,8 @@ from unittest.mock import patch
 KOK = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(KOK / "hooks"))
 import quota as kurallar  # noqa: E402
+# 0019: testler masaüstü uygulamasının gerçek kota dosyasını okumasın.
+os.environ.setdefault("POLYCREW_DESKTOP_USAGE", "/nonexistent/polycrew-test")
 
 SIMDI = 1_800_000_000.0
 
@@ -202,6 +204,83 @@ class GunlukKilidi(unittest.TestCase):
                 fcntl.flock(kilit, fcntl.LOCK_UN)
                 self.assertEqual(p.wait(timeout=10), 0)
             self.assertEqual(json.loads(gunluk.read_text())["tur"], "deneme")
+
+
+
+class Masaustu(unittest.TestCase):
+    """0019: Claude kotası masaüstü uygulamasının plan-usage-history.json örneklerinden."""
+
+    def setUp(self):
+        self.d = tempfile.TemporaryDirectory()
+        self.gunluk = Path(self.d.name) / "olaylar.jsonl"
+        self.dosya = Path(self.d.name) / "plan-usage-history.json"
+        self.ortam = patch.dict(os.environ, {"POLYCREW_EVENTS": str(self.gunluk),
+                                             "POLYCREW_DESKTOP_USAGE": str(self.dosya),
+                                             "POLYCREW_DESKTOP_ORG": "org-a"})
+        self.ortam.start()
+
+    def tearDown(self):
+        self.ortam.stop()
+        self.d.cleanup()
+
+    def ornekler(self, *ornek):
+        self.dosya.write_text(json.dumps({"version": 2, "samples": [
+            {"t": int(t * 1000), "org": org, "u": u} for t, org, u in ornek]}), encoding="utf-8")
+
+    def olaylar(self):
+        if not self.gunluk.exists():
+            return []
+        return [json.loads(x) for x in self.gunluk.read_text(encoding="utf-8").splitlines()]
+
+    def test_en_yeni_ornek_ve_kurulus(self):
+        self.ornekler((SIMDI - 1800, "org-a", {"fh": 5, "sd": 30}), (SIMDI - 900, "org-a", {"fh": 25, "sd": 35}),
+                      (SIMDI - 60, "org-b", {"fh": 99, "sd": 99}))
+        kovalar = kurallar.masaustu_kovalari(SIMDI)
+        self.assertEqual([(k["pencere"], k["kullanilan"], k["kaynak"]) for k in kovalar],
+                         [("5 saat", 25, "desktop"), ("hafta", 35, "desktop")])
+        self.assertEqual(kurallar.zaman(kovalar[0]["olcum"]), SIMDI - 900)
+        self.assertNotIn("yenilenir_epoch", kovalar[0])
+
+    def test_bozuk_eski_ya_da_yok(self):
+        for icerik in ("bozuk", "[]", '{"samples": 5}', '{"samples": [{"t": "x", "u": {}}]}'):
+            with self.subTest(icerik=icerik):
+                self.dosya.write_text(icerik, encoding="utf-8")
+                self.assertEqual(kurallar.masaustu_kovalari(SIMDI), [])
+                self.assertFalse(kurallar.masaustu_kaydet(SIMDI))
+        self.ornekler((SIMDI - 4 * 3600, "org-a", {"fh": 5, "sd": 30}))  # uygulama kapalı, dosya dondu
+        self.assertEqual(kurallar.masaustu_kovalari(SIMDI), [])
+        self.ornekler((SIMDI - 60, "org-a", {"fh": 150, "sd": "x"}))
+        self.assertEqual(kurallar.masaustu_kovalari(SIMDI), [])
+        self.dosya.unlink()
+        self.assertFalse(kurallar.masaustu_kaydet(SIMDI))
+        self.assertEqual(self.olaylar(), [])
+
+    def test_sifirlanma_onceki_okumadan_tasinir_yeni_okumayi_ezmez(self):
+        pm = [{"saglayici": "claude", "grup": "Claude", "pencere": "5 saat", "kullanilan": 21,
+               "olcum": datetime.fromtimestamp(SIMDI - 1200, timezone.utc).isoformat(),
+               "yenilenir_epoch": SIMDI + 3600}]
+        kurallar.kaydet(pm, yeniden=0, simdi=SIMDI - 1200, kaynak="claude")
+        self.ornekler((SIMDI - 600, "org-a", {"fh": 25, "sd": 35}))
+        self.assertTrue(kurallar.masaustu_kaydet(SIMDI))
+        bes = [k for k in self.olaylar()[-1]["kovalar"] if k["pencere"] == "5 saat"][0]
+        self.assertEqual((bes["kullanilan"], bes["yenilenir_epoch"]), (25, SIMDI + 3600))
+        self.assertFalse(kurallar.masaustu_kaydet(SIMDI + 30))  # değişmedi
+        # Statusline daha yeni ölçtüyse eski masaüstü örneği yazılmaz.
+        sl = [{**pm[0], "kullanilan": 40, "olcum": datetime.fromtimestamp(SIMDI + 60, timezone.utc).isoformat()}]
+        kurallar.kaydet(sl, yeniden=0, simdi=SIMDI + 60, kaynak="claude")
+        sayi = len(self.olaylar())
+        self.ornekler((SIMDI, "org-a", {"fh": 26, "sd": 35}))
+        kurallar.masaustu_kaydet(SIMDI + 90)
+        yazilan = self.olaylar()[sayi:]
+        self.assertTrue(all(k["pencere"] != "5 saat" for e in yazilan for k in e["kovalar"]))
+
+    def test_komut(self):
+        import time as zaman_modulu
+        self.ornekler((zaman_modulu.time() - 60, "org-a", {"fh": 3, "sd": 4}))
+        r = subprocess.run([sys.executable, str(KOK / "hooks/quota.py"), "desktop"], env={**os.environ},
+                           capture_output=True, text=True)
+        self.assertEqual((r.returncode, r.stdout), (0, ""))
+        self.assertEqual([k["kullanilan"] for k in self.olaylar()[-1]["kovalar"]], [3, 4])
 
 
 if __name__ == "__main__":

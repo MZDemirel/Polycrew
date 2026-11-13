@@ -138,6 +138,7 @@ def kota_olcumleri():
     """Günlüğü bir kez oku: sağlayıcı başına en yeni kota olayının ölçüm zamanı. Bozuk satır atlanır."""
     yol = olay_modulu().dosya()
     son = {}  # sağlayıcı -> (olay zamanı, ölçüm zamanı)
+    KAYNAK.clear()
     if not yol.is_file():
         return son
     simdi = time.time()
@@ -152,7 +153,7 @@ def kota_olcumleri():
             ts = zaman(kayit.get("ts"))
             if ts is None or ts > simdi + GELECEK_PAYI:  # gelecek tarihli kayıt eski ölçümü gizlemesin
                 continue
-            olcumler, sifirlanan = {}, {}
+            olcumler, sifirlanan, kaynaklar = {}, {}, {}
             for kova in kayit["kovalar"]:
                 if not isinstance(kova, dict) or kova.get("saglayici") not in SAGLAYICILAR:
                     continue
@@ -161,6 +162,8 @@ def kota_olcumleri():
                     olcum = ts
                 ad = kova["saglayici"]
                 olcumler[ad] = max(olcum, olcumler.get(ad, olcum))
+                if ad == "claude" and kova.get("pencere") in ("5 saat", "hafta"):
+                    kaynaklar[ad] = kova.get("kaynak") if kova.get("kaynak") in ("desktop", "statusline") else "PM"
                 # 0018: tazelik kova başına, sayfa ve roster.py ile aynı kural (hooks/quota.py): sıfırlanma
                 # geçtiyse ya da yaş pencereyi aştıysa (5 saatlikte 5 saat, haftalıkta bir gün) eski.
                 kurallar = sys.modules.get("quota")
@@ -177,27 +180,33 @@ def kota_olcumleri():
             for ad, olcum in olcumler.items():
                 if ad not in son or ts >= son[ad][0]:
                     son[ad] = (ts, olcum, sorted(sifirlanan.get(ad, ())))
+                    if ad in kaynaklar:
+                        KAYNAK[ad] = kaynaklar[ad]
     SIFIRLANAN.clear()
+    if "claude" not in son:
+        KAYNAK.pop("claude", None)
     SIFIRLANAN.update({ad: pencereler for ad, (_, _, pencereler) in son.items() if pencereler})
     return {ad: olcum for ad, (_, olcum, _) in son.items()}
 
 
+KAYNAK: dict = {}  # sağlayıcı -> son Claude okumasının kaynağı: desktop, statusline ya da PM (0019)
 SIFIRLANAN: dict = {}  # sağlayıcı -> son okumasındaki eski kovaların nedenleri (kota_olcumleri doldurur)
 
 
 def kota(saglayici, olcumler):
     # Claude'un kullanımı CLI'dan okunmaz; onu PM yazar. Codex ve agy'yi betik ölçer.
-    nasil = ("the PM records it with skills/watch/claude-quota.py (from the desktop usage tool or /usage), "
-             "or install skills/watch/claude-statusline.py as the status line" if saglayici == "claude"
-             else "run external-agent.sh quota")
+    nasil = ("it is read from the desktop app by itself when the app is open; in the CLI install "
+             "skills/watch/claude-statusline.py as the status line; otherwise the PM records it with "
+             "skills/watch/claude-quota.py" if saglayici == "claude" else "run external-agent.sh quota")
+    kaynak = f" (source: {KAYNAK[saglayici]})" if saglayici in KAYNAK else ""
     son_olcum = olcumler.get(saglayici)
     if son_olcum is None:
         return "warn", f"no quota reading; {nasil}"
     yas = max(0, time.time() - son_olcum)
     if SIFIRLANAN.get(saglayici):
-        return "warn", (f"last reading is {yas / 3600:.1f} hours old and stale "
+        return "warn", (f"last reading is {yas / 3600:.1f} hours old{kaynak} and stale "
                         f"({'; '.join(SIFIRLANAN[saglayici])}); {nasil}")
-    return "ok", f"last reading is {yas / 3600:.1f} hours old"
+    return "ok", f"last reading is {yas / 3600:.1f} hours old{kaynak}"
 
 
 def agy_izinleri():
@@ -229,6 +238,23 @@ def kabuk_betigi(yol):
     return "ok", "bash -n passed"
 
 
+def masaustu_kotasi():
+    """0019: masaüstü uygulamasının kullanım dosyası. Yoksa ya da uygulama kapalıysa bilgi; tazeyken
+    okunamıyorsa (biçim değişmiş olabilir) uyarı."""
+    olay_modulu()
+    kurallar = sys.modules["quota"]
+    yol = kurallar.masaustu_dosyasi()
+    if yol is None or not yol.is_file():
+        return "ok", "desktop app usage file not found; Claude quota comes from the status line or the PM"
+    yas = time.time() - yol.stat().st_mtime
+    if yas > kurallar.MASAUSTU_EN_ESKI:
+        return "ok", f"desktop app usage file is {yas / 3600:.1f} hours old (app closed?); not used"
+    if not kurallar.masaustu_kovalari():
+        return "warn", ("desktop app usage file could not be read (its format may have changed); "
+                        "record Claude quota with skills/watch/claude-quota.py")
+    return "ok", "Claude quota is read from the desktop app"
+
+
 def betik_listesi():
     return [*sorted((KOK / "hooks").glob("*.sh")), KOK / "skills" / "external-agent" / "external-agent.sh"]
 
@@ -246,6 +272,7 @@ def raporla(proje, betikler=None):
         sonuclar.append(denetle(ad or "Project notes", lambda ad=ad: proje_dosyasi(proje, ad)))
     sonuclar.append(denetle("Event log folder", gunluk_klasoru))
     sonuclar.append(denetle("Event log", gunluk))
+    sonuclar.append(denetle("Claude desktop usage", masaustu_kotasi))
     try:
         olcumler, okuma_hatasi = kota_olcumleri(), None
     except Exception as hata:  # tek satır: üç sağlayıcı için aynı hatayı yinelemeyelim

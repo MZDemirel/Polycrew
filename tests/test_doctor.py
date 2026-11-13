@@ -156,6 +156,23 @@ class DoktorTesti(unittest.TestCase):
             encoding="utf-8")
         self.assertEqual(self.sonuclar()[1]["Quota (agy)"]["status"], "ok")
 
+    def test_masaustu_kullanim_dosyasi(self):
+        # 0019: dosya yok → bilgi; tazeyken okunamıyor → uyarı; okunuyor → ok.
+        yol = self.klasor / "plan-usage-history.json"
+        with patch.dict(os.environ, {"POLYCREW_DESKTOP_USAGE": str(yol)}):
+            self.assertEqual(self.sonuclar()[1]["Claude desktop usage"]["status"], "ok")
+            yol.write_text("bozuk", encoding="utf-8")
+            os.utime(yol, (self.simdi, self.simdi))
+            sonuc = self.sonuclar()[1]["Claude desktop usage"]
+            self.assertEqual(sonuc["status"], "warn")
+            self.assertIn("claude-quota.py", sonuc["detail"])
+            yol.write_text(json.dumps({"samples": [{"t": int((self.simdi - 60) * 1000), "u": {"fh": 1, "sd": 2}}]}),
+                           encoding="utf-8")
+            os.utime(yol, (self.simdi, self.simdi))
+            self.assertEqual(self.sonuclar()[1]["Claude desktop usage"]["status"], "ok")
+            os.utime(yol, (self.simdi - 5 * 3600, self.simdi - 5 * 3600))
+            self.assertIn("app closed", self.sonuclar()[1]["Claude desktop usage"]["detail"])
+
     def test_kotada_en_yeni_olay_siradan_bagimsiz(self):
         with self.gunluk.open("a", encoding="utf-8") as dosya:
             dosya.write(json.dumps({"tur": "kota", "ts": self.simdi - 6 * 3600,

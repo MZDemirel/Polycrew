@@ -10,9 +10,14 @@
 - tazelik: sıfırlanma geçtiyse ya da okuma penceresinden eskiyse (5 saatte 5 saat, haftada 1 gün) eski;
 - yazım: içeriği değişmeyen okuma yeniden yazılmaz (günlüğün çoğu tekrar eden kota olayıydı).
 
+Claude kotası masaüstü uygulamasından kendiliğinden (0019): uygulama ``plan-usage-history.json``'a
+15 dakikada bir 5 saat ve 7 gün yüzdesini yazar. Belgelenmemiş bir iç dosyadır: okunamazsa ya da biçimi
+değişirse hiçbir şey yazılmaz, PM adımı (claude-quota.py) ve statusline yine çalışır.
+
 Komut:
   quota.py record <kovalar.json> [...]   dosyalardaki kovaları tek ``kota`` olayı olarak yazar,
                                          değişmediyse yazmaz (external-agent.sh quota)
+  quota.py desktop                       masaüstü uygulamasının son Claude okumasını yazar (değiştiyse)
 """
 
 from __future__ import annotations
@@ -187,7 +192,8 @@ def _kaydet(yol: Path, kovalar: list[dict], yeniden: float, simdi: float, ek: di
         return False
     olay.yaz({"ts": round(simdi, 3), "tur": "kota", **ek, "kovalar": kovalar})
     for k in kovalar:
-        durum[anahtar(k)] = {"imza": _imza(k), "ts": simdi}
+        durum[anahtar(k)] = {"imza": _imza(k), "ts": simdi, "yenilenir_epoch": k.get("yenilenir_epoch"),
+                             "olcum": zaman(k.get("olcum"))}
     try:
         gecici = yol.with_name(yol.name + f".{os.getpid()}")
         gecici.write_text(json.dumps(durum, ensure_ascii=False), encoding="utf-8")
@@ -195,6 +201,115 @@ def _kaydet(yol: Path, kovalar: list[dict], yeniden: float, simdi: float, ek: di
     except OSError:
         pass
     return True
+
+
+# --- masaüstü uygulaması (0019) ---
+
+MASAUSTU_PENCERE = {"fh": "5 saat", "sd": "hafta"}
+MASAUSTU_EN_ESKI = 3 * 3600.0  # saniye: bundan eski örnek yazılmaz (uygulama kapalıyken dosya donar)
+
+
+def masaustu_dosyasi() -> Path | None:
+    ozel = os.environ.get("POLYCREW_DESKTOP_USAGE")
+    if ozel:
+        return Path(ozel)
+    ev = Path(os.path.expanduser("~"))
+    for aday in (ev / ".config" / "Claude", ev / "Library" / "Application Support" / "Claude"):
+        if (aday / "plan-usage-history.json").is_file():
+            return aday / "plan-usage-history.json"
+    return None
+
+
+def _kurulus() -> str | None:
+    """Claude Code'un oturum açtığı kuruluş (``~/.claude.json``); yoksa None (bütün örnekler)."""
+    if os.environ.get("POLYCREW_DESKTOP_USAGE"):
+        return os.environ.get("POLYCREW_DESKTOP_ORG") or None
+    try:
+        hesap = json.loads(Path(os.path.expanduser("~/.claude.json")).read_text(encoding="utf-8")).get("oauthAccount")
+        kimlik = hesap.get("organizationUuid") if isinstance(hesap, dict) else None
+        return kimlik if isinstance(kimlik, str) and kimlik else None
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def masaustu_kovalari(simdi: float | None = None) -> list[dict]:
+    """Masaüstü uygulamasının en yeni örneğinden Claude kovaları; okunamazsa boş liste.
+
+    Örnekte sıfırlanma anı yoktur: aynı pencerenin son yazılan okumasında (PM ya da statusline) sıfırlanma
+    hâlâ ilerideyse o an taşınır; geçmişse ya da yoksa sıfırlanma boş kalır, tazeliğe yaş karar verir.
+    """
+    simdi = time.time() if simdi is None else simdi
+    yol = masaustu_dosyasi()
+    if yol is None:
+        return []
+    try:
+        veri = json.loads(yol.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    ornekler = veri.get("samples") if isinstance(veri, dict) else None
+    if not isinstance(ornekler, list):
+        return []
+    kurulus = _kurulus()
+    en_yeni = None
+    for o in ornekler:
+        if not isinstance(o, dict) or not isinstance(o.get("u"), dict):
+            continue
+        if kurulus and o.get("org") not in (None, kurulus):
+            continue
+        t = o.get("t")
+        if not isinstance(t, (int, float)) or isinstance(t, bool) or not math.isfinite(t):
+            continue
+        if en_yeni is None or t > en_yeni["t"]:
+            en_yeni = o
+    if en_yeni is None:
+        return []
+    olcum = en_yeni["t"] / 1000.0
+    if not simdi - MASAUSTU_EN_ESKI <= olcum <= simdi + 300:
+        return []
+    try:
+        durum = json.loads(durum_dosyasi().read_text(encoding="utf-8"))
+        if not isinstance(durum, dict):
+            durum = {}
+    except (OSError, ValueError):
+        durum = {}
+    kovalar = []
+    for alan, pencere in MASAUSTU_PENCERE.items():
+        deger = en_yeni["u"].get(alan)
+        if not isinstance(deger, (int, float)) or isinstance(deger, bool) or not 0 <= deger <= 100:
+            continue
+        kova = {"saglayici": "claude", "grup": "Claude", "pencere": pencere, "kullanilan": deger,
+                "olcum": datetime.fromtimestamp(olcum).astimezone().isoformat(), "kaynak": "desktop"}
+        once = durum.get(f"claude|Claude|{pencere}")
+        epoch = once.get("yenilenir_epoch") if isinstance(once, dict) else None
+        if isinstance(epoch, (int, float)) and not isinstance(epoch, bool) and epoch > max(simdi, olcum):
+            kova["yenilenir_epoch"] = float(epoch)
+            kova["yenilenir"] = datetime.fromtimestamp(epoch).strftime("%m-%d %H:%M")
+        kovalar.append(kova)
+    return kovalar
+
+
+def masaustu_kaydet(simdi: float | None = None) -> bool:
+    """Masaüstü okumasını yazar; daha yeni bir Claude okuması zaten yazılmışsa ya da değişmediyse yazmaz.
+    Hiçbir hatada istisna atmaz (kancadan çağrılır)."""
+    try:
+        kovalar = masaustu_kovalari(simdi)
+        if not kovalar:
+            return False
+        try:
+            durum = json.loads(durum_dosyasi().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            durum = {}
+        # Statusline ya da PM daha yeni ölçtüyse eski masaüstü örneği onu ezmesin.
+        yeni = []
+        for k in kovalar:
+            once = durum.get(f"claude|Claude|{k['pencere']}") if isinstance(durum, dict) else None
+            once_olcum = once.get("olcum") if isinstance(once, dict) else None
+            if isinstance(once_olcum, (int, float)) and once_olcum > zaman(k["olcum"]):
+                continue
+            yeni.append(k)
+        return kaydet(yeni, kaynak="claude") if yeni else False
+    except Exception:  # noqa: BLE001 - kota bir ipucudur; kanca ve sayfa asla düşmez
+        return False
 
 
 def main(argv: list[str]) -> int:
@@ -207,6 +322,9 @@ def main(argv: list[str]) -> int:
                 continue
             kovalar += [k for k in veri if isinstance(k, dict)] if isinstance(veri, list) else []
         kaydet(kovalar)
+        return 0
+    if argv == ["desktop"]:
+        masaustu_kaydet()
         return 0
     print(__doc__, file=sys.stderr)
     return 2

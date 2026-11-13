@@ -27,6 +27,7 @@ Kullanım:
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import tempfile
@@ -148,10 +149,20 @@ def is_bilgisi(is_id: str) -> dict:
             if isinstance(e.get("kota_ortak"), (int, float)):
                 bilgi["kota_ortak"] = e["kota_ortak"]  # 0014: çakışan koşularla birlikte; maliyete girmez
     if "sure" not in bilgi:
-        ts = {e.get("tur"): e.get("ts") for e in _olaylar()
-              if str(e.get("id")) == str(is_id) and e.get("tur") in ("agent_basladi", "agent_bitti")}
-        if isinstance(ts.get("agent_basladi"), (int, float)) and isinstance(ts.get("agent_bitti"), (int, float)):
-            bilgi["sure"] = round(ts["agent_bitti"] - ts["agent_basladi"], 1)
+        # 0019: devam ettirilen agent'ta birden çok başlangıç ve bitiş olur: ilk başlangıçtan sonraki son bitiş.
+        baslar, bitisler = [], []
+        for e in _olaylar():
+            ts = e.get("ts")
+            if str(e.get("id")) != str(is_id) or isinstance(ts, bool) or not isinstance(ts, (int, float)):
+                continue
+            if e.get("tur") == "agent_basladi":
+                baslar.append(ts)
+            elif e.get("tur") == "agent_bitti":
+                bitisler.append(ts)
+        if baslar:
+            sonra = [b for b in bitisler if b >= min(baslar)]
+            if sonra:
+                bilgi["sure"] = round(max(sonra) - min(baslar), 1)
     if "sure" not in bilgi:
         try:
             sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "skills" / "watch"))
@@ -230,8 +241,20 @@ def kayit_adlari(kayit: dict) -> dict:
             eski = False
         if eski and len(parcalar) == 3 and parcalar[0] == "claude":
             parcalar[2] = ESKI_SURUM.get(parcalar[2], parcalar[2])
-        k["isci"] = "/".join(parcalar)
+        k["isci"] = agy_adi("/".join(parcalar))
     return k
+
+
+def agy_adi(isci: str) -> str:
+    """0019: agy'de efor modelin adındadır (``gemini-4-argon-high``). ``agy/X/E`` → ``agy/X-E``,
+    ``agy/X/-`` → ``agy/X``; böylece aynı işçi tek satırda ve tek şeritte görünür. Öbürleri değişmez."""
+    parcalar = str(isci).split("/")
+    if len(parcalar) != 3 or parcalar[0] != "agy":
+        return isci
+    model, efor = parcalar[1], parcalar[2]
+    if efor in ("", "-") or model.endswith("-" + efor):
+        return f"agy/{model}"
+    return f"agy/{model}-{efor}"
 
 
 def dosya() -> Path:
@@ -457,14 +480,19 @@ def _deger(metin: str):
 
 
 def _sayi(val):
+    """Sayıya çevirir; sonlu değilse ya da sayı değilse None (0019: ``nan`` sıralamayı çökertiyordu)."""
+    if isinstance(val, bool):
+        return None
     if isinstance(val, (int, float)):
-        return val
+        return val if math.isfinite(val) else None
     s = str(val).replace("%", "").strip()
     try:
         f = float(s)
-        return int(f) if f.is_integer() else f
     except ValueError:
-        return val
+        return None
+    if not math.isfinite(f):
+        return None
+    return int(f) if f.is_integer() else f
 
 
 def _sayi_veya_deger(metin: str):
@@ -511,6 +539,10 @@ def puan_ayristir(argv: list[str]) -> tuple[dict, bool]:
 
     is_id = pozisyonel[0]
     not_degeri = _sayi_veya_deger(pozisyonel[1])
+    # 0019: not 1–5 arası sonlu sayı (999 ya da "iyi" kadroyu bozuyordu).
+    if isinstance(not_degeri, bool) or not isinstance(not_degeri, (int, float)) \
+            or not math.isfinite(not_degeri) or not 1 <= not_degeri <= 5:
+        raise ValueError("score must be a number from 1 to 5")
     gerekce = " ".join(pozisyonel[2:]) if len(pozisyonel) > 2 else ""
 
     olay = {
@@ -524,7 +556,10 @@ def puan_ayristir(argv: list[str]) -> tuple[dict, bool]:
     bayraklar = {BAYRAK.get(k, k): v for k, v in bayraklar.items()}
     for k, v in bayraklar.items():
         if k in ("kota", "sure", "duzeltme"):
-            olay[k] = _sayi(v)
+            sayi = _sayi(v)
+            if sayi is None or sayi < 0:
+                raise ValueError(f"--{next((b for b, a in BAYRAK.items() if a == k), k)} must be a non-negative number")
+            olay[k] = sayi
         else:
             olay[k] = v
 
@@ -533,6 +568,8 @@ def puan_ayristir(argv: list[str]) -> tuple[dict, bool]:
         olay.setdefault(alan, deger)
 
     deftere_yazilsin = "isci" in bayraklar and bool(bayraklar["isci"])
+    if deftere_yazilsin:
+        olay["isci"] = agy_adi(olay["isci"])
     if deftere_yazilsin and olay["isci"].startswith("claude/"):
         surumlu = surumlu_isci(olay["isci"], is_modeli(is_id))
         if surumlu == olay["isci"] and not any(c.isdigit() for c in olay["isci"].rsplit("/", 1)[-1]):
@@ -546,7 +583,11 @@ def puan_ayristir(argv: list[str]) -> tuple[dict, bool]:
 
 
 def puan_isle(argv: list[str]) -> int:
-    olay, deftere_yaz = puan_ayristir(argv)
+    try:
+        olay, deftere_yaz = puan_ayristir(argv)
+    except ValueError as hata:
+        print(f"events.py score: {hata}", file=sys.stderr)
+        return 2
     if not olay:
         print("Usage: events.py score <id> <1-5> [reason] [--worker ...] ...", file=sys.stderr)
         return 2
@@ -558,6 +599,17 @@ def puan_isle(argv: list[str]) -> int:
     return 0
 
 
+def _masaustu_kotasi() -> None:
+    """0019: agent olaylarında Claude kotasını masaüstü uygulamasından tazeler (değiştiyse yazar)."""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import quota
+
+        quota.masaustu_kaydet()
+    except Exception:  # noqa: BLE001 - kanca asla düşmez
+        pass
+
+
 def main(argv: list[str]) -> int:
     if not argv:
         try:
@@ -565,6 +617,7 @@ def main(argv: list[str]) -> int:
             olay = kancadan(yuk)
             if olay and duzen_var(yuk):
                 yaz(olay)
+                _masaustu_kotasi()
         except Exception:  # noqa: BLE001 - bir kanca oturumu asla durdurmaz
             pass
         return 0

@@ -19,6 +19,8 @@ sys.path.insert(0, str(KOK / "skills" / "team"))
 sys.path.insert(0, str(KOK / "hooks"))
 import roster as kadro  # noqa: E402
 import events as olay  # noqa: E402
+# 0019: testler masaüstü uygulamasının gerçek kota dosyasını okumasın.
+os.environ.setdefault("POLYCREW_DESKTOP_USAGE", "/nonexistent/polycrew-test")
 
 
 # Günlük verilmeyen çağrı makinenin gerçek olay günlüğünü (kota okumaları dahil) okumasın.
@@ -520,6 +522,54 @@ class KadroVePuanTesti(unittest.TestCase):
         self.assertEqual(satir[("developer", "js")][-2], "usta")  # adaylardan rolde en iyisi
         self.assertNotIn("kotu", [v[-2] for v in satir.values()])  # önselin altına düşen aday olmaz
         self.assertEqual(satir[("artist", "art")][-2], "—")  # rolde başka işçi yok
+
+    def test_dene_alanda_kotu_puanli_isciyi_onermez(self):
+        # 0019: rol ortalaması iyi (py'de 5) ama js'de 1 almış işçi js için "Try"a önerilmez.
+        simdi = 1_000_000
+        self._defter(
+            [{"isci": "usta", "rol": "developer", "alan": "js", "not": 5, "ts": simdi - 10}] * 4
+            + [{"isci": "karisik", "rol": "developer", "alan": "py", "not": 5, "ts": simdi - 10}] * 4
+            + [{"isci": "karisik", "rol": "developer", "alan": "js", "not": 1, "ts": simdi - 10}]
+        )
+        r = calistir_kadro(["summary", "--now", str(simdi), "--no-seed"], defter=self.defter)
+        satir = {tuple(h.strip() for h in s.split("|")[1:3]): [h.strip() for h in s.split("|")] for s in r.stdout.splitlines() if s.startswith("| ")}
+        self.assertNotEqual(satir[("developer", "js")][-2], "karisik")
+
+    def test_agy_isci_adi_efor_modelin_icinde(self):
+        # 0019: "agy/gemini-4-argon/high" ile "agy/gemini-4-argon-high" aynı işçi.
+        self.assertEqual(olay.agy_adi("agy/gemini-4-argon/high"), "agy/gemini-4-argon-high")
+        self.assertEqual(olay.agy_adi("agy/gemini-4-argon-high/high"), "agy/gemini-4-argon-high")
+        self.assertEqual(olay.agy_adi("agy/gemini-4-argon-high/-"), "agy/gemini-4-argon-high")
+        self.assertEqual(olay.agy_adi("agy/gemini-4-argon-high"), "agy/gemini-4-argon-high")
+        self.assertEqual(olay.agy_adi("codex/gpt-6.1-sol/high"), "codex/gpt-6.1-sol/high")
+        self.assertEqual(olay.kayit_adlari({"isci": "agy/flash/high"})["isci"], "agy/flash-high")
+
+    def test_puan_araligi_ve_sayilar(self):
+        # 0019: not 1–5 arası sonlu sayı; --quota/--duration/--fixes sonlu ve negatif değil.
+        with tempfile.TemporaryDirectory() as d:
+            gunluk, defter = Path(d) / "o.jsonl", Path(d) / "p.jsonl"
+            for argv in (["is", "999"], ["is", "0"], ["is", "nan"], ["is", "iyi"],
+                         ["is", "4", "--duration", "nan"], ["is", "4", "--quota", "-3"], ["is", "4", "--fixes", "x"]):
+                with self.subTest(argv=argv):
+                    r = calistir_olay(["score", *argv, "--worker", "codex/x/high"], gunluk=gunluk, defter=defter)
+                    self.assertEqual(r.returncode, 2, r.stdout)
+                    self.assertFalse(defter.exists())
+            r = calistir_olay(["score", "is", "4.5", "--worker", "agy/flash/high", "--duration", "12"],
+                              gunluk=gunluk, defter=defter)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            k = json.loads(defter.read_text(encoding="utf-8"))
+            self.assertEqual((k["not"], k["isci"], k["sure"]), (4.5, "agy/flash-high", 12))
+
+    def test_devam_ettirilen_agentin_suresi(self):
+        # 0019: SendMessage ile sürdürülen agent: ilk başlangıçtan son bitişe.
+        with tempfile.TemporaryDirectory() as d:
+            gunluk = Path(d) / "o.jsonl"
+            gunluk.write_text("".join(json.dumps(e) + "\n" for e in (
+                {"tur": "agent_basladi", "id": "a1", "ts": 100}, {"tur": "agent_bitti", "id": "a1", "ts": 160},
+                {"tur": "agent_basladi", "id": "a1", "ts": 300}, {"tur": "agent_bitti", "id": "a1", "ts": 420},
+                {"tur": "agent_bitti", "id": "a1", "ts": 50})), encoding="utf-8")
+            with patch.dict(os.environ, {"POLYCREW_EVENTS": str(gunluk)}):
+                self.assertEqual(olay.is_bilgisi("a1")["sure"], 320.0)
 
     # ---- 0009: yeniden puanlama, maliyet eşitlik bozucu, kurulu olmayan araç
 

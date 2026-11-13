@@ -9,6 +9,8 @@ dir="${CLAUDE_PROJECT_DIR:-$PWD}"
 file="$dir/NEXT_SESSION.md"
 [ -f "$file" ] || file="$dir/SONRAKI_OTURUM.md"
 [ -f "$file" ] || exit 0
+# 0019: Claude kotası masaüstü uygulamasından (varsa); sessiz, en çok birkaç saniye.
+python3 "$(dirname "$0")/quota.py" desktop > /dev/null 2>&1 || true
 echo "This project uses the polycrew workflow (notes: $(basename "$file"))."
 echo "Start the session with /session-start; close it with /session-end."
 echo

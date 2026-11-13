@@ -71,6 +71,7 @@ def goster(kovalar: list[dict], simdi: float) -> None:
 
 def main(argv: list[str]) -> int:
     if not argv:
+        izle.kurallar.masaustu_kaydet()  # 0019: masaüstü uygulamasının son okuması (varsa, değiştiyse)
         veri = izle.birlestir(izle.oku())
         kovalar = (veri["kota"] or {}).get("kovalar", [])
         goster([k for k in kovalar if k.get("saglayici") == "claude"], veri["simdi"])
@@ -124,7 +125,8 @@ def main(argv: list[str]) -> int:
         if args.baglam_token is not None:
             k["token"] = args.baglam_token
         kovalar.append(k)
-    izle.olay.yaz({"tur": "kota", "kaynak": "claude", "ts": simdi.timestamp(), "kovalar": kovalar})
+    # 0019: ortak yazıcıdan (her zaman yazar): sıfırlanma anı durum dosyasına da girer, masaüstü okuması onu taşır.
+    izle.kurallar.kaydet(kovalar, yeniden=0, simdi=simdi.timestamp(), kaynak="claude")
     goster([izle.kota_kovasi(k, simdi.timestamp(), simdi.timestamp()) for k in kovalar], simdi.timestamp())
     return 0
 

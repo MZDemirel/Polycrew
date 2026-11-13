@@ -24,7 +24,9 @@ The first section of the page is a small pixel office. The PM sits on the left; 
 
 ## Claude quota
 
-Two ways to get it into the log:
+Three ways to get it into the log; the newest measurement wins:
+
+- **Desktop app (automatic):** the app keeps its plan usage samples (5-hour and 7-day percent, every 15 minutes) in `~/.config/Claude/plan-usage-history.json` (macOS: `~/Library/Application Support/Claude/`). The session start hook, the agent hooks, this page and `external-agent.sh quota` copy the newest sample to the log when it changed (`hooks/quota.py desktop`). It has no reset time; one recorded earlier for the same window is carried over while it lies ahead. It is an undocumented file of the app: when it is missing, older than 3 hours or unreadable nothing is written and the other two ways still work.
 
 - **Status line (automatic, CLI):** Claude Code gives the status line command the plan's `rate_limits` (5-hour and 7-day, Pro/Max/Ultra plans). `claude-statusline.py` writes them as a quota event when they change or every 10 minutes, only in projects that use this workflow, and prints a short line. The user adds it to `~/.claude/settings.json`: `"statusLine": {"type": "command", "command": "python3 <plugin>/skills/watch/claude-statusline.py"}`; an existing status line is kept with `--then "<its command>"`. The plugin never edits settings itself.
 - **PM (desktop app, or no status line):** the PM reads the plan name, the 5-hour and weekly usage percentages, any per-model weekly limit and the ISO reset times from the desktop app's usage tool (or `/usage`), and adds its own context fill and token count if available:
