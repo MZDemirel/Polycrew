@@ -2,6 +2,18 @@
 
 Decision notes (in Turkish) are in [`docs/decisions/`](docs/decisions/); the number in brackets points to one.
 
+## 0.13.0 (2026-11-13)
+
+[0019]
+
+- **Claude quota by itself in the desktop app.** The app keeps plan usage samples (5-hour and week, every 15 minutes); the session start hook, the agent hooks, the watch page and `external-agent.sh quota` copy the newest one to the log when it changed. A reset time recorded earlier is carried over; a sample older than a known reset is dropped. It is an undocumented file of the app: when it is missing or unreadable nothing is written and the status line or the PM still works. `/doctor` shows where the Claude reading came from. Per-model weekly limits still come from the PM (`--model-week`).
+- When several sources write the same quota bucket, the newest measurement wins (the page used to take the last event in the log).
+- **External workers:** the exact prompt is saved as `istem.md`. A failed run that stopped on a quota or rate limit exits 5, one stopped by agy's permission rules exits 6 (the tool's own code stays in the event as `arac_cikis`; a timeout stays 124). Only the tool's error signal is checked, never the worker's answer. Denied agy actions are listed even after a successful run. A read-only run that changed files gets a warning. agy in read mode is told not to wait for approval. `{"response": null}` from agy no longer crashes.
+- agy worker names keep the effort in the model name (`agy/gemini-4-argon-high`); `agy/X/high` is read as `agy/X-high`, so one worker is one row and one timeline lane.
+- `events.py score` refuses a score outside 1–5 and non-finite or negative `--quota`, `--duration`, `--fixes`. A resumed Claude agent's duration runs from its first start to its last stop.
+- `Try` no longer suggests a worker that scored below 3 in that role and field.
+- Fixed during review: the watch page crashed when a job event followed a quota event (introduced in this release, never on `main`).
+
 ## 0.12.1 (2026-11-13)
 
 Quota readings are now right and on time. [0018]

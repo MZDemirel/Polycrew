@@ -274,22 +274,38 @@ def defter_dosyasi() -> Path:
 
 
 @contextmanager
-def kilit(yol: Path):
-    """0018: ekleme ve kırpma aynı kilidi alır; yoksa kırpma arada eklenen satırı silebilirdi."""
+def kilit(yol: Path, en_cok: float | None = None):
+    """0018: ekleme ve kırpma aynı kilidi alır; yoksa kırpma arada eklenen satırı silebilirdi.
+
+    ``en_cok`` verilirse kilit en çok o kadar saniye beklenir; alınamazsa ``False`` verilir ve çağıran
+    işi atlar (0019: kanca ve oturum açılışı takılı bir yazıcıyı beklemesin). Öbür durumlarda ``True``."""
     if fcntl is None:
-        yield
+        yield True
         return
     try:
         tutamak = open(yol.with_name(yol.name + ".lock"), "a")
     except OSError:
-        yield  # kilit dosyası açılamazsa eski davranış
+        yield True  # kilit dosyası açılamazsa eski davranış
         return
     with tutamak:
-        try:
-            fcntl.flock(tutamak, fcntl.LOCK_EX)
-        except OSError:
-            pass
-        yield
+        if en_cok is None:
+            try:
+                fcntl.flock(tutamak, fcntl.LOCK_EX)
+            except OSError:
+                pass
+            yield True
+            return
+        son = time.time() + en_cok
+        while True:
+            try:
+                fcntl.flock(tutamak, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.time() >= son:
+                    yield False
+                    return
+                time.sleep(0.05)
+        yield True
 
 
 def yaz(olay: dict) -> dict:

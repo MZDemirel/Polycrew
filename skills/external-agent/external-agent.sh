@@ -404,7 +404,7 @@ EOF
   fi
 fi
 # 0014: kesilen ya da düşen koşunun raporu yarım kalabilir; sonuna neden düştüğü yazılır.
-neden=""
+neden="" arac_cikis=$kod
 if [ "$kod" != 0 ]; then
   case $kod in
     124) anlam="stopped by the time limit, EXTERNAL_AGENT_TIMEOUT=${zaman_asimi}s" ;;
@@ -412,37 +412,58 @@ if [ "$kod" != 0 ]; then
   esac
   { echo; echo "---"; echo "**Run failed:** exit code $kod ($anlam). Last lines of hata.txt:"
     tail -n 5 "$kayit/hata.txt" 2> /dev/null | sed 's/^/    /'; } >> "$kayit/rapor.md"
-  neden=$(python3 - "$kayit" "$arac" <<'EOF'
+fi
+# 0019: düşme nedeni. Yalnız aracın hata sinyaline bakılır (hata.txt; Codex'in error/turn.failed olayları;
+# agy'nin status/error alanları), işçinin kendi yanıtına ya da okuduğu dosyalara değil. agy'nin reddettiği
+# eylemler başarılı koşuda da rapora yazılır. Heredoc komut ikamesi dışında: bash 3.2 içindeki tırnağı yanlış sayar.
+python3 - "$kayit" "$arac" "$kod" > "$kayit/neden.txt" 2> /dev/null <<'EOF'
 import json, re, sys
 from pathlib import Path
-kayit, arac = Path(sys.argv[1]), sys.argv[2]
+kayit, arac, kod = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+def oku(ad):
+    try:
+        return (kayit / ad).read_text(errors="replace")
+    except OSError:
+        return ""
 try:
-    kullanim = json.loads((kayit / "kullanim.json").read_text())
-except (ValueError, OSError):
+    kullanim = json.loads(oku("kullanim.json"))
+except ValueError:
     kullanim = None
 reddedilen = kullanim.get("denied_actions") if arac == "agy" and isinstance(kullanim, dict) else None
-metin = ""
-for ad in ("hata.txt", "ham.jsonl" if arac == "codex" else "ham.json"):
+sinyal = oku("hata.txt")
+if arac == "codex":
+    for satir in oku("ham.jsonl").splitlines():
+        try:
+            e = json.loads(satir)
+        except ValueError:
+            continue
+        if isinstance(e, dict) and e.get("type") in ("error", "turn.failed"):
+            sinyal += "\n" + json.dumps(e, ensure_ascii=False)
+else:
     try:
-        metin += (kayit / ad).read_text(errors="replace") + "\n"
-    except OSError:
-        pass
+        d = json.loads(oku("ham.json"))
+    except ValueError:
+        d = None
+    if isinstance(d, dict):
+        sinyal += "\n" + " ".join(str(d.get(a) or "") for a in ("status", "error"))
+KOTA = (r"\b429\b|RESOURCE_EXHAUSTED|\brate[ _-]?limit|\busage limit|"
+        r"quota (?:exceeded|exhausted|reached)|exceeded (?:your |the )?(?:current )?quota")
 with (kayit / "rapor.md").open("a") as f:
     if isinstance(reddedilen, list) and reddedilen:
         f.write("\n**Permission denied:**\n")
         for eylem in reddedilen[:10]:
-            # Bir eylem tek satırda kalır; yapılandırılmış eylemler de okunabilir olsun.
             satir = eylem if isinstance(eylem, str) else json.dumps(eylem, ensure_ascii=False)
             f.write("- " + " ".join(satir.splitlines()) + "\n")
         f.write("Ask the user before adding a permission rule to ~/.gemini/antigravity-cli/settings.json.\n")
-        print("permission")
-    elif re.search(r"429|RESOURCE_EXHAUSTED|rate limit|rate_limit|usage limit|quota", metin, re.IGNORECASE):
-        f.write("\n**Quota exhausted:** the tool stopped on a quota or rate limit; do not score this as the worker's quality.\n")
+        if kod not in ("0", "124"):
+            print("permission")
+    elif kod not in ("0", "124") and re.search(KOTA, sinyal, re.IGNORECASE):
+        f.write("\n**Quota exhausted:** the tool stopped on a quota or rate limit; do not score this as the quality of the worker.\n")
         print("quota")
 EOF
-)
-  case $neden in quota) kod=5 ;; permission) kod=6 ;; esac
-fi
+neden=$(cat "$kayit/neden.txt" 2> /dev/null); rm -f "$kayit/neden.txt"
+# Süre dolması (124) yeniden sınıflanmaz; aracın kendi çıkış kodu olayda arac_cikis olarak kalır.
+case $neden in quota) kod=5 ;; permission) kod=6 ;; esac
 bitis=$(simdi)
 python3 -c "print(round($bitis - $baslangic, 1))" > "$kayit/sure_sn"
 echo "$kod" > "$kayit/cikis_kodu"
@@ -495,6 +516,7 @@ KOTA
 fi
 olay isci_bitti "id=$(basename "$kayit")" "kaynak=$arac" "cikis=$kod" "sure_sn=$(cat "$kayit/sure_sn")" \
   "kullanim=$(cat "$kayit/kullanim.json" 2>/dev/null || echo null)" "kayit=$kayit" ${kota_fark:+"kota=$kota_fark"} \
-  ${kota_ortak:+"kota_ortak=$kota_ortak"} ${neden:+"neden=$neden"} ${degisti:+"degisti=$degisti"}
+  ${kota_ortak:+"kota_ortak=$kota_ortak"} ${neden:+"neden=$neden"} ${degisti:+"degisti=$degisti"} \
+  ${neden:+"arac_cikis=$arac_cikis"}
 echo "$kayit"
 exit "$kod"

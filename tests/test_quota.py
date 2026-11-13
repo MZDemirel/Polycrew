@@ -274,6 +274,28 @@ class Masaustu(unittest.TestCase):
         yazilan = self.olaylar()[sayi:]
         self.assertTrue(all(k["pencere"] != "5 saat" for e in yazilan for k in e["kovalar"]))
 
+    def test_bilinen_sifirlanmadan_onceki_ornek_yazilmaz(self):
+        # Codex incelemesi (0019): 10 dk önceki %99 örneği, 1 dk önce sıfırlanan pencereye aittir.
+        pm = [{"saglayici": "claude", "grup": "Claude", "pencere": "5 saat", "kullanilan": 90,
+               "yenilenir_epoch": SIMDI - 60}]
+        kurallar.kaydet(pm, yeniden=0, simdi=SIMDI - 3600, kaynak="claude")
+        self.ornekler((SIMDI - 600, "org-a", {"fh": 99, "sd": 35}))
+        self.assertEqual([k["pencere"] for k in kurallar.masaustu_kovalari(SIMDI)], ["hafta"])
+
+    @unittest.skipIf(sys.platform == "win32", "fcntl yok")
+    def test_kilit_tutuluyorsa_beklemeden_atlar(self):
+        import fcntl
+        import time as zaman_modulu
+        self.ornekler((SIMDI - 60, "org-a", {"fh": 3, "sd": 4}))
+        yol = kurallar.durum_dosyasi()
+        with open(str(yol) + ".lock", "a") as kilit:
+            fcntl.flock(kilit, fcntl.LOCK_EX)
+            bas = zaman_modulu.time()
+            self.assertFalse(kurallar.masaustu_kaydet(SIMDI, bekle=0.2))
+            self.assertLess(zaman_modulu.time() - bas, 1.5)
+        self.assertEqual(self.olaylar(), [])
+        self.assertTrue(kurallar.masaustu_kaydet(SIMDI))
+
     def test_komut(self):
         import time as zaman_modulu
         self.ornekler((zaman_modulu.time() - 60, "org-a", {"fh": 3, "sd": 4}))

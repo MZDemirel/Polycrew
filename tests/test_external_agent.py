@@ -217,19 +217,39 @@ class DisIsciKosuTesti(unittest.TestCase):
         rapor = (kayit / "rapor.md").read_text()
         self.assertIn("**Run failed:** exit code 1", rapor)
         self.assertIn("**Quota exhausted:** the tool stopped on a quota or rate limit; "
-                      "do not score this as the worker's quality.", rapor)
+                      "do not score this as the quality of the worker.", rapor)
         bitti = self.olaylar("isci_bitti")[-1]
         self.assertEqual((bitti["cikis"], bitti["neden"]), (5, "quota"))
 
-    def test_kota_belirtecleri_ham_ciktida_buyuk_kucuk_harften_bagimsiz(self):
+    def test_kota_belirtecleri_hata_sinyalinde_buyuk_kucuk_harften_bagimsiz(self):
+        # 0019 incelemesi: yalnız aracın hata sinyali (Codex error olayı, agy status/error) okunur.
         for arac in ("codex", "agy"):
-            for belirtec in ("429", "resource_exhausted", "RaTe LiMiT", "RATE_LIMIT", "Usage Limit", "QUOTA"):
+            for belirtec in ("HTTP 429", "resource_exhausted", "RaTe LiMiT", "RATE_LIMIT", "Usage Limit",
+                             "Quota Exceeded"):
                 with self.subTest(arac=arac, belirtec=belirtec):
+                    ham = (json.dumps({"type": "error", "message": belirtec}) if arac == "codex"
+                           else json.dumps({"response": "", "status": "error", "error": belirtec}))
                     ek = {f"FAKE_{arac.upper()}_EXIT": "2", "EXTERNAL_AGENT_NO_QUOTA": "1",
-                          f"FAKE_{arac.upper()}_RAW": json.dumps({"response": belirtec})}
+                          f"FAKE_{arac.upper()}_RAW": ham}
                     r = self.kos(arac, "model-x", "-", "read", str(self.is_klasoru), str(self.gorev), **ek)
                     self.assertEqual(r.returncode, 5, r.stderr)
-                    self.assertEqual(self.olaylar("isci_bitti")[-1]["neden"], "quota")
+                    bitti = self.olaylar("isci_bitti")[-1]
+                    self.assertEqual((bitti["neden"], bitti["arac_cikis"]), ("quota", 2))
+
+    def test_isci_ciktisindaki_kota_sozu_ve_zaman_asimi_kota_sayilmaz(self):
+        # 0019 incelemesi: işçinin yanıtındaki "quota"/"429" ya da kimlikteki 429 kota değildir.
+        for arac, ham in (("codex", json.dumps({"type": "item.completed", "text": "quota 429 rate limit",
+                                                 "thread_id": "0429-14290"})),
+                          ("agy", json.dumps({"response": "quota exceeded rate limit 429", "status": "ok"}))):
+            with self.subTest(arac=arac):
+                ek = {f"FAKE_{arac.upper()}_EXIT": "1", "EXTERNAL_AGENT_NO_QUOTA": "1", f"FAKE_{arac.upper()}_RAW": ham}
+                r = self.kos(arac, "model-x", "-", "read", str(self.is_klasoru), str(self.gorev), **ek)
+                self.assertEqual(r.returncode, 1, r.stderr)
+                self.assertNotIn("neden", self.olaylar("isci_bitti")[-1])
+        r = self.kos("codex", "gpt-x", "-", "read", str(self.is_klasoru), str(self.gorev),
+                     EXTERNAL_AGENT_TIMEOUT="1", FAKE_CODEX_SLEEP="20", EXTERNAL_AGENT_NO_QUOTA="1",
+                     FAKE_CODEX_STDERR="429 Too Many Requests")
+        self.assertEqual(r.returncode, 124, r.stderr)
 
     def test_agy_izin_kotadan_once_gelir_ve_on_eylemle_sinirlidir(self):
         eylemler = [f"command(test-{sira})" for sira in range(12)]
@@ -264,7 +284,8 @@ class DisIsciKosuTesti(unittest.TestCase):
                 self.assertNotIn("neden", self.olaylar("isci_bitti")[-1])
                 rapor = (kayit / "rapor.md").read_text()
                 self.assertNotIn("**Quota exhausted:**", rapor)
-                self.assertNotIn("**Permission denied:**", rapor)
+                # 0019 incelemesi: agy'nin reddettiği eylemler başarılı koşuda da rapora yazılır (çıkış değişmez).
+                self.assertEqual("**Permission denied:**" in rapor, arac == "agy")
 
     def test_siniflandirilmayan_hata_aracin_kodunu_korur(self):
         for reddedilen in ([], None, "command(test)"):

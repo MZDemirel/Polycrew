@@ -160,7 +160,7 @@ skills/external-agent/external-agent.sh quota                               # Co
 - **Yazar kip** ana çalışma ağacını reddeder; önce bir worktree aç.
 - **İşçiler push etmez** ve git kancasını atlatmaz.
 - **Sabit git kuralları** tek dosyada durur, [`rules/git.md`](rules/git.md): commit'te araç imzası (`Co-Authored-By`) yok, PR açıklamasında araç satırı yok, birleşen dal silinmez, işçiler push etmez. Projeye göre sorulmaz; `/project-setup` her projenin `CLAUDE.md`'sine yazar, betik dış işçilere iletir.
-- **Kayıt:** her koşu görevi, ham çıktıyı, son mesajı, süreyi, token'ı ve çıkış kodunu `~/.cache/polycrew/dis-ajan/` altına yazar.
+- **Kayıt:** her koşu görevi, aracın aldığı tam metni (`istem.md`), ham çıktıyı, son mesajı, süreyi, token'ı ve çıkış kodunu `~/.cache/polycrew/dis-ajan/` altına yazar. Kota ya da hız sınırında duran koşu 5, agy'nin izin kuralına takılan koşu 6 ile çıkar; ikisi de işçinin kalitesi olarak puanlanmaz. Okuma kipinde dosya değiştiren koşunun raporuna uyarı düşer.
 - **Koşu başına maliyet:** betik her koşudan önce ve sonra aracın kotasını okur; fark ve süre puana kendiliğinden yazılır. Aynı aracın paralel koşularının payı ayrılamaz: `kota.json` birlikte doluşu ve çakışan koşuları tutar, puana `kota_ortak` olarak yazılır, maliyet sayılmaz.
 - **Süre sınırı:** bir koşu bir saat sonra durdurulur (`EXTERNAL_AGENT_TIMEOUT`, saniye). Durdurulan koşu son mesaj bırakmaz; yazar işçiden ara commit iste, ağır işte sınırı yükselt.
 - **Paralel koşu:** bash betiği satır satır okur; uzun paralel koşularda betiğin bir kopyasını kullan. Kopya olay günlüğünü bulamazsa `POLYCREW_EVENTS_SCRIPT=<eklenti>/hooks/events.py` ver; yoksa işçi sayfada görünmez.

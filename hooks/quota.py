@@ -174,12 +174,7 @@ def kaydet(kovalar: list[dict], yeniden: float = YENIDEN, simdi: float | None = 
 
 
 def _kaydet(yol: Path, kovalar: list[dict], yeniden: float, simdi: float, ek: dict) -> bool:
-    try:
-        durum = json.loads(yol.read_text(encoding="utf-8"))
-        if not isinstance(durum, dict):
-            durum = {}
-    except (OSError, ValueError):
-        durum = {}
+    durum = _durum_oku(yol)
     anahtar = lambda k: "|".join(str(k.get(a)) for a in ("saglayici", "grup", "pencere"))  # noqa: E731
     degisti = False
     for k in kovalar:
@@ -232,7 +227,7 @@ def _kurulus() -> str | None:
         return None
 
 
-def masaustu_kovalari(simdi: float | None = None) -> list[dict]:
+def masaustu_kovalari(simdi: float | None = None, durum: dict | None = None) -> list[dict]:
     """Masaüstü uygulamasının en yeni örneğinden Claude kovaları; okunamazsa boş liste.
 
     Örnekte sıfırlanma anı yoktur: aynı pencerenin son yazılan okumasında (PM ya da statusline) sıfırlanma
@@ -266,12 +261,8 @@ def masaustu_kovalari(simdi: float | None = None) -> list[dict]:
     olcum = en_yeni["t"] / 1000.0
     if not simdi - MASAUSTU_EN_ESKI <= olcum <= simdi + 300:
         return []
-    try:
-        durum = json.loads(durum_dosyasi().read_text(encoding="utf-8"))
-        if not isinstance(durum, dict):
-            durum = {}
-    except (OSError, ValueError):
-        durum = {}
+    if durum is None:
+        durum = _durum_oku(durum_dosyasi())
     kovalar = []
     for alan, pencere in MASAUSTU_PENCERE.items():
         deger = en_yeni["u"].get(alan)
@@ -281,33 +272,47 @@ def masaustu_kovalari(simdi: float | None = None) -> list[dict]:
                 "olcum": datetime.fromtimestamp(olcum).astimezone().isoformat(), "kaynak": "desktop"}
         once = durum.get(f"claude|Claude|{pencere}")
         epoch = once.get("yenilenir_epoch") if isinstance(once, dict) else None
-        if isinstance(epoch, (int, float)) and not isinstance(epoch, bool) and epoch > max(simdi, olcum):
-            kova["yenilenir_epoch"] = float(epoch)
-            kova["yenilenir"] = datetime.fromtimestamp(epoch).strftime("%m-%d %H:%M")
+        if isinstance(epoch, (int, float)) and not isinstance(epoch, bool):
+            if olcum < epoch <= simdi:
+                continue  # 0019 incelemesi: örnek bilinen bir sıfırlanmadan önce; eski pencereye ait, yazılmaz
+            if epoch > max(simdi, olcum):
+                kova["yenilenir_epoch"] = float(epoch)
+                kova["yenilenir"] = datetime.fromtimestamp(epoch).strftime("%m-%d %H:%M")
         kovalar.append(kova)
     return kovalar
 
 
-def masaustu_kaydet(simdi: float | None = None) -> bool:
-    """Masaüstü okumasını yazar; daha yeni bir Claude okuması zaten yazılmışsa ya da değişmediyse yazmaz.
-    Hiçbir hatada istisna atmaz (kancadan çağrılır)."""
+def _durum_oku(yol: Path) -> dict:
     try:
-        kovalar = masaustu_kovalari(simdi)
-        if not kovalar:
+        durum = json.loads(yol.read_text(encoding="utf-8"))
+        return durum if isinstance(durum, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def masaustu_kaydet(simdi: float | None = None, bekle: float = 2.0) -> bool:
+    """Masaüstü okumasını yazar; daha yeni bir Claude okuması zaten yazılmışsa ya da değişmediyse yazmaz.
+    Karşılaştırma, sıfırlanmanın taşınması ve yazım tek kilit altındadır; kilit ``bekle`` saniyede
+    alınamazsa atlanır (kanca ve oturum açılışı beklemez). Hiçbir hatada istisna atmaz."""
+    try:
+        simdi = time.time() if simdi is None else simdi
+        if masaustu_dosyasi() is None:
             return False
-        try:
-            durum = json.loads(durum_dosyasi().read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            durum = {}
-        # Statusline ya da PM daha yeni ölçtüyse eski masaüstü örneği onu ezmesin.
-        yeni = []
-        for k in kovalar:
-            once = durum.get(f"claude|Claude|{k['pencere']}") if isinstance(durum, dict) else None
-            once_olcum = once.get("olcum") if isinstance(once, dict) else None
-            if isinstance(once_olcum, (int, float)) and once_olcum > zaman(k["olcum"]):
-                continue
-            yeni.append(k)
-        return kaydet(yeni, kaynak="claude") if yeni else False
+        yol = durum_dosyasi()
+        yol.parent.mkdir(parents=True, exist_ok=True)
+        with olay.kilit(yol, en_cok=bekle) as alindi:
+            if not alindi:
+                return False
+            durum = _durum_oku(yol)
+            yeni = []
+            for k in masaustu_kovalari(simdi, durum):
+                # Statusline ya da PM daha yeni ölçtüyse eski masaüstü örneği onu ezmesin.
+                once = durum.get(f"claude|Claude|{k['pencere']}")
+                once_olcum = once.get("olcum") if isinstance(once, dict) else None
+                if isinstance(once_olcum, (int, float)) and once_olcum > zaman(k["olcum"]):
+                    continue
+                yeni.append(k)
+            return _kaydet(yol, yeni, YENIDEN, simdi, {"kaynak": "claude"}) if yeni else False
     except Exception:  # noqa: BLE001 - kota bir ipucudur; kanca ve sayfa asla düşmez
         return False
 
