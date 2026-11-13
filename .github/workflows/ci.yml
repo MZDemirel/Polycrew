@@ -11,8 +11,11 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python: ["3.9", "3.11", "3.14"]
+        python: ["3.11", "3.14"]
         include:
+          # ubuntu-latest is Ubuntu 26.04 since 2026-10-19 and has no prebuilt Python 3.9; 24.04 still does.
+          - os: ubuntu-24.04
+            python: "3.9"
           # macOS: /bin/bash 3.2, BSD date, no GNU timeout (the tests run the worker script with /usr/bin:/bin).
           - os: macos-latest
             python: "3.9"
