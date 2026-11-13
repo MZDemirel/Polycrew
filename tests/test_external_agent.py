@@ -318,9 +318,10 @@ class DisIsciKosuTesti(unittest.TestCase):
         self.assertEqual((self.ev / "agy_kip.txt").read_text(), "plan")
         self.assertTrue(istem.startswith("Headless single-turn run: do not wait for approval; "
                                         "put the full report in your final message.\n\n"))
-        self.assertIn(f"Working folder: {self.is_klasoru}.", istem)
+        # Betik yolları çözer; macOS'ta geçici klasör /var → /private/var kısayolu üzerinden gelir.
+        self.assertIn(f"Working folder: {os.path.realpath(self.is_klasoru)}.", istem)
         self.assertIn("Only these shell commands are allowed: git status, rg.", istem)
-        self.assertIn(f"Image to look at: {resim}.", istem)
+        self.assertIn(f"Image to look at: {os.path.realpath(resim)}.", istem)
         self.assertIn("Rules: do not git push.", istem)
         self.assertTrue(istem.endswith("\n\n" + self.gorev.read_text().rstrip("\n")))
 
