@@ -28,6 +28,8 @@ import json, os, sys, time
 a = sys.argv[1:]
 open(os.path.expanduser("~/codex_stdin.txt"), "w").write(sys.stdin.read())
 time.sleep(float(os.environ.get("FAKE_CODEX_SLEEP", "0")))
+for sira in range(int(os.environ.get("FAKE_CODEX_WRITE_COUNT", "0"))):
+    open(os.path.join(a[a.index("-C") + 1], "degisen-%02d.txt" % sira), "w").write("değişiklik")
 open(a[a.index("-o") + 1], "w").write("codex raporu")
 d = os.path.expanduser("~/.codex/sessions/2026/10/11")
 os.makedirs(d, exist_ok=True)
@@ -38,6 +40,9 @@ with open(os.path.join(d, "kosu-%d.jsonl" % os.getpid()), "w") as f:
         "primary": {"used_percent": float(os.environ["FAKE_CODEX_USED"]), "resets_at": time.time() + 3600},
         "secondary": {"used_percent": 5, "resets_at": time.time() + 3 * 86400}}}}) + "\n")
 print(json.dumps({"type": "turn.completed", "usage": {"input_tokens": 7}}))
+print(os.environ.get("FAKE_CODEX_RAW", ""))
+sys.stderr.write(os.environ.get("FAKE_CODEX_STDERR", ""))
+sys.exit(int(os.environ.get("FAKE_CODEX_EXIT", "0")))
 '''
 
 # Sahte agy: /quota durum dosyasındaki kalan oranları verir; bir görev koşusu modelin grubundan düşer.
@@ -66,11 +71,17 @@ elif os.environ.get("FAKE_AGY_FAIL"):
     sys.stderr.write("RESOURCE_EXHAUSTED (code 429): Individual quota reached\n")
     sys.exit(3)
 else:
+    open(os.path.expanduser("~/agy_istem.txt"), "w").write(a[a.index("-p") + 1])
+    open(os.path.expanduser("~/agy_kip.txt"), "w").write(a[a.index("--mode") + 1])
+    for sira in range(int(os.environ.get("FAKE_AGY_WRITE_COUNT", "0"))):
+        open("degisen-%02d.txt" % sira, "w").write("değişiklik")
     model = a[a.index("--model") + 1]
     grup = "claude" if "claude" in model else "argon" if "argon" in model and "argon" in durum else "gemini"
     durum[grup] = round(durum[grup] - float(os.environ.get("FAKE_AGY_HARCA", "0.04")), 4)
     json.dump(durum, open(yol, "w"))
-    print(json.dumps({"response": "agy raporu", "usage": {"t": 1}, "status": "ok"}))
+    print(os.environ.get("FAKE_AGY_RAW", json.dumps({"response": "agy raporu", "usage": {"t": 1}, "status": "ok"})))
+    sys.stderr.write(os.environ.get("FAKE_AGY_STDERR", ""))
+    sys.exit(int(os.environ.get("FAKE_AGY_EXIT", "0")))
 '''
 
 
@@ -92,6 +103,7 @@ class DisIsciKosuTesti(unittest.TestCase):
         self.env = {
             "PATH": f"{kutu}:{os.path.dirname(sys.executable)}:/usr/bin:/bin",
             "HOME": str(self.ev),
+            "GIT_CEILING_DIRECTORIES": str(self.ev),
             "EXTERNAL_AGENT_LOG": str(self.ev / "kayit"),
             "POLYCREW_EVENTS": str(self.gunluk),
             "POLYCREW_SCORES": str(self.defter),
@@ -172,18 +184,154 @@ class DisIsciKosuTesti(unittest.TestCase):
         self.assertEqual(len(self.olaylar("kota")[-1]["kovalar"]), 5)  # codex 2, gemini 1, claude 2
         r = self.kos("agy", "claude-opus-4-6-thinking", "-", "read", str(self.is_klasoru), str(self.gorev),
                      FAKE_AGY_FAIL="1")
-        self.assertEqual(r.returncode, 3)
+        self.assertEqual(r.returncode, 5)
         kayit = Path(r.stdout.strip().splitlines()[-1])
         rapor = (kayit / "rapor.md").read_text()
         self.assertTrue(rapor.startswith("yarım düşünce"))
         self.assertIn("**Run failed:** exit code 3", rapor)
         self.assertIn("RESOURCE_EXHAUSTED", rapor)
+        self.assertIn("**Quota exhausted:**", rapor)
+        self.assertEqual(self.olaylar("isci_bitti")[-1]["neden"], "quota")
         kota = json.loads((kayit / "kota.json").read_text())
         self.assertEqual((kota["once"], kota["pencere"], kota["grup"]), (0.0, "5 saat", "agy: Claude/GPT"))
         # Grubun tek kovası tükenmişse ölçü yok ama koşu ve kayıt çökmez.
         (self.ev / "agy_durum.json").write_text(json.dumps({"gemini": 0.8, "claude": 0.0}), encoding="utf-8")
         kota = json.loads((self.kosu("agy", "claude-opus-4-6-thinking") / "kota.json").read_text())
         self.assertEqual((kota["once"], kota["fark"], kota["neden"]), (None, None, "quota could not be read"))
+
+    def test_agy_bos_ve_sozluk_olmayan_yanitlar_cokmez(self):
+        for ham in ({"response": None}, [], [{"response": "liste"}], None, "metin", 42, True,
+                    {"response": {"metin": "nesne"}}):
+            with self.subTest(ham=ham):
+                kayit = self.kosu("agy", "gemini-x", FAKE_AGY_RAW=json.dumps(ham), EXTERNAL_AGENT_NO_QUOTA="1")
+                self.assertEqual((kayit / "rapor.md").read_text(), "")
+                self.assertIsInstance(json.loads((kayit / "kullanim.json").read_text()), dict)
+                self.assertEqual((kayit / "hata.txt").read_text(), "")
+
+    def test_codex_429_stderr_kota_cikisi_ve_olayi(self):
+        r = self.kos("codex", "gpt-x", "-", "read", str(self.is_klasoru), str(self.gorev),
+                     FAKE_CODEX_EXIT="1", FAKE_CODEX_STDERR="429 Too Many Requests")
+        self.assertEqual(r.returncode, 5, r.stderr)
+        kayit = Path(r.stdout.splitlines()[-1])
+        self.assertEqual((kayit / "cikis_kodu").read_text().strip(), "5")
+        rapor = (kayit / "rapor.md").read_text()
+        self.assertIn("**Run failed:** exit code 1", rapor)
+        self.assertIn("**Quota exhausted:** the tool stopped on a quota or rate limit; "
+                      "do not score this as the worker's quality.", rapor)
+        bitti = self.olaylar("isci_bitti")[-1]
+        self.assertEqual((bitti["cikis"], bitti["neden"]), (5, "quota"))
+
+    def test_kota_belirtecleri_ham_ciktida_buyuk_kucuk_harften_bagimsiz(self):
+        for arac in ("codex", "agy"):
+            for belirtec in ("429", "resource_exhausted", "RaTe LiMiT", "RATE_LIMIT", "Usage Limit", "QUOTA"):
+                with self.subTest(arac=arac, belirtec=belirtec):
+                    ek = {f"FAKE_{arac.upper()}_EXIT": "2", "EXTERNAL_AGENT_NO_QUOTA": "1",
+                          f"FAKE_{arac.upper()}_RAW": json.dumps({"response": belirtec})}
+                    r = self.kos(arac, "model-x", "-", "read", str(self.is_klasoru), str(self.gorev), **ek)
+                    self.assertEqual(r.returncode, 5, r.stderr)
+                    self.assertEqual(self.olaylar("isci_bitti")[-1]["neden"], "quota")
+
+    def test_agy_izin_kotadan_once_gelir_ve_on_eylemle_sinirlidir(self):
+        eylemler = [f"command(test-{sira})" for sira in range(12)]
+        eylemler[0] = {"tool": "command", "command": "git status"}
+        ham = json.dumps({"response": None, "denied_actions": eylemler})
+        for hata in ("", "quota RESOURCE_EXHAUSTED 429"):
+            with self.subTest(hata=hata):
+                r = self.kos("agy", "gemini-x", "-", "read", str(self.is_klasoru), str(self.gorev),
+                             FAKE_AGY_RAW=ham, FAKE_AGY_EXIT="1", FAKE_AGY_STDERR=hata,
+                             EXTERNAL_AGENT_NO_QUOTA="1")
+                self.assertEqual(r.returncode, 6, r.stderr)
+                kayit = Path(r.stdout.splitlines()[-1])
+                self.assertEqual((kayit / "cikis_kodu").read_text().strip(), "6")
+                self.assertEqual(json.loads((kayit / "kullanim.json").read_text())["denied_actions"], eylemler)
+                rapor = (kayit / "rapor.md").read_text()
+                self.assertIn("**Permission denied:**", rapor)
+                self.assertIn("git status", rapor)
+                self.assertIn("command(test-9)", rapor)
+                self.assertNotIn("command(test-10)", rapor)
+                self.assertIn("Ask the user before adding a permission rule to "
+                              "~/.gemini/antigravity-cli/settings.json", rapor)
+                self.assertNotIn("**Quota exhausted:**", rapor)
+                bitti = self.olaylar("isci_bitti")[-1]
+                self.assertEqual((bitti["neden"], bitti["cikis"]), ("permission", 6))
+
+    def test_basarili_kosuda_kota_ve_izin_hatasi_sayilmaz(self):
+        for arac in ("codex", "agy"):
+            with self.subTest(arac=arac):
+                ek = {f"FAKE_{arac.upper()}_RAW": json.dumps({"response": "quota 429", "denied_actions": ["cmd"]}),
+                      f"FAKE_{arac.upper()}_STDERR": "rate_limit", "EXTERNAL_AGENT_NO_QUOTA": "1"}
+                kayit = self.kosu(arac, "model-x", **ek)
+                self.assertNotIn("neden", self.olaylar("isci_bitti")[-1])
+                rapor = (kayit / "rapor.md").read_text()
+                self.assertNotIn("**Quota exhausted:**", rapor)
+                self.assertNotIn("**Permission denied:**", rapor)
+
+    def test_siniflandirilmayan_hata_aracin_kodunu_korur(self):
+        for reddedilen in ([], None, "command(test)"):
+            with self.subTest(reddedilen=reddedilen):
+                r = self.kos("agy", "gemini-x", "-", "read", str(self.is_klasoru), str(self.gorev),
+                             FAKE_AGY_RAW=json.dumps({"denied_actions": reddedilen}),
+                             FAKE_AGY_EXIT="7", EXTERNAL_AGENT_NO_QUOTA="1")
+                self.assertEqual(r.returncode, 7, r.stderr)
+                self.assertNotIn("neden", self.olaylar("isci_bitti")[-1])
+
+    def test_istem_codex_stdin_ile_ayni_ve_gorev_eksiksiz(self):
+        self.gorev.write_text("# Task: özel\n\n$HOME `pwd` 'alıntı' \\\n\n\n", encoding="utf-8")
+        kayit = self.kosu("codex", "gpt-x")
+        istem = (kayit / "istem.md").read_bytes()
+        self.assertEqual(istem, (self.ev / "codex_stdin.txt").read_bytes())
+        self.assertTrue(istem.startswith(b"Rules: do not git push."))
+        self.assertEqual(istem.split(b"\n\n", 1)[1], self.gorev.read_bytes())
+
+    def test_agy_istem_tam_metni_ve_onaysiz_okuma_satiri(self):
+        ayar = self.ev / ".gemini/antigravity-cli/settings.json"
+        ayar.parent.mkdir(parents=True)
+        ayar.write_text(json.dumps({"permissions": {"allow": ["command(git status)", "command(rg)", "read_file(x)"]}}))
+        resim = self.ev / "örnek resim.png"
+        resim.write_bytes(b"x")
+        r = self.kos("agy", "gemini-x", "-", "read", str(self.is_klasoru), str(self.gorev), str(resim))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        kayit = Path(r.stdout.splitlines()[-1])
+        istem = (kayit / "istem.md").read_text()
+        self.assertEqual(istem, (self.ev / "agy_istem.txt").read_text())
+        self.assertEqual((self.ev / "agy_kip.txt").read_text(), "plan")
+        self.assertTrue(istem.startswith("Headless single-turn run: do not wait for approval; "
+                                        "put the full report in your final message.\n\n"))
+        self.assertIn(f"Working folder: {self.is_klasoru}.", istem)
+        self.assertIn("Only these shell commands are allowed: git status, rg.", istem)
+        self.assertIn(f"Image to look at: {resim}.", istem)
+        self.assertIn("Rules: do not git push.", istem)
+        self.assertTrue(istem.endswith("\n\n" + self.gorev.read_text().rstrip("\n")))
+
+    def test_okuma_kipinde_git_degisikligi_uyarisi_yirmi_satirla_sinirli(self):
+        subprocess.run(["git", "init", str(self.is_klasoru)], check=True, capture_output=True, env=self.env)
+        (self.is_klasoru / "once.txt").write_text("önceden var")
+        for arac in ("codex", "agy"):
+            with self.subTest(arac=arac):
+                for dosya in self.is_klasoru.glob("degisen-*.txt"):
+                    dosya.unlink()
+                kayit = self.kosu(arac, "model-x", **{f"FAKE_{arac.upper()}_WRITE_COUNT": "25"},
+                                  EXTERNAL_AGENT_NO_QUOTA="1")
+                rapor = (kayit / "rapor.md").read_text()
+                self.assertIn("**Warning:** files changed in read mode:", rapor)
+                self.assertIn("?? degisen-00.txt", rapor)
+                self.assertIn("?? degisen-19.txt", rapor)
+                self.assertNotIn("degisen-20.txt", rapor)
+                self.assertNotIn("once.txt", rapor)
+                self.assertEqual(self.olaylar("isci_bitti")[-1]["degisti"], 1)
+
+    def test_okuma_kipinde_kirli_ama_ayni_git_durumu_uyarilmaz(self):
+        subprocess.run(["git", "init", str(self.is_klasoru)], check=True, capture_output=True, env=self.env)
+        (self.is_klasoru / "once.txt").write_text("önceden var")
+        kayit = self.kosu("codex", "gpt-x", EXTERNAL_AGENT_NO_QUOTA="1")
+        self.assertNotIn("**Warning:**", (kayit / "rapor.md").read_text())
+        self.assertNotIn("degisti", self.olaylar("isci_bitti")[-1])
+
+    def test_git_disinda_okuma_degisikligi_sessizce_atlanir(self):
+        kayit = self.kosu("agy", "gemini-x", FAKE_AGY_WRITE_COUNT="1", EXTERNAL_AGENT_NO_QUOTA="1")
+        self.assertTrue((self.is_klasoru / "degisen-00.txt").exists())
+        self.assertEqual((kayit / "rapor.md").read_text(), "agy raporu")
+        self.assertNotIn("degisti", self.olaylar("isci_bitti")[-1])
 
     def test_pencere_yenilenirse_fark_yazilmaz(self):
         kayit = self.kosu("codex", "gpt-x", FAKE_CODEX_USED="3")  # 40 → 3: pencere yenilendi
