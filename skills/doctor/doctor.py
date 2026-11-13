@@ -32,6 +32,7 @@ def olay_modulu():
     try:
         sys.path.insert(0, str(KOK / "hooks"))
         import events as olay
+        import quota  # noqa: F401 - kota_sifirlanmalari için (0018)
 
         return olay
     finally:
@@ -151,7 +152,7 @@ def kota_olcumleri():
             ts = zaman(kayit.get("ts"))
             if ts is None or ts > simdi + GELECEK_PAYI:  # gelecek tarihli kayıt eski ölçümü gizlemesin
                 continue
-            olcumler = {}
+            olcumler, sifirlanan = {}, {}
             for kova in kayit["kovalar"]:
                 if not isinstance(kova, dict) or kova.get("saglayici") not in SAGLAYICILAR:
                     continue
@@ -160,15 +161,28 @@ def kota_olcumleri():
                     olcum = ts
                 ad = kova["saglayici"]
                 olcumler[ad] = max(olcum, olcumler.get(ad, olcum))
+                # 0018: yaşı genç olsa da penceresi o okumadan sonra sıfırlanmış kova eskidir (hooks/quota.py).
+                kurallar = sys.modules.get("quota")
+                yenilenir = kurallar.yenilenme(kurallar.adlari_duzelt(kova), olcum) if kurallar else None
+                if yenilenir is not None and yenilenir <= simdi:
+                    pencere = {"5 saat": "5-hour", "hafta": "weekly"}.get(
+                        kurallar.adlari_duzelt(kova).get("pencere"), str(kova.get("pencere") or "a"))
+                    sifirlanan.setdefault(ad, set()).add(pencere)
             for ad, olcum in olcumler.items():
                 if ad not in son or ts >= son[ad][0]:
-                    son[ad] = (ts, olcum)
-    return {ad: olcum for ad, (_, olcum) in son.items()}
+                    son[ad] = (ts, olcum, sorted(sifirlanan.get(ad, ())))
+    SIFIRLANAN.clear()
+    SIFIRLANAN.update({ad: pencereler for ad, (_, _, pencereler) in son.items() if pencereler})
+    return {ad: olcum for ad, (_, olcum, _) in son.items()}
+
+
+SIFIRLANAN: dict = {}  # sağlayıcı -> son okumasından sonra sıfırlanan pencereler (kota_olcumleri doldurur)
 
 
 def kota(saglayici, olcumler):
     # Claude'un kullanımı CLI'dan okunmaz; onu PM yazar. Codex ve agy'yi betik ölçer.
-    nasil = ("the PM records it with skills/watch/claude-quota.py (from /usage)" if saglayici == "claude"
+    nasil = ("the PM records it with skills/watch/claude-quota.py (from the desktop usage tool or /usage), "
+             "or install skills/watch/claude-statusline.py as the status line" if saglayici == "claude"
              else "run external-agent.sh quota")
     son_olcum = olcumler.get(saglayici)
     if son_olcum is None:
@@ -176,6 +190,9 @@ def kota(saglayici, olcumler):
     yas = max(0, time.time() - son_olcum)
     if yas > KOTA_YASI:
         return "warn", f"last reading is {yas / 3600:.1f} hours old; {nasil}"
+    if SIFIRLANAN.get(saglayici):
+        return "warn", (f"the {' and '.join(SIFIRLANAN[saglayici])} window reset after the last reading "
+                        f"({yas / 3600:.1f} hours old); {nasil}")
     return "ok", f"last reading is {yas / 3600:.1f} hours old"
 
 

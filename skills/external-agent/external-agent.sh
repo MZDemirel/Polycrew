@@ -89,45 +89,70 @@ if os.environ.get("CODEX_VAR") != "1":
     yaz("codex   not installed")
 else:
     fs = sorted(glob.glob(os.path.expanduser("~/.codex/sessions/*/*/*/*.jsonl")), key=os.path.getmtime)
-    son = None
-    for f in reversed(fs[-20:]):
-        for line in open(f, errors="ignore"):
-            try:
-                e = json.loads(line)
-            except ValueError:
-                continue
-            rl = (e.get("payload") or {}).get("rate_limits")
-            if rl:
-                son = (e.get("timestamp"), rl)
-        if son:
-            break
-    ETIKET = {"5 saat": "5 hours", "hafta": "week"}
-    # Kayıt kendi penceresinden eskiyse (sıfırlanma geçti, ya da yaşı 5 saati / haftalıkta bir günü aştı) "stale" yazılır.
-    # Codex'i yenilemek için model koşusu başlatılmaz: kayıt ancak codex kullanılınca tazelenir (0014).
-    SINIR = {"5 saat": (5 * 3600, "5 hours"), "hafta": (24 * 3600, "a day")}
     def olcum_zamani(t):
         try:
             return datetime.datetime.fromisoformat(t.replace("Z", "+00:00")).timestamp()
         except (ValueError, TypeError, AttributeError):
             return None
+    # 0018: en yeni 5 dosyada ölçüm zamanı en yeni kayıt (dosyanın değişme zamanı yanıltabilir);
+    # onlarda kayıt yoksa geriye, en çok 20 dosyaya kadar.
+    son = None
+    for sira, f in enumerate(reversed(fs[-20:])):
+        if son is not None and sira >= 5:
+            break
+        dosyanin = None  # dosyanın son kaydı (dosya içinde sonraki satır daha yenidir)
+        try:
+            satirlar = open(f, errors="ignore")
+        except OSError:
+            continue
+        for line in satirlar:
+            if '"rate_limits"' not in line:
+                continue
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            rl = (e.get("payload") or {}).get("rate_limits") if isinstance(e, dict) else None
+            if isinstance(rl, dict):
+                dosyanin = (e.get("timestamp"), rl, olcum_zamani(e.get("timestamp")))
+        # Dosyalar arasında: ilk bulunan (en yeni dosya) kalır; daha eski dosyanınki yalnız ölçüm zamanı
+        # kesin olarak daha yeniyse geçer.
+        if dosyanin and (son is None or (dosyanin[2] is not None and (son[2] is None or dosyanin[2] > son[2]))):
+            son = dosyanin
+    ETIKET = {"5 saat": "5 hours", "hafta": "week"}
+    # Kayıt kendi penceresinden eskiyse (sıfırlanma geçti, ya da yaşı 5 saati / haftalıkta bir günü aştı) "stale" yazılır.
+    # Codex'i yenilemek için model koşusu başlatılmaz: kayıt ancak codex kullanılınca tazelenir (0014).
+    SINIR = {"5 saat": (5 * 3600, "5 hours"), "hafta": (24 * 3600, "a day")}
+    def pencere_adi(b, varsayilan):
+        # 0018: pencere sıradan değil süresinden (window_minutes); yoksa eski varsayım (primary 5 saat).
+        dk = b.get("window_minutes")
+        if isinstance(dk, (int, float)) and not isinstance(dk, bool):
+            if 240 <= dk <= 360:
+                return "5 saat"
+            if 9000 <= dk <= 11000:
+                return "hafta"
+            return f"{int(dk)} min"
+        return varsayilan
     if son:
-        ts, rl = son
-        olcum = olcum_zamani(ts)
-        for k, ad in (("primary", "5 saat"), ("secondary", "hafta")):
-            b = rl.get(k) or {}
-            r = datetime.datetime.fromtimestamp(b.get("resets_at", 0)).strftime("%m-%d %H:%M")
+        ts, rl, olcum = son
+        for k, varsayilan in (("primary", "5 saat"), ("secondary", "hafta")):
+            b = rl.get(k)
+            if not isinstance(b, dict):
+                continue
+            resets = b.get("resets_at")
+            if not isinstance(resets, (int, float)) or isinstance(resets, bool) or resets <= 0:
+                continue  # 0018: sıfırlanma zamanı olmayan kova yazılmaz (null'da çöküyordu)
+            ad = pencere_adi(b, varsayilan)
+            r = datetime.datetime.fromtimestamp(resets).strftime("%m-%d %H:%M")
             # Son kayıt eski bir pencereden kalmış olabilir: yenilenme saati geçtiyse yeni pencere 0'dan başlar (0010).
-            gecti = bool(b.get("resets_at")) and b["resets_at"] <= time.time()
+            gecti = resets <= time.time()
             eski = "reset passed" if gecti else (
-                f"older than {SINIR[ad][1]}" if olcum is not None and time.time() - olcum > SINIR[ad][0] else None)
-            yaz(f"codex   {ETIKET[ad]:7s} used {b.get('used_percent')}%  resets {r}  (measured {ts})"
+                f"older than {SINIR[ad][1]}" if ad in SINIR and olcum is not None and time.time() - olcum > SINIR[ad][0] else None)
+            yaz(f"codex   {ETIKET.get(ad, ad):7s} used {b.get('used_percent')}%  resets {r}  (measured {ts})"
                 + (f"  stale ({eski})" if eski else ""))
-            kova = {"saglayici": "codex", "grup": "Codex", "pencere": ad,
-                    "kullanilan": b.get("used_percent"), "hassas": 0.0 if gecti else b.get("used_percent"),
-                    "yenilenir": r, "olcum": ts}
-            if b.get("resets_at"):
-                kova["yenilenir_epoch"] = b["resets_at"]  # kesin sıfırlanma zamanı: roster.py bayatlığı bundan karar verir
-            kovalar.append(kova)
+            kovalar.append({"saglayici": "codex", "grup": "Codex", "pencere": ad,
+                            "kullanilan": b.get("used_percent"), "hassas": 0.0 if gecti else b.get("used_percent"),
+                            "yenilenir": r, "olcum": ts, "yenilenir_epoch": resets})
     else:
         yaz("codex   no record")
 json.dump(kovalar, open(os.environ["KOTA_DOSYA"], "w"))
@@ -154,7 +179,7 @@ except (ValueError, KeyError, TypeError):
         print("agy     could not be read")
     gruplar = []
 # agy'nin ham adları sayfada Codex'inkilerle aynı dilde görünsün.
-GRUP = {"Gemini Models": "agy: Gemini", "Claude and GPT models": "agy: Claude/GPT"}
+GRUP = {"Gemini Models": "agy: Gemini", "Claude and GPT models": "agy: Claude/GPT", "Gemini 4 Argon": "agy: Argon"}
 PENCERE = {"weekly": "hafta", "5h": "5 saat"}
 # Tükenmiş kovada alanlar eksik gelebilir (0014: reset_time yoktu, betik çöktü): eksik alan "?" olur.
 for g in gruplar if isinstance(gruplar, list) else []:
@@ -168,25 +193,32 @@ for g in gruplar if isinstance(gruplar, list) else []:
         rf = rf if isinstance(rf, (int, float)) else None
         pencere = PENCERE.get(b.get("window"), b.get("window") or "?")
         etiket = {"5 saat": "5 hours", "hafta": "week"}.get(pencere, pencere)
-        yenilenir = str(b.get("reset_time") or "")[5:16] or "?"
+        # 0018: reset_time UTC'dir; metin yerel saatle yazılır (Codex ve Claude gibi), kesin an epoch'ta.
+        try:
+            an = datetime.datetime.fromisoformat(str(b["reset_time"]).replace("Z", "+00:00"))
+            if an.tzinfo is None:
+                an = an.replace(tzinfo=datetime.timezone.utc)
+            epoch = an.timestamp()
+            yenilenir = datetime.datetime.fromtimestamp(epoch).strftime("%m-%d %H:%M")
+        except (KeyError, ValueError, TypeError, OverflowError, OSError):
+            epoch, yenilenir = None, "?"
         kalan = None if rf is None else round(100 * rf)
         if not sessiz:
             print(f"agy     {grup[:22]:22s} {etiket:7s} left {'?' if kalan is None else kalan}%  resets {yenilenir}")
         kova = {"saglayici": "agy", "grup": grup, "pencere": pencere,
                 "kullanilan": None if kalan is None else 100 - kalan,
                 "hassas": None if rf is None else round(100 * (1 - rf), 1), "yenilenir": yenilenir}
-        try:
-            kova["yenilenir_epoch"] = datetime.datetime.fromisoformat(
-                str(b["reset_time"]).replace("Z", "+00:00")).timestamp()
-        except (KeyError, ValueError, TypeError):
-            pass
+        if epoch is not None:
+            kova["yenilenir_epoch"] = epoch
         kovalar.append(kova)
 json.dump(kovalar, open(os.environ["KOTA_DOSYA"], "w"))
 PY
 }
 
-# kota_yuzde <araç> <model> [pencere]: bu koşunun harcadığı pencerenin kullanım yüzdesi, pencere ve
-# grup, sekmeyle ayrılmış; okunamazsa boş. Pencere verilirse o (koşu sonrası, öncekiyle aynı pencere).
+# kota_yuzde <araç> <model> [pencere]: bu koşunun harcadığı pencerenin kullanım yüzdesi, pencere, grup ve
+# ölçüm zamanı (Codex kaydının; agy'de boş), sekmeyle ayrılmış; okunamazsa boş. Pencere verilirse o
+# (koşu sonrası, öncekiyle aynı pencere). agy grubu hooks/quota.py'nin agy_grubu'yla aynı kuraldır:
+# Argon'un kendi kovası varsa o, yoksa Gemini (0018).
 # Codex: 5 saatlik pencere, yoksa haftalık. agy: modele göre grup, en dolu pencere (0014: Claude/GPT'nin
 # 5 saati %0 iken haftası %68'di; koşu haftalık sınırda düştü).
 kota_yuzde() {
@@ -202,7 +234,13 @@ except (ValueError, OSError):
 arac, model, istenen = sys.argv[2], sys.argv[3].lower(), sys.argv[4]
 grup = "Codex"
 if arac == "agy":
-    grup = "agy: Claude/GPT" if ("claude" in model or "gpt" in model) else "agy: Gemini"
+    gruplar = {k.get("grup") for k in kovalar}
+    if "claude" in model or "gpt" in model:
+        grup = "agy: Claude/GPT"
+    elif "argon" in model and "agy: Argon" in gruplar:
+        grup = "agy: Argon"
+    else:
+        grup = "agy: Gemini"
     kovalar = [k for k in kovalar if k.get("grup") == grup]
 olcu = [k for k in kovalar if isinstance(k.get("hassas"), (int, float))]
 if istenen:
@@ -212,7 +250,7 @@ elif arac == "agy":
 else:
     olcu.sort(key=lambda k: {"5 saat": 0, "hafta": 1}.get(k.get("pencere"), 2))
 if olcu:
-    print(f"{olcu[0]['hassas']}\t{olcu[0].get('pencere')}\t{grup}")
+    print(f"{olcu[0]['hassas']}\t{olcu[0].get('pencere')}\t{grup}\t{olcu[0].get('olcum') or ''}")
 PY
   rm -f "$f"
 }
@@ -221,7 +259,14 @@ if [ "${1:-}" = quota ]; then
   f1=$(mktemp); f2=$(mktemp)
   kota_codex "$f1"
   kota_agy "$f2"
-  olay kota "kovalar=$(python3 -c 'import json,sys; print(json.dumps([{k: v for k, v in b.items() if k != "hassas"} for f in sys.argv[1:] for b in json.load(open(f))]))' "$f1" "$f2")"
+  # 0018: içeriği değişmeyen okuma yeniden yazılmaz (hooks/quota.py); "hassas" artık atılmaz
+  # (roster.py agy'de yuvarlanmamış değeri okur). Modül bulunamazsa eski yol: her okuma yazılır.
+  kota_py="$(dirname "$OLAY")/quota.py"
+  if [ -f "$kota_py" ]; then
+    python3 "$kota_py" record "$f1" "$f2" 2>/dev/null || true
+  else
+    olay kota "kovalar=$(python3 -c 'import json,sys; print(json.dumps([b for f in sys.argv[1:] for b in json.load(open(f))]))' "$f1" "$f2")"
+  fi
   rm -f "$f1" "$f2"
   exit 0
 fi
@@ -350,16 +395,21 @@ if [ "${EXTERNAL_AGENT_NO_QUOTA:-}" != 1 ]; then
   cakisma=0
   [ -f "$OLAY" ] && cakisma=$(python3 "$OLAY" overlap "$(basename "$kayit")" "$arac" "$baslangic" 2>/dev/null || echo 0)
   kota_sonuc=$(python3 - "$kayit/kota.json" "$kota_once" "$kota_sonra" "$cakisma" <<'KOTA'
-import json, sys
+import datetime, json, sys
 dosya, once, sonra, cakisma = sys.argv[1:5]
 def ayir(m):
-    p = (m.split("\t") + ["", ""])[:3]
+    p = (m.split("\t") + ["", "", ""])[:4]
     try:
-        return float(p[0]), p[1] or None, p[2] or None
+        return float(p[0]), p[1] or None, p[2] or None, p[3] or None
     except ValueError:
-        return None, None, None
-o, pencere, grup = ayir(once)
-s, pencere2, grup2 = ayir(sonra)
+        return None, None, None, None
+def ani(t):
+    try:
+        return datetime.datetime.fromisoformat(t.replace("Z", "+00:00")).timestamp()
+    except (ValueError, TypeError, AttributeError):
+        return None
+o, pencere, grup, olcum = ayir(once)
+s, pencere2, grup2, olcum2 = ayir(sonra)
 c = cakisma.split()
 cakisanlar = c[1].split(",") if len(c) > 1 else []
 fark = ortak = neden = None
@@ -367,6 +417,9 @@ if o is None or s is None:
     neden = "quota could not be read"
 elif pencere != pencere2 or s < o:
     neden = "the quota window reset during the run"
+elif ani(olcum) is not None and ani(olcum2) is not None and ani(olcum2) <= ani(olcum):
+    # 0018: Codex kayıt yazmadan düştüyse sonraki okuma öncekinin aynısıdır; fark 0 değil, bilinmiyor.
+    neden = "no new reading after the run"
 elif c and c[0] == "1":
     # 0014: pay ayrılamaz ama pencerenin birlikte ne kadar dolduğu kalır (maliyete girmez).
     neden = "another run of the same tool overlapped; the share cannot be separated"

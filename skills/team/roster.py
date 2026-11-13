@@ -19,7 +19,10 @@ Quota (suggest, summary, structure): the newest quota reading per provider in th
 with under 20% left in the 5-hour window or under 10% left in the week (`--quota-low-5h`,
 `--quota-low-week`) drops below the others in its row and is marked "low quota". A missing or stale
 reading (its reset time has passed, or it is older than 5 hours / one day for the 5-hour / weekly
-window) changes nothing; a note says so. `--no-quota` turns it all off.
+window) changes nothing; a note says so, for Claude too. A stale reading already under the limit still
+counts as low while its window has not reset (usage only grows). Argon workers count agy's Argon group
+(Gemini when agy reports none); Claude workers count the general windows and the per-model weekly window
+named in their model. The rules live in hooks/quota.py (0018). `--no-quota` turns it all off.
 
 A later score for the same job (project + id) replaces the earlier one. When two workers are within
 0.10 of each other, the clearly cheaper one (20% less quota, else 20% less time) goes first (0009).
@@ -49,6 +52,7 @@ from pathlib import Path
 KOK = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(KOK / "hooks"))
 import events as olay  # noqa: E402
+import quota as kurallar  # noqa: E402
 
 
 def tohum_dosyasi() -> Path:
@@ -155,50 +159,14 @@ def maliyet_sirasi(liste: list[dict]) -> list[dict]:
 
 
 # Kota: olay günlüğündeki en yeni kota okuması. Az kotası kalan işçi satırında alta iner.
+# Eşleme, sıfırlanma ve tazelik kuralları hooks/quota.py'de (0018: sayfa ve doctor ile tek kaynak).
 KOTA_AZ_5SA = 20.0  # yüzde: 5 saatlik pencerede bundan az kalan işçi "low quota"
 KOTA_AZ_HAFTA = 10.0  # yüzde: haftalıkta bundan az kalan işçi "low quota"
-KOTA_ESKI = {"5 saat": 5 * 3600.0, "hafta": 24 * 3600.0}  # saniye: okuma pencerenin bunca ötesinde eski sayılır
-KOTA_ESKI_AD = {"5 saat": "5 hours", "hafta": "a day"}
+KOTA_ESKI = kurallar.SINIR  # saniye: okuma pencerenin bunca ötesinde eski sayılır
 KOTA_PENCERE_AD = {"5 saat": "5 hours", "hafta": "week"}
 KOTA_SAGLAYICILAR = ("claude", "codex", "agy")
-# external-agent.sh'nin eski sürümü agy'nin ham adlarını yazıyordu; aynı kova (watch.py ile aynı).
-KOTA_ESKI_GRUP = {"Gemini Models": "agy: Gemini", "Claude and GPT models": "agy: Claude/GPT"}
-KOTA_ESKI_PENCERE = {"weekly": "hafta", "5h": "5 saat"}
-
-
-def _kota_zamani(deger) -> float | None:
-    """ISO ölçüm zamanı ya da Unix saniyesi → Unix saniyesi; çözülemezse None."""
-    try:
-        if isinstance(deger, (int, float)) and not isinstance(deger, bool):
-            return float(deger)
-        return datetime.fromisoformat(deger.replace("Z", "+00:00")).timestamp()
-    except (ValueError, TypeError, AttributeError, OverflowError):
-        return None
-
-
-def _kota_yenilenme(kova: dict, olcum: float) -> float | None:
-    """Kovanın sıfırlanma zamanı: yeni olaylarda ``yenilenir_epoch``; eskilerde kısaltılmış metinden.
-
-    Eski metin ``11-12 16:07`` (Codex, yerel saat) ya da ``11-12T16:07`` (agy, UTC) biçimindedir; yıl ölçümden gelir.
-    """
-    epoch = kova.get("yenilenir_epoch")
-    if isinstance(epoch, (int, float)) and not isinstance(epoch, bool):
-        return float(epoch)
-    metin = kova.get("yenilenir")
-    if not metin:
-        return None
-    try:
-        agy = kova.get("saglayici") == "agy"
-        yil = (datetime.fromtimestamp(olcum, tz=timezone.utc) if agy else datetime.fromtimestamp(olcum)).year
-        for ek in (0, 1):  # yıl dönümünde sıfırlanma ertesi yıla düşer
-            gun = datetime.strptime(f"{yil + ek}-{str(metin).replace('T', ' ')}", "%Y-%m-%d %H:%M")
-            if agy:
-                gun = gun.replace(tzinfo=timezone.utc)
-            if gun.timestamp() >= olcum - 86400:
-                return gun.timestamp()
-    except (ValueError, TypeError, OverflowError, OSError):
-        pass
-    return None
+_kota_zamani = kurallar.zaman
+_kota_yenilenme = kurallar.yenilenme
 
 
 def kota_okumalari() -> dict[tuple, dict]:
@@ -212,18 +180,18 @@ def kota_okumalari() -> dict[tuple, dict]:
         for k in kovalar if isinstance(kovalar, list) else []:  # bozuk olay öbür sağlayıcıları düşürmez
             if not isinstance(k, dict):
                 continue
+            k = kurallar.adlari_duzelt(k)
             # agy'nin "kullanilan"ı tam sayıya yuvarlıdır (%19,6 kalan → 20); eşik için yuvarlanmamış "hassas" okunur.
             # Codex'te "hassas" pencere sıfırlanınca 0 yazılır, o yüzden orada "kullanilan".
             kullanilan = k.get("hassas") if k.get("saglayici") == "agy" and k.get("hassas") is not None else k.get("kullanilan")
             if not isinstance(kullanilan, (int, float)) or isinstance(kullanilan, bool):
                 kullanilan = None  # okunamayan kova (agy "?"): kalan bilinmiyor, ama eski okumayı da geçersiz kılar
-            grup = KOTA_ESKI_GRUP.get(k.get("grup"), k.get("grup"))
-            pencere = KOTA_ESKI_PENCERE.get(k.get("pencere"), k.get("pencere"))
+            pencere = k.get("pencere")
             if pencere not in KOTA_ESKI:
                 continue  # Claude'un "bağlam" kovası bağlam doluluğudur, kota değil
             olcum = _kota_zamani(k.get("olcum"))
             olcum = ts if olcum is None else olcum
-            anahtar = (k.get("saglayici"), grup, pencere)
+            anahtar = (k.get("saglayici"), k.get("grup"), pencere)
             if anahtar not in son or olcum >= son[anahtar]["olcum"]:
                 son[anahtar] = {"kullanilan": None if kullanilan is None else float(kullanilan), "olcum": olcum,
                                 "yenilenir": _kota_yenilenme(k, olcum)}
@@ -231,18 +199,15 @@ def kota_okumalari() -> dict[tuple, dict]:
 
 
 def isci_kota_grubu(isci: str) -> tuple[str, str | None] | None:
-    """İşçinin kotasının sağlayıcısı ve grubu; external-agent.sh'nin model → grup eşlemesi gibi.
+    """İşçinin kotasının sağlayıcısı ve (okumadan bağımsız) grubu; Claude'da None (genel ve model kovası).
 
-    Claude işçisinde grup None: o sağlayıcının her kovası sayılır. Tanınmayan araçta None.
+    Asıl eşleme ``kurallar.isci_kovasi_mi``'dedir: Argon'un kovası okumada yoksa Gemini'ye düşer.
     """
     parcalar = str(isci or "").split("/")
     if parcalar[0] == "codex":
         return "codex", "Codex"
     if parcalar[0] == "agy":
-        model = parcalar[1].lower() if len(parcalar) > 1 else ""
-        if "argon" in model:
-            return "agy", "Gemini 4 Argon"  # agy'nin kendi ayrı haftalık kovası
-        return "agy", "agy: Claude/GPT" if ("claude" in model or "gpt" in model) else "agy: Gemini"
+        return "agy", kurallar.agy_grubu(parcalar[1] if len(parcalar) > 1 else "")
     if parcalar[0] == "claude":
         return "claude", None
     return None
@@ -257,30 +222,34 @@ class KotaBilgisi:
 
     def eski_neden(self, pencere: str, kova: dict) -> str | None:
         """Okuma pencereden eskiyse nedeni: sıfırlanma geçti, ya da yaşı pencereyi aştı."""
-        if kova["yenilenir"] is not None and kova["yenilenir"] <= self.simdi:
-            return "reset passed"
-        sinir = KOTA_ESKI.get(pencere, KOTA_ESKI["5 saat"])
-        if self.simdi - kova["olcum"] > sinir:
-            return f"older than {KOTA_ESKI_AD.get(pencere, '5 hours')}"
-        return None
+        return kurallar.eski_neden(pencere, kova["olcum"], kova["yenilenir"], self.simdi)
 
-    def kovalar(self, saglayici: str, grup: str | None) -> list[tuple[str, dict]]:
+    def az_mi(self, pencere: str, kullanilan: float) -> bool:
+        kalan = 100.0 - kullanilan
+        return (pencere == "5 saat" and kalan < self.az_5sa) or (pencere == "hafta" and kalan < self.az_hafta)
+
+    def isci_kovalari(self, isci: str) -> list[tuple[str, dict]]:
+        """İşçinin kotasını gösteren kovalar (pencere, okuma)."""
+        gruplar = {g for (s, g, _p) in self.okumalar if s == "agy"}
         return [(p, v) for (s, g, p), v in sorted(self.okumalar.items(), key=lambda x: tuple(map(str, x[0])))
-                if s == saglayici and (grup is None or g == grup)]
+                if kurallar.isci_kovasi_mi(isci, s, g, gruplar)]
 
     def durum(self, isci: str) -> str | None:
-        hedef = isci_kota_grubu(isci)
-        if hedef is None:
+        if not kurallar.tanimli(isci):
             return None
-        kovalar = self.kovalar(*hedef)
+        kovalar = self.isci_kovalari(isci)
         if not kovalar:
             return "none"
+        # 0018: kullanım pencere içinde yalnız artar. Sıfırlanması henüz gelmemiş eski okuma eşiğin
+        # altındaysa (kalan az) işçi yine "low": bugün en az o kadar dolu.
+        for pencere, v in kovalar:
+            if self.az_mi(pencere, v["kullanilan"]) and v["yenilenir"] is not None and v["yenilenir"] > self.simdi:
+                return "low"
         taze = [(p, v) for p, v in kovalar if not self.eski_neden(p, v)]
         if not taze:
             return "stale"
         for pencere, v in taze:
-            kalan = 100.0 - v["kullanilan"]
-            if (pencere == "5 saat" and kalan < self.az_5sa) or (pencere == "hafta" and kalan < self.az_hafta):
+            if self.az_mi(pencere, v["kullanilan"]):
                 return "low"
         return "ok"
 
@@ -289,7 +258,7 @@ class KotaBilgisi:
         yok, eski = set(), set()
         for isci in isciler:
             d, hedef = self.durum(isci), isci_kota_grubu(isci)
-            if hedef and hedef[0] != "claude":
+            if hedef:
                 (yok if d == "none" else eski if d == "stale" else set()).add(hedef[0])
         parcalar = []
         if yok:
@@ -298,6 +267,11 @@ class KotaBilgisi:
             parcalar.append(f"stale quota reading for {', '.join(sorted(eski))}")
         if not parcalar:
             return []
+        if "claude" in yok | eski:
+            # 0018: Claude okuması kendiliğinden gelmez (statusline betiği yoksa); PM yazar.
+            return [f"Quota: {'; '.join(parcalar)}; the order is not adjusted for them "
+                    "(run external-agent.sh quota; for Claude read the desktop usage tool or /usage and record it "
+                    "with claude-quota.py)."]
         return [f"Quota: {'; '.join(parcalar)}; the order is not adjusted for them "
                 "(run external-agent.sh quota to refresh)."]
 
@@ -834,8 +808,8 @@ def kota_satirlari(kota: KotaBilgisi, saglayicilar) -> list[str]:
         if not gruplar:
             satirlar.append(f"- {saglayici}: no reading")
         for grup, parcalar in gruplar.items():
-            ad = saglayici if grup in (None, "Codex") or saglayici == "claude" and len(gruplar) == 1 else (
-                grup if str(grup).startswith(saglayici) else f"{saglayici}: {grup}")
+            ad = saglayici if grup in (None, "Codex", "Claude") else (
+                grup if str(grup).lower().startswith(saglayici) else f"{saglayici}: {grup}")
             satirlar.append(f"- {ad}: {', '.join(parcalar)}")
     return satirlar
 

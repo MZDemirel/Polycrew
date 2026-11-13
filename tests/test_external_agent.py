@@ -6,6 +6,7 @@ Gerçek araçlar çağrılmaz: geçici bir PATH'in başına sahte ``codex`` ve `
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 import os
 import stat
 import subprocess
@@ -30,10 +31,12 @@ time.sleep(float(os.environ.get("FAKE_CODEX_SLEEP", "0")))
 open(a[a.index("-o") + 1], "w").write("codex raporu")
 d = os.path.expanduser("~/.codex/sessions/2026/10/11")
 os.makedirs(d, exist_ok=True)
+if os.environ.get("FAKE_CODEX_NO_RECORD"):
+    sys.exit(1)
 with open(os.path.join(d, "kosu-%d.jsonl" % os.getpid()), "w") as f:
     f.write(json.dumps({"timestamp": "t2", "payload": {"rate_limits": {
         "primary": {"used_percent": float(os.environ["FAKE_CODEX_USED"]), "resets_at": time.time() + 3600},
-        "secondary": {"used_percent": 5, "resets_at": 0}}}}) + "\n")
+        "secondary": {"used_percent": 5, "resets_at": time.time() + 3 * 86400}}}}) + "\n")
 print(json.dumps({"type": "turn.completed", "usage": {"input_tokens": 7}}))
 '''
 
@@ -53,14 +56,16 @@ if a[a.index("-p") + 1] == "/quota":
         {"name": "Gemini Models", "buckets": [
             {"window": "5h", "remaining_fraction": durum["gemini"], "reset_time": "2026-10-11T22:00:00Z"}]},
         {"name": "Claude and GPT models", "buckets": claude},
-    ]}}}))
+    ] + ([{"name": "Gemini 4 Argon", "buckets": [
+            {"window": "weekly", "remaining_fraction": durum["argon"], "reset_time": "2026-10-12T10:00:00Z"}]}]
+         if "argon" in durum else [])}}}))
 elif os.environ.get("FAKE_AGY_FAIL"):
     print(json.dumps({"response": "yarım düşünce"}))
     sys.stderr.write("RESOURCE_EXHAUSTED (code 429): Individual quota reached\n")
     sys.exit(3)
 else:
     model = a[a.index("--model") + 1]
-    grup = "claude" if "claude" in model else "gemini"
+    grup = "claude" if "claude" in model else "argon" if "argon" in model and "argon" in durum else "gemini"
     durum[grup] = round(durum[grup] - float(os.environ.get("FAKE_AGY_HARCA", "0.04")), 4)
     json.dump(durum, open(yol, "w"))
     print(json.dumps({"response": "agy raporu", "usage": {"t": 1}, "status": "ok"}))
@@ -102,7 +107,7 @@ class DisIsciKosuTesti(unittest.TestCase):
         f = d / "eski.jsonl"
         f.write_text(json.dumps({"timestamp": "t1", "payload": {"rate_limits": {
             "primary": {"used_percent": yuzde, "resets_at": time.time() + 3600 if yenilenir is None else yenilenir},
-            "secondary": {"used_percent": 5, "resets_at": 0}}}}) + "\n", encoding="utf-8")
+            "secondary": {"used_percent": 5, "resets_at": time.time() + 3 * 86400}}}}) + "\n", encoding="utf-8")
         eski = time.time() - 3600
         os.utime(f, (eski, eski))
 
@@ -256,7 +261,55 @@ class DisIsciKosuTesti(unittest.TestCase):
         kovalar = self.olaylar("kota")[-1]["kovalar"]
         self.assertEqual(len(kovalar), 4)
         self.assertEqual({k["pencere"] for k in kovalar}, {"5 saat", "hafta"})
-        self.assertNotIn("hassas", kovalar[0])  # şemaya yeni alan girmez
+        # 0018: "hassas" artık yazılır (roster.py agy'de yuvarlanmamış değeri okur); sıfırlanma kesin anla.
+        self.assertIn("hassas", kovalar[0])
+        self.assertTrue(all(k.get("yenilenir_epoch") for k in kovalar))
+        # Değişmeyen okuma ikinci kez yazılmaz.
+        self.assertEqual(self.kos("quota").returncode, 0)
+        self.assertEqual(len(self.olaylar("kota")), 1)
+
+    def test_argon_kosusu_kendi_kovasindan_olculur(self):
+        # 0018: Argon koşusu Gemini kovasından ölçülüyordu (fark 0).
+        (self.ev / "agy_durum.json").write_text(json.dumps({"gemini": 0.80, "claude": 0.50, "argon": 0.30}),
+                                                encoding="utf-8")
+        kota = json.loads((self.kosu("agy", "gemini-4-argon-high") / "kota.json").read_text())
+        self.assertEqual((kota["grup"], kota["once"], kota["sonra"], kota["fark"]), ("agy: Argon", 70.0, 74.0, 4.0))
+
+    def test_codex_yeni_kayit_yazmazsa_fark_bos(self):
+        # 0018: Codex kayıt yazmadan düşerse sonraki okuma öncekinin aynısıdır: fark 0 değil, bilinmiyor.
+        self._codex_kaydi(0.5, time.time() + 3600, time.time() + 86400)
+        r = self.kos("codex", "gpt-x", "-", "read", str(self.is_klasoru), str(self.gorev), FAKE_CODEX_NO_RECORD="1")
+        kota = json.loads((Path(r.stdout.strip().splitlines()[-1]) / "kota.json").read_text())
+        self.assertIsNone(kota["fark"])
+        self.assertEqual(kota["neden"], "no new reading after the run")
+
+    def test_quota_codex_pencere_suresinden_bos_sifirlanma_atlanir(self):
+        # 0018: pencere sıradan değil window_minutes'ten; sıfırlanması olmayan kova yazılmaz (null'da çöküyordu).
+        f = self.ev / ".codex" / "sessions" / "2026" / "10" / "10" / "eski.jsonl"
+        f.write_text(json.dumps({"timestamp": "2026-11-13T10:00:00Z", "payload": {"rate_limits": {
+            "primary": {"used_percent": 7, "window_minutes": 10080, "resets_at": time.time() + 86400},
+            "secondary": {"used_percent": 9, "window_minutes": 300, "resets_at": None}}}}) + "\n",
+            encoding="utf-8")
+        r = self.kos("quota")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("codex   week    used 7", r.stdout)
+        self.assertNotIn("used 9", r.stdout)
+        codex = [k for k in self.olaylar("kota")[-1]["kovalar"] if k["saglayici"] == "codex"]
+        self.assertEqual([(k["pencere"], k["kullanilan"]) for k in codex], [("hafta", 7)])
+
+    def test_quota_agy_argon_grubu_ve_yerel_saat(self):
+        (self.ev / "bin" / "agy").write_text(r'''#!/usr/bin/env python3
+import json
+print(json.dumps({"command": {"data": {"groups": [
+    {"name": "Gemini Models", "buckets": [{"window": "weekly", "remaining_fraction": 1.0, "reset_time": "2026-11-16T13:59:00Z"}]},
+    {"name": "Gemini 4 Argon", "buckets": [{"window": "weekly", "remaining_fraction": 0.17, "reset_time": "2026-11-16T12:43:00Z"}]}]}}}))
+''', encoding="utf-8")
+        r = self.kos("quota")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        yerel = datetime.fromtimestamp(datetime(2026, 11, 16, 12, 43, tzinfo=timezone.utc).timestamp()).strftime("%m-%d %H:%M")
+        self.assertIn(f"agy     agy: Argon             week    left 17%  resets {yerel}", r.stdout)
+        argon = [k for k in self.olaylar("kota")[-1]["kovalar"] if k["grup"] == "agy: Argon"][0]
+        self.assertEqual((argon["yenilenir"], argon["kullanilan"]), (yerel, 83))
 
     def _codex_kaydi(self, yas_saat, birinci_yenilenir, ikinci_yenilenir):
         """Codex'in son oturum kaydını verilen yaşta (ISO zamanla) ve sıfırlanma zamanlarıyla yazar."""

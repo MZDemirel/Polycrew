@@ -139,6 +139,18 @@ class DoktorTesti(unittest.TestCase):
         self.assertEqual(sonuclar["Quota (claude)"]["status"], "warn")
         self.assertEqual(sonuclar["Quota (agy)"]["status"], "warn")
 
+    def test_kota_okumasindan_sonra_sifirlanan_pencere(self):
+        # 0018: okuma 1 saatlik ama 5 saatlik penceresi o arada sıfırlandı: eski sayılır.
+        self.gunluk.write_text(json.dumps({"tur": "kota", "ts": self.simdi - 3600, "kovalar": [
+            {"saglayici": "codex", "pencere": "5 saat", "yenilenir_epoch": self.simdi - 60},
+            {"saglayici": "codex", "pencere": "hafta", "yenilenir_epoch": self.simdi + 86400},
+            {"saglayici": "agy", "pencere": "hafta", "yenilenir_epoch": self.simdi + 86400}]}) + "\n",
+            encoding="utf-8")
+        _, sonuclar = self.sonuclar()
+        self.assertEqual(sonuclar["Quota (codex)"]["status"], "warn")
+        self.assertIn("5-hour window reset", sonuclar["Quota (codex)"]["detail"])
+        self.assertEqual(sonuclar["Quota (agy)"]["status"], "ok")
+
     def test_kotada_en_yeni_olay_siradan_bagimsiz(self):
         with self.gunluk.open("a", encoding="utf-8") as dosya:
             dosya.write(json.dumps({"tur": "kota", "ts": self.simdi - 6 * 3600,

@@ -24,18 +24,22 @@ The first section of the page is a small pixel office. The PM sits on the left; 
 
 ## Claude quota
 
-The PM reads the plan name, the 5-hour and weekly usage percentages and the ISO reset times from the desktop app's usage tool, and adds its own context fill and token count if available. The script cannot read these from the CLI by itself; it writes the given measurement to the log:
+Two ways to get it into the log:
+
+- **Status line (automatic, CLI):** Claude Code gives the status line command the plan's `rate_limits` (5-hour and 7-day, Pro/Max/Ultra plans). `claude-statusline.py` writes them as a quota event when they change or every 10 minutes, only in projects that use this workflow, and prints a short line. The user adds it to `~/.claude/settings.json`: `"statusLine": {"type": "command", "command": "python3 <plugin>/skills/watch/claude-statusline.py"}`; an existing status line is kept with `--then "<its command>"`. The plugin never edits settings itself.
+- **PM (desktop app, or no status line):** the PM reads the plan name, the 5-hour and weekly usage percentages, any per-model weekly limit and the ISO reset times from the desktop app's usage tool (or `/usage`), and adds its own context fill and token count if available:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/watch/claude-quota.py" \
   --five-hour 35 --five-hour-resets 2026-10-07T16:00:00+03:00 \
   --week 65 --week-resets 2026-10-12T10:00:00+03:00 \
-  --plan Max --context 42 --context-tokens 84000
+  --plan Max --context 42 --context-tokens 84000 \
+  --model-week Fable 23 2026-10-12T10:00:00+03:00
 ```
 
-`--plan`, `--context` and `--context-tokens` are optional; if tokens are given the context percentage is required too. Percentages are 0–100, tokens a non-negative integer. Called without arguments it prints the latest Claude buckets with measurement times and ages, line by line, and writes nothing. If the week is ≥ 70% or the 5-hour window ≥ 80% it warns to shift Claude's jobs to external workers.
+Reset times must be ahead and within the window's length (5 hours, 7 days). `--plan`, `--context`, `--context-tokens` and `--model-week` are optional; if tokens are given the context percentage is required too. Percentages are 0–100, tokens a non-negative integer. Called without arguments it prints the latest Claude buckets with measurement times and ages, line by line, and writes nothing. If the week is ≥ 70% or the 5-hour window ≥ 80% it warns to shift Claude's jobs to external workers.
 
-The Claude card comes first; context is a separate thin row. With no Claude measurement the page shows that none exists yet (the PM writes it). The latest event is kept per provider/group/window, so an external quota reading does not erase Claude's. Every row shows its own measurement time. If the reset time has passed since the measurement, the row gets a "stale" label and a faded bar. Abbreviated dates (`MM-DD HH:MM`, `MM-DDTHH:MM`) are resolved in the local calendar with the measurement's year.
+The Claude card comes first; context is a separate thin row. With no Claude measurement the page shows that none exists yet (the PM writes it). The latest event is kept per provider/group/window, so an external quota reading does not erase Claude's. Every row shows its own measurement time and its reset time in local time. A row is "stale" (label with the reason, faded bar) when its reset time has passed, or when the reading is older than its window allows: 5 hours for the 5-hour window, one day for the week; the same rule as `roster.py` and `/doctor` (`hooks/quota.py`). A bucket that could not be read shows `?`, not 0%. The page refreshes the Codex and agy reading at most every 5 minutes, and an unchanged reading is not written again. Old abbreviated dates are resolved with the measurement's year: `MM-DD HH:MM` in local time, agy's old `MM-DDTHH:MM` in UTC.
 
 ## Agent map
 

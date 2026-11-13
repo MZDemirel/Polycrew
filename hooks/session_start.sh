@@ -14,6 +14,7 @@ echo "Start the session with /session-start; close it with /session-end."
 echo
 sed -n '1,4p' "$file"
 echo
-awk '/^## /{n++} n==2{exit} n==1' "$file" | head -n 40
+# 0018: sınır awk'ın içinde; "| head" pipefail altında SIGPIPE (141) ile kancayı düşürebiliyordu.
+awk '/^## /{n++} n==2{exit} n==1 && c++<40' "$file"
 echo
-awk '/^## /{n++} n==3{exit} n==2 && /^### /' "$file" | head -n 10
+awk '/^## /{n++} n==3{exit} n==2 && /^### / && c++<10' "$file"

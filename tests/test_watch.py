@@ -6,7 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -248,11 +248,12 @@ class Birlestir(unittest.TestCase):
         reset = datetime(2026, 10, 2, 12).timestamp()
         for bicim in ("10-02 12:00", "10-02T12:00"):
             with self.subTest(bicim=bicim):
-                k = {"olcum": olcum.isoformat(), "yenilenir": bicim}
+                k = {"olcum": olcum.isoformat(), "yenilenir": bicim, "pencere": "hafta"}
                 self.assertFalse(izle.kota_kovasi(k, 0, reset - 1)["eski"])
                 self.assertTrue(izle.kota_kovasi(k, 0, reset)["eski"])
+                # 0018: sıfırlanma geçtiyse ölçüm ondan sonra olsa da eski (roster.py ile aynı kural, 0017).
                 k["olcum"] = datetime.fromtimestamp(reset).astimezone().isoformat()
-                self.assertFalse(izle.kota_kovasi(k, 0, reset + 1)["eski"])
+                self.assertTrue(izle.kota_kovasi(k, 0, reset + 1)["eski"])
         self.assertFalse(izle.kota_kovasi({"yenilenir": "bozuk"}, reset, reset + 1)["eski"])
         # 0017: kesin sıfırlanma anı varsa metin (agy'de UTC) çözülmez.
         k = izle.kota_kovasi({"yenilenir": "01-01T00:00", "yenilenir_epoch": reset + 7200}, reset, reset + 3600)
@@ -261,6 +262,37 @@ class Birlestir(unittest.TestCase):
         self.assertTrue(izle.kota_kovasi({"yenilenir_epoch": reset + 7200}, reset, reset + 7201)["eski"])
         self.assertFalse(izle.kota_kovasi({"pencere": "bağlam"}, reset, reset + 1)["eski"])
         self.assertEqual(izle.kota_kovasi({}, reset, reset)["olcum_ts"], reset)
+
+    def test_stale_quota_by_age_and_reason(self):
+        # 0018: 4 günlük haftalık okuma, sıfırlanması gelecekte olsa da eskidir; neden sayfaya gider.
+        simdi = 1_800_000_000.0
+        hafta = {"saglayici": "claude", "grup": "Claude", "pencere": "hafta", "kullanilan": 5,
+                 "yenilenir_epoch": simdi + 3 * 86400}
+        k = izle.kota_kovasi(hafta, simdi - 4 * 86400, simdi)
+        self.assertTrue(k["eski"])
+        self.assertEqual(k["eski_neden"], "older than a day")
+        self.assertFalse(izle.kota_kovasi(hafta, simdi - 3600, simdi)["eski"])
+        bes = {**hafta, "pencere": "5 saat", "yenilenir_epoch": simdi + 3600}
+        self.assertEqual(izle.kota_kovasi(bes, simdi - 6 * 3600, simdi)["eski_neden"], "older than 5 hours")
+        self.assertEqual(izle.kota_kovasi({**bes, "yenilenir_epoch": simdi - 1}, simdi - 60, simdi)["eski_neden"],
+                         "reset passed")
+
+    def test_legacy_agy_reset_text_is_utc(self):
+        # 0018: 0.12.0 öncesi agy metni UTC'ydi; sayfa onu yerel sanıyordu.
+        olcum = datetime(2026, 11, 13, 9, 0, tzinfo=timezone.utc).timestamp()
+        k = izle.kota_kovasi({"saglayici": "agy", "grup": "Gemini Models", "pencere": "weekly",
+                              "yenilenir": "11-13T16:46"}, olcum, olcum)
+        self.assertEqual(k["yenilenir_ts"], datetime(2026, 11, 13, 16, 46, tzinfo=timezone.utc).timestamp())
+        self.assertEqual((k["grup"], k["pencere"]), ("agy: Gemini", "hafta"))
+        argon = izle.kota_kovasi({"saglayici": "agy", "grup": "Gemini 4 Argon", "pencere": "weekly"}, olcum, olcum)
+        self.assertEqual(argon["grup"], "agy: Argon")
+
+    def test_broken_quota_event_does_not_crash(self):
+        v = izle.birlestir([{"tur": "kota", "ts": 10, "kovalar": 5},
+                            {"tur": "kota", "ts": 11, "kovalar": [{"saglayici": "codex", "grup": "Codex",
+                                                                    "pencere": "5 saat", "kullanilan": 3}]}],
+                           simdi=20)
+        self.assertEqual(len(v["kota"]["kovalar"]), 1)
 
     def test_agent_tree_parent_agent_and_external_workers(self):
         o = [
@@ -363,12 +395,34 @@ class ClaudeKota(unittest.TestCase):
             self.assertEqual("shift Claude's jobs to external workers" in r.stdout, uyari)
 
     def test_iso_reset_is_converted_to_local_time(self):
-        iso = "2026-10-12T10:30:00Z"
+        an = (datetime.now(timezone.utc) + timedelta(hours=3)).replace(second=0, microsecond=0)
+        iso = an.strftime("%Y-%m-%dT%H:%M:%SZ")
         r = self.calistir(self.args("5", "10") + ["--five-hour-resets", iso])
         self.assertEqual(r.returncode, 0, r.stderr)
         [e] = izle.oku(self.g)
         beklenen = datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone().strftime("%m-%d %H:%M")
         self.assertEqual(e["kovalar"][0]["yenilenir"], beklenen)
+        self.assertEqual(e["kovalar"][0]["yenilenir_epoch"], an.timestamp())
+
+    def test_model_week_and_reset_bounds(self):
+        # 0018: model başına haftalık sınır kendi grubunda; sıfırlanma ileride ve pencere boyunda olmalı.
+        ileride = (datetime.now().astimezone() + timedelta(days=2)).isoformat()
+        r = self.calistir(self.args("5", "10") + ["--model-week", "Fable", "23", ileride])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        [e] = izle.oku(self.g)
+        fable = e["kovalar"][-1]
+        self.assertEqual((fable["grup"], fable["pencere"], fable["kullanilan"]), ("Claude: Fable", "hafta", 23))
+        self.assertIn("week (Fable): 23%", r.stdout)
+        self.g.unlink()
+        gecmis = (datetime.now().astimezone() - timedelta(minutes=1)).isoformat()
+        uzak = (datetime.now().astimezone() + timedelta(hours=6)).isoformat()
+        for args in (self.args() + ["--five-hour-resets", gecmis], self.args() + ["--five-hour-resets", uzak],
+                     self.args() + ["--week-resets", (datetime.now().astimezone() + timedelta(days=8)).isoformat()],
+                     self.args() + ["--model-week", "Fable", "101", ileride],
+                     self.args() + ["--model-week", "Fable", "5", gecmis]):
+            with self.subTest(args=args[-3:]):
+                self.assertEqual(self.calistir(args).returncode, 2)
+                self.assertFalse(self.g.exists())
 
     def test_invalid_arguments_never_write(self):
         for args in (self.args("101"), self.args("nan"), self.args("-1"),

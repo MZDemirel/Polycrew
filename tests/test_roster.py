@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -721,6 +722,10 @@ class KotaSiralamaTesti(unittest.TestCase):
         with open(self.gunluk, "a", encoding="utf-8") as f:
             f.write(json.dumps({"tur": "kota", "ts": ts, "kovalar": kovalar}) + "\n")
 
+    def okumalar(self):
+        with patch.dict(os.environ, {"POLYCREW_EVENTS": str(self.gunluk)}):
+            return kadro.kota_okumalari()
+
     def kos(self, *argv):
         r = calistir_kadro([*argv, "--no-seed", "--half-life", "0", "--now", str(SIMDI)],
                            defter=self.defter, gunluk=self.gunluk)
@@ -765,6 +770,41 @@ class KotaSiralamaTesti(unittest.TestCase):
         self.assertEqual(sira[0], ("codex/gpt-x/high", ""))
         self.assertIn("stale quota reading for codex", cikti)
 
+    def test_argon_kendi_kovasi_yoksa_gemini(self):
+        # 0018: Argon'un kendi haftalık kovası var; okumada yoksa (ortak planlar) Gemini kovası sayılır.
+        argon = {"saglayici": "agy", "grup": "Gemini 4 Argon", "pencere": "hafta", "kullanilan": 95,
+                 "yenilenir_epoch": SIMDI + 86400}
+        gemini = {"saglayici": "agy", "grup": "agy: Gemini", "pencere": "hafta", "kullanilan": 0,
+                  "yenilenir_epoch": SIMDI + 86400}
+        bilgi = kadro.KotaBilgisi({}, SIMDI)
+        self.kota(SIMDI - 1000, [argon, gemini])
+        bilgi.okumalar = self.okumalar()
+        self.assertEqual(bilgi.durum("agy/gemini-4-argon-high"), "low")
+        self.assertEqual(bilgi.durum("agy/gemini-x-high"), "ok")
+        self.gunluk.unlink()
+        self.kota(SIMDI - 1000, [{**gemini, "kullanilan": 95}])
+        bilgi.okumalar = self.okumalar()
+        self.assertEqual(bilgi.durum("agy/gemini-4-argon-high"), "low")
+
+    def test_eski_ama_dolu_okuma_az_sayilir(self):
+        # 0018: kullanım pencerede yalnız artar; sıfırlanması gelmemiş eski okuma eşiğin altındaysa yine "low".
+        bilgi = kadro.KotaBilgisi({("codex", "Codex", "hafta"): {"kullanilan": 95.0, "olcum": SIMDI - 3 * 86400,
+                                                                  "yenilenir": SIMDI + 3600}}, SIMDI)
+        self.assertEqual(bilgi.durum("codex/gpt-x/high"), "low")
+        bilgi.okumalar[("codex", "Codex", "hafta")]["kullanilan"] = 50.0
+        self.assertEqual(bilgi.durum("codex/gpt-x/high"), "stale")
+        bilgi.okumalar[("codex", "Codex", "hafta")].update(kullanilan=95.0, yenilenir=None)
+        self.assertEqual(bilgi.durum("codex/gpt-x/high"), "stale")
+
+    def test_claude_model_kovasi_yalniz_o_modele(self):
+        # 0018: "Weekly · Fable" yalnız adında fable geçen Claude işçisini düşürür.
+        okumalar = {("claude", "Claude", "hafta"): {"kullanilan": 30.0, "olcum": SIMDI - 60, "yenilenir": SIMDI + 3600},
+                    ("claude", "Claude: Fable", "hafta"): {"kullanilan": 95.0, "olcum": SIMDI - 60,
+                                                           "yenilenir": SIMDI + 3600}}
+        bilgi = kadro.KotaBilgisi(okumalar, SIMDI)
+        self.assertEqual(bilgi.durum("claude/developer/fable-5-2"), "low")
+        self.assertEqual(bilgi.durum("claude/developer/sonnet-5-5"), "ok")
+
     def test_agy_yuvarlanmamis_deger_esikte_okunur(self):
         # %19,6 kalan: "kullanilan" 80'e yuvarlanır (tam %20 kalan, düşmez), "hassas" 80,4 ile düşer.
         self.kota(SIMDI - 1000, [{"saglayici": "agy", "grup": "agy: Gemini", "pencere": "5 saat",
@@ -787,7 +827,8 @@ class KotaSiralamaTesti(unittest.TestCase):
     def test_okuma_yoksa_ya_da_bayatsa_sira_ayni_not_var(self):
         sira, cikti = self.siralama()  # günlük boş
         self.assertEqual(sira[0], ("codex/gpt-x/high", ""))
-        self.assertIn("Quota: no quota reading for agy, codex;", cikti)
+        self.assertIn("Quota: no quota reading for agy, claude, codex;", cikti)
+        self.assertIn("claude-quota.py", cikti)
         # 6 saat önceki okumada 5 saatlik kova bayat, haftalık taze ve yeterli: sıra aynı, Codex için not yok.
         self.kota(SIMDI - 6 * 3600, codex_kovalari(99, 30))
         sira, cikti = self.siralama()
@@ -818,7 +859,7 @@ class KotaSiralamaTesti(unittest.TestCase):
         self.assertEqual((durum["agy/claude-opus-x"], durum["agy/gemini-x-high"]), ("low quota", ""))
         self.kota(SIMDI - 900, [{"saglayici": "agy", "grup": "agy: Gemini", "pencere": "5 saat", "kullanilan": 100}])
         self.assertEqual(dict(self.siralama()[0])["agy/gemini-x-high"], "low quota")
-        self.assertEqual(kadro.isci_kota_grubu("agy/gemini-4-argon-high/-"), ("agy", "Gemini 4 Argon"))
+        self.assertEqual(kadro.isci_kota_grubu("agy/gemini-4-argon-high/-"), ("agy", "agy: Argon"))
         self.assertEqual(kadro.isci_kota_grubu("agy/gpt-oss-120b"), ("agy", "agy: Claude/GPT"))
         self.assertEqual(kadro.isci_kota_grubu("codex/gpt-x/high"), ("codex", "Codex"))
         self.assertIsNone(kadro.isci_kota_grubu("pahali"))
@@ -826,7 +867,7 @@ class KotaSiralamaTesti(unittest.TestCase):
     def test_claude_okumasi_varsa_kullanilir_yoksa_dokunulmaz(self):
         sira, cikti = self.siralama()
         self.assertEqual(dict(sira)["claude/developer/sonnet-9"], "")
-        self.assertNotIn("claude", cikti.split("Quota:")[1])  # Claude için "okuma yok" notu yazılmaz
+        self.assertIn("claude", cikti.split("Quota:")[1])  # 0018: Claude için de "okuma yok" notu
         self.kota(SIMDI - 1000, [
             {"saglayici": "claude", "grup": "Claude", "pencere": "5 saat", "kullanilan": 95},
             {"saglayici": "claude", "grup": "Claude", "pencere": "bağlam", "kullanilan": 5, "token": 1}])

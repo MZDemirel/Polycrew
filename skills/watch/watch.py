@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import math
 import os
 import subprocess
 import sys
@@ -33,12 +34,13 @@ from urllib.parse import parse_qs, urlparse
 KOK = Path(__file__).resolve().parent
 sys.path.insert(0, str(KOK.parent.parent / "hooks"))
 import events as olay  # noqa: E402
+import quota as kurallar  # noqa: E402
 
 SAYFA = KOK / "page.html"
 DIS_AJAN = KOK.parent / "external-agent" / "external-agent.sh"
 ESLESME = 180.0  # saniye: bir SubagentStart, bu kadar önceki aynı roldeki başlatmaya bağlanır
 ESKI = 6 * 3600.0  # saniye: bitişi gelmeyen iş bu kadar sonra "bilinmiyor"
-KOTA_ONBELLEK = 60.0
+KOTA_ONBELLEK = 300.0  # 0018: 60 sn'de günlüğün çoğu kota olayıydı
 RAPOR_SINIR = 20000  # karakter
 
 
@@ -53,28 +55,18 @@ def zaman(deger) -> float | None:
 
 
 def kota_kovasi(kova: dict, ts: float, simdi: float) -> dict:
-    k = dict(kova)
+    """Bir kota kovası, sayfa için: ölçüm ve sıfırlanma anı, eski mi ve neden (kurallar hooks/quota.py, 0018)."""
+    k = kurallar.adlari_duzelt(kova)
     olcum_ts = zaman(k.get("olcum"))
     if olcum_ts is None:
         olcum_ts = ts
         k["olcum"] = datetime.fromtimestamp(ts).astimezone().isoformat()
     k["olcum_ts"] = olcum_ts
-    k["yenilenir_ts"] = None
-    yenilenir = k.get("yenilenir")
-    # 0017: yeni ölçümler kesin sıfırlanma anını taşır; agy'nin kısaltması UTC olduğu için metinden çözmek 3 saat kayıyordu.
-    kesin = k.get("yenilenir_epoch")
-    if isinstance(kesin, (int, float)) and not isinstance(kesin, bool) and kesin > 0:
-        k["yenilenir_ts"] = float(kesin)
-    elif yenilenir:
-        try:
-            # Codex ve agy kısaltmaları yerel takvimde; yıl ölçümden gelir.
-            yil = datetime.fromtimestamp(olcum_ts).year
-            tarih = str(yenilenir).replace("T", " ")
-            k["yenilenir_ts"] = datetime.strptime(f"{yil}-{tarih}", "%Y-%m-%d %H:%M").timestamp()
-        except (ValueError, TypeError, OverflowError, OSError):
-            pass
-    reset = k["yenilenir_ts"]
-    k["eski"] = reset is not None and olcum_ts < reset <= simdi
+    # 0017: yeni ölçümler kesin sıfırlanma anını taşır; 0018: eski agy metni UTC okunur.
+    k["yenilenir_ts"] = kurallar.yenilenme(k, olcum_ts)
+    neden = kurallar.eski_neden(k.get("pencere"), olcum_ts, k["yenilenir_ts"], simdi)
+    k["eski"] = neden is not None
+    k["eski_neden"] = neden
     return k
 
 
@@ -110,10 +102,6 @@ def oku(yol: Path | None = None) -> list[dict]:
                 e["rol"] = olay.rol_adi(e["rol"])  # 0.5.0 öncesinin rol adları (0007)
             out.append(e)
     return out
-
-
-ESKI_GRUP = {"Gemini Models": "agy: Gemini", "Claude and GPT models": "agy: Claude/GPT"}
-ESKI_PENCERE = {"weekly": "hafta", "5h": "5 saat"}
 
 
 def _saglayici(kaynak: str | None, model: str | None) -> str:
@@ -262,11 +250,10 @@ def birlestir(olaylar: list[dict], simdi: float | None = None) -> dict:
             )
         elif tur == "kota":
             kota_ts = ts
-            for k in e.get("kovalar") or []:
+            kovalar_e = e.get("kovalar")
+            for k in kovalar_e if isinstance(kovalar_e, list) else []:  # bozuk olay sayfayı düşürmez
                 if isinstance(k, dict):
-                    # external-agent.sh'nin eski sürümü agy'nin ham adlarını yazıyordu; aynı kova.
-                    k = {**k, "grup": ESKI_GRUP.get(k.get("grup"), k.get("grup")),
-                         "pencere": ESKI_PENCERE.get(k.get("pencere"), k.get("pencere"))}
+                    k = kurallar.adlari_duzelt(k)  # eski agy adları (aynı kova)
                     anahtar = (k.get("saglayici"), k.get("grup"), k.get("pencere"))
                     kovalar[anahtar] = kota_kovasi(k, ts, simdi)
         elif tur == "puan":
@@ -416,12 +403,13 @@ class _Kota:
             if time.time() - self.zaman < KOTA_ONBELLEK or not DIS_AJAN.exists():
                 return
             self.zaman = time.time()
-        threading.Thread(
-            target=lambda: subprocess.run(
-                ["bash", str(DIS_AJAN), "quota"], capture_output=True, timeout=120, check=False
-            ),
-            daemon=True,
-        ).start()
+        def calistir():
+            try:
+                subprocess.run(["bash", str(DIS_AJAN), "quota"], capture_output=True, timeout=120, check=False)
+            except (subprocess.TimeoutExpired, OSError):
+                pass  # kota bir ipucudur; bir sonraki tazelemede yeniden denenir
+
+        threading.Thread(target=calistir, daemon=True).start()
 
 
 KOTA = _Kota()
@@ -450,7 +438,12 @@ class Sunucu(BaseHTTPRequestHandler):
         elif u.path == "/api/durum":
             if q.get("kota") == "1":
                 KOTA.tazele()
-            saat = float(q["saat"]) if q.get("saat") not in (None, "", "0") else None
+            try:
+                saat = float(q["saat"]) if q.get("saat") not in (None, "", "0") else None
+            except ValueError:
+                saat = None
+            if saat is not None and not (math.isfinite(saat) and saat > 0):
+                saat = None
             self._json(suz(birlestir(oku()), saat, q.get("proje") or None))
         elif u.path == "/api/is":
             i = next((i for i in birlestir(oku())["isler"] if i["id"] == q.get("id")), None)

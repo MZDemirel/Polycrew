@@ -207,7 +207,7 @@ const METIN = {
     projeSec: "Project", tumProjeler: "All projects",
     guncellendi: "updated", raporBasligi: "report", calisiyor: "running", bitti: "done", hata: "failed", bilinmiyor: "unknown",
     toplamIs: "jobs", toplamSure: "total time", bosSimdi: "No agent or external worker is running right now.",
-    bosPencere: "No jobs in this window.", bosKota: "No quota reading yet (external-agent.sh quota).", yenilenir: "resets", p5: "5 hours", pHafta: "week",
+    bosPencere: "No jobs in this window.", bosKota: "No quota reading yet (external-agent.sh quota).", yenilenir: "resets", bilinmiyorKota: "unknown", eskiNeden: { "reset passed": "the window reset after this reading", "older than 5 hours": "older than 5 hours", "older than a day": "older than a day" }, p5: "5 hours", pHafta: "week",
     olcum: "measured", claudeNot: "Claude: no reading (PM records it)", eski: "stale reading", baglam: "context",
     harita: "Agent map", pm: "PM · main session", baslatan: "started by",
     ofis: "Office", odaPm: "PM", odaClaude: "Claude", odaDis: "External workers", odaMola: "Break room",
@@ -226,7 +226,7 @@ const METIN = {
     projeSec: "Proje", tumProjeler: "Tüm projeler",
     guncellendi: "güncellendi", raporBasligi: "rapor", calisiyor: "çalışıyor", bitti: "bitti", hata: "hata", bilinmiyor: "bilinmiyor",
     toplamIs: "toplam iş", toplamSure: "toplam süre", bosSimdi: "Şu anda çalışan agent ya da dış işçi yok.",
-    bosPencere: "Bu pencerede iş yok.", bosKota: "Kota ölçümü yok (external-agent.sh quota).", yenilenir: "yenilenir", p5: "5 saat", pHafta: "hafta",
+    bosPencere: "Bu pencerede iş yok.", bosKota: "Kota ölçümü yok (external-agent.sh quota).", yenilenir: "yenilenir", bilinmiyorKota: "bilinmiyor", eskiNeden: { "reset passed": "bu ölçümden sonra pencere sıfırlandı", "older than 5 hours": "5 saatten eski", "older than a day": "bir günden eski" }, p5: "5 saat", pHafta: "hafta",
     olcum: "ölçüm", claudeNot: "Claude: ölçüm yok (PM yazar)", eski: "eski ölçüm", baglam: "bağlam",
     harita: "Agent haritası", pm: "PM · ana oturum", baslatan: "başlatan",
     ofis: "Ofis", odaPm: "PM", odaClaude: "Claude", odaDis: "Dış işçiler", odaMola: "Dinlenme köşesi",
@@ -630,12 +630,16 @@ function ciz() {
     const p = k.saglayici === "codex" ? "codex" : k.saglayici === "claude" || /claude|gpt/i.test(k.grup) ? "claude" : "gemini";
     satirlar.sort((a, b) => (sira[pencere(a.pencere)] ?? 9) - (sira[pencere(b.pencere)] ?? 9));
     return `<div class="kova p-${p}"><div class="b"><span class="ad"><span class="dot"></span>${esc(k.grup)}</span>${k.plan ? `<span class="meta">${esc(k.plan)}</span>` : ""}</div>` + satirlar.map((r) => {
-      const u = Math.max(0, Math.min(100, Number(r.kullanilan) || 0));
+      // 0018: okunamayan kova (agy'de eksik alan) %0 değil "?"; sıfırlanma kesin andan yerel saatle.
+      const bilinen = r.kullanilan !== null && r.kullanilan !== undefined && r.kullanilan !== "" && Number.isFinite(Number(r.kullanilan));
+      const u = bilinen ? Math.max(0, Math.min(100, Number(r.kullanilan))) : 0;
       const ad = pencere(r.pencere);
       const baglam = r.pencere === "bağlam";
-      return `<div class="${baglam ? "baglam" : ""}"><div class="b pen"><span>${esc(baglam ? t("baglam") : ad ? t(ad) : r.pencere)}${r.eski ? ` · <span class="eski-etiket">${t("eski")}</span>` : ""}</span><b>${Math.round(u)}%${r.token != null ? ` · ${token(r.token)}` : ""}</b></div>
+      const neden = r.eski_neden ? ((t("eskiNeden") || {})[r.eski_neden] || r.eski_neden) : "";
+      const sifir = Number.isFinite(r.yenilenir_ts) ? gunStr(r.yenilenir_ts) : r.yenilenir && r.yenilenir !== "?" ? String(r.yenilenir).replace("T", " ") : "";
+      return `<div class="${baglam ? "baglam" : ""}"><div class="b pen"><span>${esc(baglam ? t("baglam") : ad ? t(ad) : r.pencere)}${r.eski ? ` · <span class="eski-etiket" title="${esc(neden)}">${t("eski")}${neden ? ` (${esc(neden)})` : ""}</span>` : ""}</span><b${bilinen ? "" : ` title="${t("bilinmiyorKota")}"`}>${bilinen ? `${Math.round(u)}%` : "?"}${r.token != null ? ` · ${token(r.token)}` : ""}</b></div>
       <div class="olcu"><i class="${u >= 60 ? "yuksek" : ""} ${r.eski ? "eski" : ""}" style="width:${u}%"></i></div>
-      <div class="meta">${r.yenilenir ? `${t("yenilenir")} ${esc(String(r.yenilenir).replace("T", " "))} · ` : ""}${t("olcum")} ${gunStr(r.olcum_ts)}</div></div>`;
+      <div class="meta">${sifir ? `${t("yenilenir")} ${esc(sifir)} · ` : ""}${t("olcum")} ${gunStr(r.olcum_ts)}</div></div>`;
     }).join("") + `</div>`;
   }).join("") : `<div class="bos">${t("bosKota")}</div>`;
   $("kota-not").textContent = kovalar.some((k) => k.saglayici === "claude") ? "" : t("claudeNot");

@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Write the Claude quota the PM read from the desktop tool to the event log; without arguments show the last reading."""
+"""Write the Claude quota the PM read from the desktop app's usage tool (or /usage) to the event log;
+without arguments show the last reading.
+
+--model-week NAME PCT RESETS records a per-model weekly limit ("Weekly · Fable"); a Claude worker whose
+model name contains NAME counts it (0018). Reset times must lie ahead, within the window's length.
+"""
 
 from __future__ import annotations
 
@@ -50,9 +55,12 @@ def goster(kovalar: list[dict], simdi: float) -> None:
         if k.get("yenilenir"):
             ek += f" · resets {k['yenilenir']}"
         if k.get("eski"):
-            ek += " · stale reading"
-        print(f"Claude {ETIKET.get(k['pencere'], k['pencere'])}: {k['kullanilan']:g}% · measured {k['olcum']} · age {yas} s{ek}")
-    if any(k["kullanilan"] >= esik
+            ek += f" · stale reading ({k.get('eski_neden')})" if k.get("eski_neden") else " · stale reading"
+        ad = ETIKET.get(k["pencere"], k["pencere"])
+        if k.get("grup", "Claude") != "Claude":
+            ad = f"{ad} ({k['grup'].split(': ', 1)[-1]})"
+        print(f"Claude {ad}: {k['kullanilan']:g}% · measured {k['olcum']} · age {yas} s{ek}")
+    if any(k["kullanilan"] >= esik and not k.get("eski")
            for k in kovalar for pencere, esik in (("hafta", 70), ("5 saat", 80))
            if k["pencere"] == pencere):
         print("Warning: shift Claude's jobs to external workers")
@@ -72,19 +80,42 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--plan")
     ap.add_argument("--context", dest="baglam", type=yuzde)
     ap.add_argument("--context-tokens", dest="baglam_token", type=token)
+    ap.add_argument("--model-week", dest="model_hafta", nargs=3, action="append", default=[],
+                    metavar=("NAME", "PCT", "RESETS"), help="per-model weekly limit, e.g. Fable 23 2026-11-13T18:00Z")
     args = ap.parse_args(argv)
     if args.baglam_token is not None and args.baglam is None:
         ap.error("--context-tokens also needs --context")
     simdi = datetime.now().astimezone()
+    # 0018: sıfırlanma ileride ve pencerenin boyunu aşmayacak kadar yakın olmalı (yanlış alan yazılmasın).
+    PAY = 5 * 60
+
+    def sifirlanma(an: datetime, saniye: float, bayrak: str) -> datetime:
+        fark = an.timestamp() - simdi.timestamp()
+        if not 0 < fark <= saniye + PAY:
+            ap.error(f"{bayrak} must be in the future and within the window's length")
+        return an
+
+    sifirlanma(args.bes_saat_yenilenir, 5 * 3600, "--five-hour-resets")
+    sifirlanma(args.hafta_yenilenir, 7 * 86400, "--week-resets")
+    model_haftalari = []
+    for ad, yuzde_metni, an_metni in args.model_hafta:
+        try:
+            deger, an = yuzde(yuzde_metni), iso(an_metni)
+        except argparse.ArgumentTypeError as hata:
+            ap.error(f"--model-week {ad}: {hata}")
+        if not ad.strip() or ":" in ad:
+            ap.error("--model-week NAME must be a model name such as Fable")
+        model_haftalari.append((ad.strip(), deger, sifirlanma(an, 7 * 86400, "--model-week RESETS")))
     ortak = {"saglayici": "claude", "grup": "Claude", "olcum": simdi.isoformat()}
     if args.plan:
         ortak["plan"] = args.plan
-    kovalar = [
-        {**ortak, "pencere": "5 saat", "kullanilan": args.bes_saat,
-         "yenilenir": args.bes_saat_yenilenir.strftime("%m-%d %H:%M")},
-        {**ortak, "pencere": "hafta", "kullanilan": args.hafta,
-         "yenilenir": args.hafta_yenilenir.strftime("%m-%d %H:%M")},
-    ]
+    def kova(pencere, deger, an, grup="Claude"):
+        return {**ortak, "grup": grup, "pencere": pencere, "kullanilan": deger,
+                "yenilenir": an.strftime("%m-%d %H:%M"), "yenilenir_epoch": an.timestamp()}
+
+    kovalar = [kova("5 saat", args.bes_saat, args.bes_saat_yenilenir),
+               kova("hafta", args.hafta, args.hafta_yenilenir)]
+    kovalar += [kova("hafta", deger, an, f"Claude: {ad}") for ad, deger, an in model_haftalari]
     if args.baglam is not None:
         k = {**ortak, "pencere": "bağlam", "kullanilan": args.baglam}
         if args.baglam_token is not None:

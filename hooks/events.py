@@ -31,7 +31,13 @@ import os
 import sys
 import tempfile
 import time
+from contextlib import contextmanager
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:  # Windows'ta (WSL dışı) kilit yok; yazım yine çalışır
+    fcntl = None
 
 KISA = 400  # karakter: ham yükteki uzun metinler (istem, son mesaj) bu kadar kalır
 NOT_DOSYALARI = ("NEXT_SESSION.md", "SONRAKI_OTURUM.md")  # session_start.sh ile aynı (0007)
@@ -244,22 +250,43 @@ def defter_dosyasi() -> Path:
     return Path(kok) / "polycrew" / "puanlar.jsonl"
 
 
+@contextmanager
+def kilit(yol: Path):
+    """0018: ekleme ve kırpma aynı kilidi alır; yoksa kırpma arada eklenen satırı silebilirdi."""
+    if fcntl is None:
+        yield
+        return
+    try:
+        tutamak = open(yol.with_name(yol.name + ".lock"), "a")
+    except OSError:
+        yield  # kilit dosyası açılamazsa eski davranış
+        return
+    with tutamak:
+        try:
+            fcntl.flock(tutamak, fcntl.LOCK_EX)
+        except OSError:
+            pass
+        yield
+
+
 def yaz(olay: dict) -> dict:
     if "ts" not in olay:
         olay = {"ts": round(time.time(), 3), **olay}
     yol = dosya()
     yol.parent.mkdir(parents=True, exist_ok=True)
-    with open(yol, "a", encoding="utf-8") as f:
-        f.write(json.dumps(olay, ensure_ascii=False) + "\n")
-    try:
-        kirp(yol)
-    except OSError:
-        pass  # bakım işi; puanın deftere yazılmasını asla durdurmaz
+    with kilit(yol):
+        with open(yol, "a", encoding="utf-8") as f:
+            f.write(json.dumps(olay, ensure_ascii=False) + "\n")
+        try:
+            kirp(yol)
+        except OSError:
+            pass  # bakım işi; puanın deftere yazılmasını asla durdurmaz
     return olay
 
 
 def kirp(yol: Path) -> None:
-    """0013: günlük sınırı aşınca en yeni satırlardan sınırın yarısı kalır (silinmez, solar)."""
+    """0013: günlük sınırı aşınca en yeni satırlardan sınırın yarısı kalır (silinmez, solar).
+    ``yaz`` bunu kilit altında çağırır (0018)."""
     try:
         sinir = float(os.environ.get("POLYCREW_EVENTS_MAX_MB") or EN_COK_MB) * 1024 * 1024
     except ValueError:
